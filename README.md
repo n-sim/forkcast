@@ -37,13 +37,14 @@ left unspecified.
 
 In the recipe editor, use **Allocate ingredient** on a cooking step to assign an
 amount from a recipe ingredient total. Split an ingredient across steps as needed.
-**Allocation checks** show missing or excess amounts, including ingredients with no
-allocations. These warnings allow a recipe to be saved for later correction;
-invalid amounts, duplicate ingredients within a step, and incompatible units must
-be corrected before saving. Removing an ingredient removes its allocations;
+**Allocation checks** appear only in the editor and show missing or excess amounts,
+including ingredients with no allocations. These warnings allow a recipe to be
+saved for later correction; invalid amounts, duplicate ingredients within a step,
+and incompatible units must be corrected before saving. Removing an ingredient removes its allocations;
 reordering steps keeps their allocations attached. Instructions never supply or
 change the structured ingredient totals. Recipes saved before allocations were
-introduced open with empty allocations and show their unallocated amounts.
+introduced open with empty allocations and show their unallocated amounts in the
+editor.
 
 In the recipe view, change **Cooking portions** to scale both ingredient totals
 and step allocations, including fractional portions. This is a viewing choice;

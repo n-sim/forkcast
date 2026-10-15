@@ -16,7 +16,6 @@ import {
 import { RecipeForm } from './RecipeForm';
 import { RecipeCoverPhoto, RecipePhotoEditor } from './RecipePhoto';
 import { PersonalRecipeRating } from './RecipeRating';
-import { AllocationChecks } from './AllocationChecks';
 
 function subscribeToRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -144,7 +143,6 @@ function RecipeDetails({
       )}
       {quantities && (
         <>
-          <AllocationChecks recipe={recipe} checks={quantities.checks} />
           <div className="recipe-content">
             <section className="panel" aria-labelledby="ingredients-heading">
               <p className="eyebrow">What you’ll need</p>

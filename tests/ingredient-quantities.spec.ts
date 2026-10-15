@@ -40,6 +40,10 @@ test('truncate displayed quantities to two decimal places while retaining small 
   await page
     .getByLabel('Step 1 allocation 2 quantity', { exact: true })
     .fill('0.003');
+  const checks = page.getByRole('region', { name: 'Allocation checks' });
+  await expect(checks).toContainText(
+    'Lentils: 4.25 / 8.50 g allocated; 4.25 g unallocated.',
+  );
   await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Split lentils', exact: true }),
@@ -49,13 +53,10 @@ test('truncate displayed quantities to two decimal places while retaining small 
     exact: true,
   });
   const steps = page.getByRole('list', { name: 'Cooking steps', exact: true });
-  const checks = page.getByRole('region', { name: 'Allocation checks' });
   await expect(ingredients).toHaveText('8.50 g Lentils0.003 ml Oil');
   await expect(steps).toContainText('4.25 g Lentils');
   await expect(steps).toContainText('0.003 ml Oil');
-  await expect(checks).toContainText(
-    'Lentils: 4.25 / 8.50 g allocated; 4.25 g unallocated.',
-  );
+  await expect(checks).toHaveCount(0);
   await page.getByLabel('Cooking portions', { exact: true }).fill('4');
   await expect(ingredients).toHaveText('17.00 g Lentils0.006 ml Oil');
   await page.getByLabel('Cooking portions', { exact: true }).fill('20');
@@ -71,11 +72,11 @@ test('truncate displayed quantities to two decimal places while retaining small 
   await page
     .getByLabel('Step 1 allocation 1 quantity', { exact: true })
     .fill('1');
-  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
-  await expect(ingredients).toHaveText('28.34 g Lentils0.003 ml Oil');
   await expect(checks).toContainText(
     'All ingredient totals are fully allocated.',
   );
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await expect(ingredients).toHaveText('28.34 g Lentils0.003 ml Oil');
 });
 
 test('allocate ingredient totals across steps and scale both after reopening offline', async ({
@@ -249,13 +250,14 @@ test('review missing and excess allocations without changing totals, and keep re
   ).toBeVisible();
   const savedUrl = page.url();
   await page.getByLabel('Cooking portions', { exact: true }).fill('4');
-  await expect(checks).toContainText(
-    'Lentils: 1.50 / 2 kg allocated; 0.50 kg unallocated.',
-  );
+  await expect(checks).toHaveCount(0);
   await expect(
     page.getByRole('list', { name: 'Ingredients', exact: true }),
   ).toHaveText('2 kg Lentils');
   await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
+  await expect(checks).toContainText(
+    'Lentils: 0.75 / 1 kg allocated; 0.25 kg unallocated.',
+  );
   await page.getByLabel('Ingredient 1 name').fill('Red lentils');
   await page
     .getByRole('button', { name: 'Move step 2 up', exact: true })
@@ -277,8 +279,9 @@ test('review missing and excess allocations without changing totals, and keep re
   await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
   await expect(page).toHaveURL(savedUrl);
   await page.reload();
-  await expect(checks).toContainText('0.25 kg overallocated');
+  await expect(checks).toHaveCount(0);
   await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
+  await expect(checks).toContainText('0.25 kg overallocated');
   await page
     .getByRole('button', { name: 'Remove step 2', exact: true })
     .click();
@@ -381,8 +384,8 @@ test('reject incompatible units, invalid amounts, and duplicate references befor
   );
   await page.getByLabel('Cooking portions', { exact: true }).fill('2');
   await expect(
-    page.getByRole('region', { name: 'Allocation checks' }),
-  ).toContainText('All ingredient totals are fully allocated.');
+    page.getByRole('list', { name: 'Ingredients', exact: true }),
+  ).toHaveText('300 g Lentils');
 });
 
 test('combine US fluid ounces and teaspoons as volume allocations without confusing mass ounces', async ({
@@ -488,8 +491,11 @@ test('open recipes saved before allocations were introduced, then allocate and r
   await page.getByRole('link', { name: 'Old soup' }).click();
   await expect(
     page.getByRole('region', { name: 'Allocation checks' }),
-  ).toContainText('Stock: 0 / 1 l allocated; 1 l unallocated.');
+  ).toHaveCount(0);
   await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
+  await expect(
+    page.getByRole('region', { name: 'Allocation checks' }),
+  ).toContainText('Stock: 0 / 1 l allocated; 1 l unallocated.');
   await allocate(page, 1, '1');
   await page
     .getByLabel('Step 1 allocation 1 unit', { exact: true })
@@ -501,11 +507,15 @@ test('open recipes saved before allocations were introduced, then allocate and r
   await page.reload();
   await expect(
     page.getByRole('region', { name: 'Allocation checks' }),
-  ).toContainText('All ingredient totals are fully allocated.');
+  ).toHaveCount(0);
   await expect(
     page.getByRole('list', { name: 'Ingredients', exact: true }),
   ).toHaveText('1 l Stock');
   await expect(
     page.getByRole('list', { name: 'Cooking steps', exact: true }),
   ).toContainText('1 l Stock');
+  await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
+  await expect(
+    page.getByRole('region', { name: 'Allocation checks' }),
+  ).toContainText('All ingredient totals are fully allocated.');
 });
