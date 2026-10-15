@@ -94,13 +94,26 @@ export function CookingView({
             {session.portions === 1 ? 'portion' : 'portions'}
           </p>
         </div>
-        <button
-          className="button secondary"
-          disabled={saving}
-          onClick={() => void persist(onSuspend)}
+        <div
+          className="cooking-session-actions"
+          role="group"
+          aria-label="Cooking session actions"
         >
-          Suspend cooking
-        </button>
+          <button
+            className="button secondary"
+            disabled={saving}
+            onClick={() => void persist(onSuspend)}
+          >
+            Suspend cooking
+          </button>
+          <button
+            className="button secondary"
+            disabled={saving}
+            onClick={() => void persist(onCancel)}
+          >
+            Cancel cooking
+          </button>
+        </div>
       </div>
       {currentRecipe &&
         JSON.stringify(currentRecipe) !== JSON.stringify(session.recipe) && (
@@ -193,13 +206,6 @@ export function CookingView({
           }
         >
           {lastStep ? 'Finish cooking' : 'Next step'}
-        </button>
-        <button
-          className="button secondary"
-          disabled={saving}
-          onClick={() => void persist(onCancel)}
-        >
-          Cancel cooking
         </button>
       </div>
       <p className="section-note cooking-save-note">

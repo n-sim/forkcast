@@ -8,6 +8,11 @@
   --muted: #697064;
   --accent: #a44228;
   --line: #e4e4d9;
+  --sidebar-width: 245px;
+  --cooking-bar-height: 0px;
+}
+html {
+  scroll-padding-bottom: var(--cooking-bar-height);
 }
 * {
   box-sizing: border-box;
@@ -52,7 +57,7 @@ textarea:focus-visible {
   min-height: 100vh;
 }
 .sidebar {
-  width: 245px;
+  width: var(--sidebar-width);
   flex-shrink: 0;
   background: #f1f2e9;
   padding: 36px 25px;
@@ -134,6 +139,7 @@ textarea:focus-visible {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  padding-bottom: var(--cooking-bar-height);
 }
 .topbar {
   height: 82px;
@@ -620,12 +626,48 @@ dialog .form-actions {
 .timer-start label {
   max-width: 180px;
 }
-.session-list {
-  padding-left: 20px;
-  font-size: 14px;
+.cooking-session-actions {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
 }
-.session-list li {
-  padding-block: 10px;
+.cooking-session-actions .button {
+  padding-inline: 16px;
+}
+.suspended-cooking-bar {
+  position: fixed;
+  bottom: 0;
+  left: var(--sidebar-width);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 16px 48px calc(16px + env(safe-area-inset-bottom, 0px));
+  background: #fffdf9;
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -6px 24px rgb(30 38 25 / 8%);
+}
+.suspended-cooking-summary {
+  min-width: 0;
+}
+.suspended-cooking-bar .eyebrow {
+  margin-bottom: 4px;
+}
+.suspended-cooking-title {
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.suspended-cooking-bar .section-note {
+  margin-bottom: 0;
+}
+.suspended-cooking-bar .button {
+  flex-shrink: 0;
 }
 .cooking-steps li {
   padding: 4px 0 22px 10px;
@@ -695,8 +737,10 @@ dialog .form-actions {
   top: 12px;
 }
 @media (max-width: 1100px) {
+  :root {
+    --sidebar-width: 205px;
+  }
   .sidebar {
-    width: 205px;
     padding: 30px 18px;
   }
   .topbar {
@@ -707,6 +751,9 @@ dialog .form-actions {
   }
   .page-footer {
     margin-inline: 30px;
+  }
+  .suspended-cooking-bar {
+    padding-inline: 30px;
   }
   .metadata-fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -721,6 +768,9 @@ dialog .form-actions {
   }
 }
 @media (max-width: 900px) {
+  :root {
+    --sidebar-width: 0px;
+  }
   .app-shell {
     flex-direction: column;
   }
@@ -745,6 +795,10 @@ dialog .form-actions {
   }
 }
 @media (max-width: 560px) {
+  .suspended-cooking-bar {
+    padding-inline: 18px;
+    gap: 16px;
+  }
   .allocation-row {
     grid-template-columns: minmax(0, 1fr) 65px 65px 32px;
     gap: 6px;

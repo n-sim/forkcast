@@ -26,6 +26,7 @@ import { PersonalRecipeRating } from './RecipeRating';
 import { cookingUrl, startCooking, type CookingSession } from './cooking';
 import { CookingView } from './CookingView';
 import { CookingConflictDialog } from './CookingConflictDialog';
+import { SuspendedCookingBar } from './SuspendedCookingBar';
 
 function subscribeToRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -42,7 +43,6 @@ function RecipeDetails({
   onSavePhoto,
   rating,
   onSaveRating,
-  sessions,
   onStartCooking,
 }: {
   recipe: Recipe;
@@ -50,7 +50,6 @@ function RecipeDetails({
   onSavePhoto: (photo: Blob | null) => Promise<void>;
   rating?: RecipeRating;
   onSaveRating: (value: number | null) => Promise<void>;
-  sessions: CookingSession[];
   onStartCooking: (
     portions: number,
     displayUnits: DisplayUnits,
@@ -181,13 +180,6 @@ function RecipeDetails({
           {cookingError}
         </p>
       )}
-      {sessions.map((session) => (
-        <p key={session.id}>
-          <a href={cookingUrl(session.id)}>Resume cooking</a> ·{' '}
-          {session.portions} portions · Step {session.currentStep + 1} of{' '}
-          {session.recipe.steps.length}
-        </p>
-      ))}
       {quantityError && (
         <p role="alert" id="quantity-error" className="error-banner">
           {quantityError}
@@ -307,6 +299,11 @@ export function App({
   const selectedSession = sessions.find(
     (session) => cookingUrl(session.id) === route,
   );
+  const suspendedSession =
+    !selectedSession &&
+    (route === '#/' || selected || route === '#/recipes/new')
+      ? sessions[0]
+      : undefined;
 
   useEffect(() => {
     document.title = `${selectedSession?.recipe.name ?? selected?.name ?? (route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
@@ -459,9 +456,6 @@ export function App({
             <RecipeDetails
               key={selected.id}
               recipe={selected}
-              sessions={sessions.filter(
-                (session) => session.recipe.id === selected.id,
-              )}
               onStartCooking={async (portions, displayUnits) => {
                 const session = startCooking(selected, portions, displayUnits);
                 await beginSession(session);
@@ -528,23 +522,6 @@ export function App({
                 {recipes.length} {recipes.length === 1 ? 'recipe' : 'recipes'}
                 <span>Made by you. Kept for next time.</span>
               </div>
-              {sessions.length > 0 && (
-                <section className="panel" aria-label="Cooking sessions">
-                  <h2>Cooking sessions</h2>
-                  <ul className="session-list">
-                    {sessions.map((session) => (
-                      <li key={session.id}>
-                        <a href={cookingUrl(session.id)}>
-                          Resume {session.recipe.name}
-                        </a>{' '}
-                        · {session.portions} portions · Step{' '}
-                        {session.currentStep + 1} of{' '}
-                        {session.recipe.steps.length}
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
               {recipes.length === 0 ? (
                 <div className="empty-state">
                   <div className="bowl" aria-hidden="true">
@@ -616,6 +593,7 @@ export function App({
           A collection worth coming back to.
           <span>Forkcast · Cook your way.</span>
         </footer>
+        {suspendedSession && <SuspendedCookingBar session={suspendedSession} />}
       </div>
     </div>
   );
