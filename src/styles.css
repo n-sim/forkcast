@@ -453,6 +453,15 @@ h2 {
   font-size: 12px;
   line-height: 1.5;
 }
+.nutrition-version-notice {
+  color: #805022;
+  background: #fff3df;
+  border-left: 3px solid #b78641;
+  border-radius: 4px;
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 1.5;
+}
 .food-log-entries .recipe-metadata {
   margin-bottom: 0;
   padding-bottom: 0;

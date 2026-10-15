@@ -77,6 +77,165 @@ test('enter whole-recipe nutrition and keep per-portion values independent of co
   ]);
 });
 
+test('link food-log recipes to current contents and explain older nutrition without changing logged values', async ({
+  page,
+  context,
+}) => {
+  await createRecipe(page);
+  const recipeUrl = page.url();
+  await page.getByRole('link', { name: 'Food log', exact: true }).click();
+  await logRecipe(page, '2026-10-13T08:00', '1');
+  const entries = page.getByRole('list', {
+    name: 'Food-log entries',
+    exact: true,
+  });
+  const oldEntry = entries.getByRole('listitem').filter({ hasText: '08:00' });
+  const oldLink = oldEntry.getByRole('link', {
+    name: 'Household pasta',
+    exact: true,
+  });
+  await expect(oldLink).toBeVisible();
+  await expect(oldEntry).not.toContainText('Newer recipe nutrition available');
+  await oldLink.click();
+  const notice = page.getByRole('status', {
+    name: 'Food-log nutrition',
+    exact: true,
+  });
+  await expect(
+    page.getByRole('heading', {
+      name: 'Household pasta',
+      exact: true,
+      level: 1,
+    }),
+  ).toBeVisible();
+  await expect(notice).toHaveCount(0);
+
+  await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
+  await page.getByLabel('Ingredient 1 quantity', { exact: true }).fill('600');
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Household pasta', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('link', { name: 'Food log', exact: true }).click();
+  await expect(oldEntry).not.toContainText('Newer recipe nutrition available');
+
+  const editor = await context.newPage();
+  await editor.goto(`${recipeUrl}/edit`);
+  await editor.getByLabel('Calories (kcal)', { exact: true }).fill('2400');
+  await editor
+    .getByRole('button', { name: 'Save recipe', exact: true })
+    .click();
+  await expect(
+    editor.getByRole('heading', { name: 'Household pasta', exact: true }),
+  ).toBeVisible();
+  await editor.close();
+  await expect(oldEntry).toContainText('Newer recipe nutrition available');
+  await expect(oldEntry.getByRole('definition')).toHaveText([
+    '500 kcal',
+    '20 g',
+    '10 g',
+    '80 g',
+  ]);
+  await logRecipe(page, '2026-10-13T12:00', '1');
+  const currentEntry = entries
+    .getByRole('listitem')
+    .filter({ hasText: '12:00' });
+  await expect(currentEntry).not.toContainText(
+    'Newer recipe nutrition available',
+  );
+  await expect(
+    currentEntry.getByRole('link', { name: 'Household pasta', exact: true }),
+  ).toBeVisible();
+
+  await page
+    .getByRole('button', { name: 'Add manual entry', exact: true })
+    .click();
+  await page
+    .getByLabel('Food description', { exact: true })
+    .fill('Afternoon snack');
+  await page
+    .getByLabel('Consumed at', { exact: true })
+    .fill('2026-10-13T15:00');
+  await page.getByRole('button', { name: 'Save entry', exact: true }).click();
+  const manualEntry = entries
+    .getByRole('listitem')
+    .filter({ hasText: 'Afternoon snack' });
+  await expect(manualEntry.getByRole('link')).toHaveCount(0);
+  await expect(manualEntry).not.toContainText(
+    'Newer recipe nutrition available',
+  );
+
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+  await context.setOffline(true);
+  await page.reload();
+  await expect(oldEntry).toContainText('Newer recipe nutrition available');
+  await oldLink.click();
+  await expect(notice).toContainText(
+    'This food-log entry uses older nutrition.',
+  );
+  await expect(notice).toContainText('You are viewing the current recipe.');
+  await expect(
+    page.getByRole('region', { name: 'Nutrition per portion', exact: true }),
+  ).toContainText('600 kcal');
+  await page.reload();
+  await expect(notice).toBeVisible();
+  await page.getByRole('link', { name: 'Food log', exact: true }).click();
+  await expect(oldEntry).toContainText('500 kcal');
+  await expect(currentEntry).toContainText('600 kcal');
+  await currentEntry
+    .getByRole('link', { name: 'Household pasta', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', {
+      name: 'Household pasta',
+      exact: true,
+      level: 1,
+    }),
+  ).toBeVisible();
+  await expect(notice).toHaveCount(0);
+});
+
+test('identify older nutrition versions even when a later correction restores the same values', async ({
+  page,
+}) => {
+  await createRecipe(page);
+  const recipeUrl = page.url();
+  await page.getByRole('link', { name: 'Food log', exact: true }).click();
+  await logRecipe(page, '2026-10-13T08:00', '1');
+  for (const calories of ['2400', '2000']) {
+    await page.goto(`${recipeUrl}/edit`);
+    await page.getByLabel('Calories (kcal)', { exact: true }).fill(calories);
+    await page
+      .getByRole('button', { name: 'Save recipe', exact: true })
+      .click();
+    await expect(
+      page.getByRole('heading', {
+        name: 'Household pasta',
+        exact: true,
+        level: 1,
+      }),
+    ).toBeVisible();
+  }
+  await page.getByRole('link', { name: 'Food log', exact: true }).click();
+  const entries = page.getByRole('list', {
+    name: 'Food-log entries',
+    exact: true,
+  });
+  await expect(entries).toContainText('Newer recipe nutrition available');
+  await expect(entries).toContainText('500 kcal');
+  await entries
+    .getByRole('link', { name: 'Household pasta', exact: true })
+    .click();
+  await expect(
+    page.getByRole('status', { name: 'Food-log nutrition', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Nutrition per portion', exact: true }),
+  ).toContainText('500 kcal');
+});
+
 test('cook four portions for a household and log only the portions actually eaten on each day, including offline', async ({
   page,
   context,

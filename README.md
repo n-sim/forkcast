@@ -206,8 +206,11 @@ recipe's base yield also creates a version: a 2,000 kcal recipe yielding four
 portions has 500 kcal per portion; changing its yield to two gives new entries
 1,000 kcal per portion while past entries keep 500 kcal. Ingredient-only edits
 retain nutrition. Planning and cooking never create consumption entries or
-change per-portion nutrition. Older-version notices and explicitly updating an
-individual entry to current nutrition are subsequent work.
+change per-portion nutrition. Recipe names in the food log link to their current
+recipe page. Entries using an older nutrition version show **Newer recipe nutrition
+available**; following their link explains that the recipe now has newer nutrition
+while the entry keeps its logged values. Explicitly updating an individual entry
+to current nutrition is subsequent work.
 
 Open **Meal plan** for a Monday–Sunday cooking schedule. Use **Previous week**,
 **Next week**, **This week**, or **Week containing** to choose a period.

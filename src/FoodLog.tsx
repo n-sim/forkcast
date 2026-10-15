@@ -202,31 +202,61 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
               <p>No food logged for this day.</p>
             ) : (
               <ol className="food-log-entries" aria-label="Food-log entries">
-                {daily.entries.map((entry) => (
-                  <li key={entry.id} className="panel">
-                    <p className="eyebrow">
-                      {entry.recipeId ? 'Recipe entry' : 'Manual entry'} ·{' '}
-                      <time dateTime={entry.consumedAt}>
-                        {entry.consumedAt.slice(11)}
-                      </time>
-                    </p>
-                    <h3>{entry.description}</h3>
-                    {entry.portions !== null && (
-                      <p>
-                        {entry.portions}{' '}
-                        {entry.portions === 1 ? 'portion' : 'portions'} eaten
+                {daily.entries.map((entry) => {
+                  const recipe = recipes.find(
+                    (recipe) => recipe.id === entry.recipeId,
+                  );
+                  const olderNutrition =
+                    recipe &&
+                    entry.nutritionVersionId !== recipe.nutritionVersionId;
+                  const noticeId = `nutrition-notice-${entry.id}`;
+                  return (
+                    <li key={entry.id} className="panel">
+                      <p className="eyebrow">
+                        {entry.recipeId ? 'Recipe entry' : 'Manual entry'} ·{' '}
+                        <time dateTime={entry.consumedAt}>
+                          {entry.consumedAt.slice(11)}
+                        </time>
                       </p>
-                    )}
-                    <dl className="recipe-metadata">
-                      {nutrients.map(({ key, label, unit }) => (
-                        <div key={key}>
-                          <dt>{label}</dt>
-                          <dd>{nutritionValue(entry.nutrition[key], unit)}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </li>
-                ))}
+                      <h3>
+                        {recipe ? (
+                          <a
+                            href={`#/recipes/${recipe.id}?nutritionVersion=${encodeURIComponent(entry.nutritionVersionId!)}`}
+                            aria-describedby={
+                              olderNutrition ? noticeId : undefined
+                            }
+                          >
+                            {entry.description}
+                          </a>
+                        ) : (
+                          entry.description
+                        )}
+                      </h3>
+                      {olderNutrition && (
+                        <p className="nutrition-version-notice" id={noticeId}>
+                          Newer recipe nutrition available. This entry keeps its
+                          logged values.
+                        </p>
+                      )}
+                      {entry.portions !== null && (
+                        <p>
+                          {entry.portions}{' '}
+                          {entry.portions === 1 ? 'portion' : 'portions'} eaten
+                        </p>
+                      )}
+                      <dl className="recipe-metadata">
+                        {nutrients.map(({ key, label, unit }) => (
+                          <div key={key}>
+                            <dt>{label}</dt>
+                            <dd>
+                              {nutritionValue(entry.nutrition[key], unit)}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </li>
+                  );
+                })}
               </ol>
             )}
           </section>
