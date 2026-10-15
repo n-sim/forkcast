@@ -4,9 +4,28 @@ import initialize, {
   calculate_recipe,
   update_step_timer,
   step_timer_remaining,
+  update_cooking_progress,
 } from '../crates/recipe-domain/pkg/forkcast_recipe_domain';
 
 export type Difficulty = 'easy' | 'medium' | 'challenging';
+
+export interface CookingProgress {
+  currentStep: number;
+  completedAt?: number | null;
+  canceledAt?: number | null;
+}
+
+export type CookingAction =
+  { type: 'step'; step: number } | { type: 'finish' | 'cancel' };
+
+export function updateCookingProgress(
+  progress: CookingProgress,
+  action: CookingAction,
+  stepCount: number,
+  now: number,
+): CookingProgress {
+  return update_cooking_progress(progress, action, stepCount, now);
+}
 
 export interface StepTimer {
   durationMs: number;

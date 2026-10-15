@@ -1,6 +1,7 @@
 import {
   validateRecipe,
   validateRecipeRating,
+  updateCookingProgress,
   type Recipe,
   type RecipeDraft,
   type RecipeRating,
@@ -57,25 +58,123 @@ export async function loadCookingSessions(): Promise<CookingSession[]> {
     transaction.onabort = () => reject(transaction.error);
     request.onerror = () => reject(request.error);
     request.onsuccess = () =>
-      resolve(
-        (request.result as CookingSession[]).filter(
-          (session) => session.completedAt == null,
-        ),
-      );
+      resolve((request.result as CookingSession[]).filter(unfinishedCooking));
   });
 }
 
 export async function saveCookingSession(
   session: CookingSession,
 ): Promise<void> {
+  await changeCookingSessions((sessions, store) => {
+    const stored = sessions.find((item) => item.id === session.id);
+    if (!stored)
+      throw new Error(
+        'This cooking session has ended or belongs to another person.',
+      );
+    store.put({
+      ...stored,
+      ...updateCookingProgress(
+        stored,
+        { type: 'step', step: session.currentStep },
+        stored.recipe.steps.length,
+        Date.now(),
+      ),
+      timers: session.timers,
+    });
+  });
+}
+
+function unfinishedCooking(session: CookingSession) {
+  return session.completedAt == null && session.canceledAt == null;
+}
+
+// Reads and writes share one transaction, so simultaneous starts in different
+// tabs cannot create two unfinished cooking sessions for the same person.
+async function changeCookingSessions<T>(
+  change: (
+    sessions: CookingSession[],
+    store: IDBObjectStore,
+    personId: string,
+  ) => T,
+): Promise<T> {
   const personId = await localPersonId();
   const db = await openDatabase();
-  return new Promise((resolve, reject) => {
+  const result = await new Promise<T>((resolve, reject) => {
     const transaction = db.transaction('cookingSessions', 'readwrite');
-    transaction.objectStore('cookingSessions').put({ ...session, personId });
-    transaction.oncomplete = () => resolve();
-    transaction.onabort = () => reject(transaction.error);
-    transaction.onerror = () => reject(transaction.error);
+    const store = transaction.objectStore('cookingSessions');
+    const request = store.index('personId').getAll(personId);
+    let result: T;
+    let failure: unknown;
+    request.onsuccess = () => {
+      try {
+        result = change(request.result as CookingSession[], store, personId);
+      } catch (error) {
+        failure = error;
+        transaction.abort();
+      }
+    };
+    transaction.oncomplete = () => resolve(result);
+    transaction.onabort = () => reject(failure ?? transaction.error);
+  });
+  const channel = new BroadcastChannel('forkcast-cooking');
+  channel.postMessage('changed');
+  channel.close();
+  return result;
+}
+
+export function subscribeToCookingChanges(listener: () => void): () => void {
+  const channel = new BroadcastChannel('forkcast-cooking');
+  channel.onmessage = listener;
+  return () => channel.close();
+}
+
+export async function beginCookingSession(
+  session: CookingSession,
+  cancelSessionIds: string[] = [],
+): Promise<{ session: CookingSession | null; conflicts: CookingSession[] }> {
+  return changeCookingSessions((sessions, store, personId) => {
+    const unfinished = sessions.filter(unfinishedCooking);
+    if (
+      unfinished.length &&
+      (unfinished.length !== cancelSessionIds.length ||
+        unfinished.some((item) => !cancelSessionIds.includes(item.id)))
+    ) {
+      return { session: null, conflicts: unfinished };
+    }
+    for (const previous of unfinished)
+      store.put({
+        ...previous,
+        ...updateCookingProgress(
+          previous,
+          { type: 'cancel' },
+          previous.recipe.steps.length,
+          Date.now(),
+        ),
+      });
+    store.add({ ...session, personId });
+    return { session, conflicts: [] };
+  });
+}
+
+export async function endCookingSession(
+  id: string,
+  outcome: 'finished' | 'canceled',
+): Promise<void> {
+  await changeCookingSessions((sessions, store) => {
+    const session = sessions.find((item) => item.id === id);
+    if (!session)
+      throw new Error(
+        'This cooking session belongs to another person or is not saved on this device.',
+      );
+    store.put({
+      ...session,
+      ...updateCookingProgress(
+        session,
+        { type: outcome === 'finished' ? 'finish' : 'cancel' },
+        session.recipe.steps.length,
+        Date.now(),
+      ),
+    });
   });
 }
 

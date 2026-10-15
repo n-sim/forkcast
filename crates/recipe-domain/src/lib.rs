@@ -7,6 +7,21 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
+pub fn update_cooking_progress(
+    value: JsValue,
+    action: JsValue,
+    step_count: usize,
+    now: f64,
+) -> Result<JsValue, JsValue> {
+    let progress = serde_wasm_bindgen::from_value(value)?;
+    let action = serde_wasm_bindgen::from_value(action)?;
+    let progress = cooking::update_cooking_progress(progress, action, step_count, now)
+        .map_err(|error| JsValue::from_str(&error))?;
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true);
+    Ok(progress.serialize(&serializer)?)
+}
+
+#[wasm_bindgen]
 pub fn update_step_timer(timer: JsValue, action: JsValue, now: f64) -> Result<JsValue, JsValue> {
     let timer = serde_wasm_bindgen::from_value(timer)?;
     let action = serde_wasm_bindgen::from_value(action)?;

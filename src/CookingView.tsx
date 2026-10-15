@@ -16,11 +16,15 @@ export function CookingView({
   currentRecipe,
   onSave,
   onFinish,
+  onCancel,
+  onSuspend,
 }: {
   session: CookingSession;
   currentRecipe?: Recipe;
   onSave: (session: CookingSession) => Promise<void>;
   onFinish: () => Promise<void>;
+  onCancel: () => Promise<void>;
+  onSuspend: () => Promise<void>;
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -90,9 +94,13 @@ export function CookingView({
             {session.portions === 1 ? 'portion' : 'portions'}
           </p>
         </div>
-        <a className="button secondary" href={`#/recipes/${session.recipe.id}`}>
-          Close cooking
-        </a>
+        <button
+          className="button secondary"
+          disabled={saving}
+          onClick={() => void persist(onSuspend)}
+        >
+          Suspend cooking
+        </button>
       </div>
       {currentRecipe &&
         JSON.stringify(currentRecipe) !== JSON.stringify(session.recipe) && (
@@ -185,6 +193,13 @@ export function CookingView({
           }
         >
           {lastStep ? 'Finish cooking' : 'Next step'}
+        </button>
+        <button
+          className="button secondary"
+          disabled={saving}
+          onClick={() => void persist(onCancel)}
+        >
+          Cancel cooking
         </button>
       </div>
       <p className="section-note cooking-save-note">

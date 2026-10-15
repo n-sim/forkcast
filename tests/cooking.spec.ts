@@ -66,7 +66,9 @@ test('cook scaled step amounts and resume saved navigation after closing and reo
   await expect(step).toContainText('Step 1 of 2');
   await page.getByRole('button', { name: 'Next step', exact: true }).click();
   await expect(step).toContainText('Step 2 of 2');
-  await page.getByRole('link', { name: 'Close cooking', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Suspend cooking', exact: true })
+    .click();
   await page.getByRole('link', { name: 'Resume cooking', exact: true }).click();
   await expect(step).toContainText('Step 2 of 2');
   await page.evaluate(async () => {
@@ -153,7 +155,7 @@ for (const { preference, firstStep, secondStep } of [
     await page.getByRole('button', { name: 'Back step', exact: true }).click();
     await expect(ingredients).toHaveText(firstStep);
     await page
-      .getByRole('link', { name: 'Close cooking', exact: true })
+      .getByRole('button', { name: 'Suspend cooking', exact: true })
       .click();
     await page
       .getByLabel('Display units', { exact: true })
@@ -181,7 +183,7 @@ for (const { preference, firstStep, secondStep } of [
   });
 }
 
-test('finish cooking from the last step and keep only unfinished sessions available after reopening', async ({
+test('finish cooking from the last step and allow a fresh session after reopening', async ({
   page,
 }) => {
   await createRecipe(page);
@@ -192,10 +194,6 @@ test('finish cooking from the last step and keep only unfinished sessions availa
   await expect(
     page.getByRole('region', { name: 'Current cooking step' }),
   ).toContainText('Step 1 of 2');
-  await page.getByRole('link', { name: 'Close cooking', exact: true }).click();
-  await page
-    .getByRole('button', { name: 'Start cooking', exact: true })
-    .click();
   const next = page.getByRole('button', { name: 'Next step', exact: true });
   const finish = page.getByRole('button', {
     name: 'Finish cooking',
@@ -217,20 +215,15 @@ test('finish cooking from the last step and keep only unfinished sessions availa
   ).toHaveCount(0);
   await expect(
     page.getByRole('link', { name: 'Resume cooking', exact: true }),
-  ).toHaveCount(1);
+  ).toHaveCount(0);
   await page.reload();
   await expect(
     page.getByRole('link', { name: 'Resume cooking', exact: true }),
-  ).toHaveCount(1);
+  ).toHaveCount(0);
   await page
-    .getByRole('link', { name: 'Recipe collection', exact: true })
+    .getByRole('button', { name: 'Start cooking', exact: true })
     .click();
-  await expect(
-    page
-      .getByRole('region', { name: 'Cooking sessions' })
-      .getByRole('listitem'),
-  ).toHaveCount(1);
-  await page.getByRole('link', { name: /Resume Lentil supper/ }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(
     page.getByRole('region', { name: 'Current cooking step' }),
   ).toContainText('Step 1 of 2');
@@ -339,7 +332,9 @@ test('keep captured ingredients, scale, ordered instructions and timer progress 
   await expect(
     page.getByRole('button', { name: 'Resume timer', exact: true }),
   ).toBeEnabled();
-  await page.getByRole('link', { name: 'Close cooking', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Suspend cooking', exact: true })
+    .click();
   await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
   await page.getByLabel('Recipe name').fill('New lentil supper');
   await page.getByLabel('Base portions', { exact: true }).fill('4');
@@ -385,6 +380,27 @@ test('keep captured ingredients, scale, ordered instructions and timer progress 
   await page
     .getByRole('button', { name: 'Start cooking', exact: true })
     .click();
+  const conflict = page.getByRole('dialog', {
+    name: 'Cooking already in progress',
+  });
+  await expect(conflict).toContainText('Lentil supper');
+  await conflict
+    .getByRole('button', { name: 'Keep current session', exact: true })
+    .click();
+  await page.goto(sessionUrl);
+  await expect(step.getByRole('list', { name: 'Step ingredients' })).toHaveText(
+    '25 g Lentils',
+  );
+  await page.goto(recipeUrl);
+  await page
+    .getByRole('button', { name: 'Start cooking', exact: true })
+    .click();
+  await conflict
+    .getByRole('button', {
+      name: 'Cancel current and start cooking',
+      exact: true,
+    })
+    .click();
   await expect(
     page.getByRole('heading', { name: 'New lentil supper', exact: true }),
   ).toBeVisible();
@@ -395,9 +411,7 @@ test('keep captured ingredients, scale, ordered instructions and timer progress 
     page.getByRole('status', { name: 'Recipe changes' }),
   ).toHaveCount(0);
   await page.goto(sessionUrl);
-  await expect(step.getByRole('list', { name: 'Step ingredients' })).toHaveText(
-    '25 g Lentils',
-  );
+  await expect(step).toHaveCount(0);
 });
 
 test('notice recipe edits made in another tab while keeping the current cooking session', async ({
@@ -517,7 +531,9 @@ test('upgrade existing local recipes and ratings, cook unallocated steps, and re
   await expect(page.getByRole('timer', { name: 'Step 1 timer' })).toHaveText(
     '00:30',
   );
-  await page.getByRole('link', { name: 'Close cooking', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Suspend cooking', exact: true })
+    .click();
   await page.clock.runFor(45_000);
   await page.getByRole('link', { name: 'Resume cooking', exact: true }).click();
   await expect(page.getByRole('timer', { name: 'Step 1 timer' })).toHaveText(
