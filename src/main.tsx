@@ -5,6 +5,7 @@ import {
   loadRecipes,
   loadRecipeCoverPhotos,
   loadPersonalRecipeRatings,
+  loadCookingSessions,
 } from './recipe-store';
 import './styles.css';
 
@@ -13,16 +14,18 @@ const root = createRoot(document.getElementById('root')!);
 async function start() {
   try {
     await initializeDomain();
-    const [recipes, coverPhotos, ratings] = await Promise.all([
+    const [recipes, coverPhotos, ratings, sessions] = await Promise.all([
       loadRecipes(),
       loadRecipeCoverPhotos(),
       loadPersonalRecipeRatings(),
+      loadCookingSessions(),
     ]);
     root.render(
       <App
         initialRecipes={recipes}
         initialCoverPhotos={coverPhotos}
         initialRatings={ratings}
+        initialCookingSessions={sessions}
       />,
     );
   } catch {

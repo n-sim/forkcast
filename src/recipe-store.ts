@@ -5,24 +5,32 @@ import {
   type RecipeDraft,
   type RecipeRating,
 } from './domain';
+import type { CookingSession } from './cooking';
 
 let database: Promise<IDBDatabase> | undefined;
 
 function openDatabase(): Promise<IDBDatabase> {
   database ??= new Promise((resolve, reject) => {
-    const request = indexedDB.open('forkcast', 2);
+    const request = indexedDB.open('forkcast', 3);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains('recipes'))
         db.createObjectStore('recipes', { keyPath: 'id' });
-      db.createObjectStore('recipeCoverPhotos', { keyPath: 'recipeId' });
-      db.createObjectStore('personalRecipeRatings', {
-        keyPath: ['personId', 'recipeId'],
-      }).createIndex('personId', 'personId');
+      if (!db.objectStoreNames.contains('recipeCoverPhotos'))
+        db.createObjectStore('recipeCoverPhotos', { keyPath: 'recipeId' });
+      if (!db.objectStoreNames.contains('personalRecipeRatings'))
+        db.createObjectStore('personalRecipeRatings', {
+          keyPath: ['personId', 'recipeId'],
+        }).createIndex('personId', 'personId');
       // Standalone has one person without login; sync can later map this identity
       // to an account without moving personal ratings into shared recipe data.
-      db.createObjectStore('localSettings').put(
-        crypto.randomUUID(),
+      if (!db.objectStoreNames.contains('localSettings'))
+        db.createObjectStore('localSettings').put(
+          crypto.randomUUID(),
+          'personId',
+        );
+      db.createObjectStore('cookingSessions', { keyPath: 'id' }).createIndex(
+        'personId',
         'personId',
       );
     };
@@ -35,6 +43,35 @@ function openDatabase(): Promise<IDBDatabase> {
       reject(new Error('Close other Forkcast tabs and try again.'));
   });
   return database;
+}
+
+export async function loadCookingSessions(): Promise<CookingSession[]> {
+  const personId = await localPersonId();
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction('cookingSessions', 'readonly');
+    const request = transaction
+      .objectStore('cookingSessions')
+      .index('personId')
+      .getAll(personId);
+    transaction.onabort = () => reject(transaction.error);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result as CookingSession[]);
+  });
+}
+
+export async function saveCookingSession(
+  session: CookingSession,
+): Promise<void> {
+  const personId = await localPersonId();
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction('cookingSessions', 'readwrite');
+    transaction.objectStore('cookingSessions').put({ ...session, personId });
+    transaction.oncomplete = () => resolve();
+    transaction.onabort = () => reject(transaction.error);
+    transaction.onerror = () => reject(transaction.error);
+  });
 }
 
 export async function loadRecipes(): Promise<Recipe[]> {
@@ -64,13 +101,22 @@ export async function loadRecipes(): Promise<Recipe[]> {
 
 export async function saveRecipe(recipe: Recipe): Promise<void> {
   const db = await openDatabase();
-  return new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction('recipes', 'readwrite');
     transaction.objectStore('recipes').put(recipe);
     transaction.oncomplete = () => resolve();
     transaction.onabort = () => reject(transaction.error);
     transaction.onerror = () => reject(transaction.error);
   });
+  const channel = new BroadcastChannel('forkcast-recipes');
+  channel.postMessage('changed');
+  channel.close();
+}
+
+export function subscribeToRecipeChanges(listener: () => void): () => void {
+  const channel = new BroadcastChannel('forkcast-recipes');
+  channel.onmessage = listener;
+  return () => channel.close();
 }
 
 // Cover photos are household recipe assets, separate from personal records.

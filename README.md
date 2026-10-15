@@ -1,6 +1,6 @@
 # Forkcast
 
-A local-first recipe collection. Create, view, and edit recipes without an account,
+A local-first recipe collection with resumable guided cooking. Create, view, and edit recipes without an account,
 application backend, or AI connection. The interface is English with metric defaults.
 
 ## Run locally
@@ -65,6 +65,26 @@ part in a billion for allocation checks. Displayed fractional amounts are trunca
 to two decimal places; amounts below 0.01 retain up to two significant digits so
 small quantities remain visible. Quantities outside the calculation range show an error.
 
+Choose **Cooking portions**, then **Start cooking** to capture that recipe and
+scale for a cooking session. **Next step** and **Back step** show each captured
+instruction with its scaled ingredient allocations. Progress saves locally before
+the next step opens. **Close cooking** returns to the recipe; **Resume cooking**
+there or a session's **Resume** link in the collection returns to the saved step,
+including after reopening offline. Starting another session captures the current
+recipe without replacing an earlier session. Recipe edits, including edits in
+another tab, show a changed-recipe notice in an existing session while its
+captured ingredients, instructions, order, and scale stay unchanged.
+
+Each step offers a timer with a duration in minutes, including fractional minutes.
+Timers run independently across steps. **Pause timer** holds the remaining time,
+**Resume timer** continues it, and **Reset timer** restores the original duration
+in a paused state. Running timers retain a deadline, so closing the view or
+application does not restart their countdown; reopening shows the remaining time
+or that they finished. Paused timers remain paused after reopening. Finished timers
+are announced visibly in the cooking view, including timers from other steps.
+No alarms are provided while the application is closed or suspended.
+Cooking sessions do not create food-log entries or track leftover portions.
+
 Open a recipe to attach or replace its cover photo (JPEG, PNG, or WebP, up to
 10 MB), or remove it with **Remove cover photo**. Photos save automatically and
 appear in both the recipe view and collection, including offline. Replacing or
@@ -80,6 +100,8 @@ Ratings are separate personal records keyed by a persistent local person identit
 and recipe identity. Standalone mode has one local person without login; a later
 account/sync slice can map that identity to an account. Existing recipe collections
 upgrade in place without discarding recipes.
+Cooking sessions are separate personal records belonging to that local identity;
+upgrading storage preserves the identity, recipes, cover photos, and ratings.
 
 The production build caches the application and WebAssembly assets using a service
 worker. After the first online visit and cache installation, it can reopen offline.
@@ -87,7 +109,7 @@ The development server does not install an offline cache. Manual recipe actions 
 not contact external services.
 
 Browser data belongs to the browser profile and origin. Clearing site data removes
-recipes, photos, and ratings; private browsing may discard them when the session ends. Cross-device
+recipes, photos, ratings, and cooking sessions; private browsing may discard them when the session ends. Cross-device
 synchronization and backups require the future optional backend.
 
 ## Development and verification
@@ -117,7 +139,7 @@ Rust changes need a new WebAssembly build; restart `npm run dev` or build it aga
 ## Layout
 
 - `src/`: React screens, typed WebAssembly boundary, and local recipe storage.
-- `crates/recipe-domain/`: Rust recipe types, normalization, validation, scaling, and conversions, also
+- `crates/recipe-domain/`: Rust recipe types, normalization, validation, scaling, conversions, and step timers, also
   usable by a future native Rust backend. Generated WebAssembly is not committed.
 - `tests/`: browser workflow specifications, the confirmed main testing seam.
 - `docs/adr/` and `GLOSSARY.md`: accepted decisions and domain vocabulary.
@@ -125,5 +147,6 @@ Rust changes need a new WebAssembly build; restart `npm run dev` or build it aga
 The application implements standalone recipes ([issue #2](https://github.com/n-sim/forkcast/issues/2))
 and recipe cover photos and personal ratings ([issue #3](https://github.com/n-sim/forkcast/issues/3)),
 plus ingredient scaling, allocations, and compatible conversions
-([issue #4](https://github.com/n-sim/forkcast/issues/4)).
-Planning, guided cooking, nutrition, AI, and backend synchronization are later work.
+([issue #4](https://github.com/n-sim/forkcast/issues/4)) and resumable guided cooking
+with foreground timers ([issue #9](https://github.com/n-sim/forkcast/issues/9)).
+Planning, cooking history, nutrition, AI, and backend synchronization are later work.

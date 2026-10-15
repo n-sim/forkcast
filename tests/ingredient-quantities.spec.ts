@@ -454,7 +454,7 @@ test('open recipes saved before allocations were introduced, then allocate and r
   // Fixture from the preceding recipe format; assertions stay at the visible workflow seam.
   await page.evaluate(async () => {
     await new Promise<void>((resolve, reject) => {
-      const request = indexedDB.open('forkcast', 2);
+      const request = indexedDB.open('forkcast');
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
         const db = request.result;

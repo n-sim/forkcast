@@ -12,10 +12,15 @@ import {
   saveRecipe,
   saveRecipeCoverPhoto,
   savePersonalRecipeRating,
+  saveCookingSession,
+  loadRecipes,
+  subscribeToRecipeChanges,
 } from './recipe-store';
 import { RecipeForm } from './RecipeForm';
 import { RecipeCoverPhoto, RecipePhotoEditor } from './RecipePhoto';
 import { PersonalRecipeRating } from './RecipeRating';
+import { cookingUrl, startCooking, type CookingSession } from './cooking';
+import { CookingView } from './CookingView';
 
 function subscribeToRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -32,21 +37,41 @@ function RecipeDetails({
   onSavePhoto,
   rating,
   onSaveRating,
+  sessions,
+  onStartCooking,
 }: {
   recipe: Recipe;
   photo?: Blob;
   onSavePhoto: (photo: Blob | null) => Promise<void>;
   rating?: RecipeRating;
   onSaveRating: (value: number | null) => Promise<void>;
+  sessions: CookingSession[];
+  onStartCooking: (portions: number) => Promise<void>;
 }) {
   const [portions, setPortions] = useState(String(recipe.basePortions));
   const [displayUnits, setDisplayUnits] = useState<DisplayUnits>('metric');
+  const [starting, setStarting] = useState(false);
+  const [cookingError, setCookingError] = useState('');
   let quantities = null;
   let quantityError = '';
   try {
     quantities = calculateRecipe(recipe, Number(portions), displayUnits);
   } catch (error) {
     quantityError = String(error);
+  }
+
+  async function cook() {
+    setStarting(true);
+    setCookingError('');
+    try {
+      await onStartCooking(Number(portions));
+    } catch {
+      setCookingError(
+        'The cooking session could not be saved. Please try again.',
+      );
+    } finally {
+      setStarting(false);
+    }
   }
   return (
     <article>
@@ -135,7 +160,26 @@ function RecipeDetails({
           Scale ingredient totals and step allocations for this cooking. Base
           yield stays {recipe.basePortions} portions.
         </p>
+        <button
+          className="button primary"
+          disabled={starting || Boolean(quantityError)}
+          onClick={() => void cook()}
+        >
+          {starting ? 'Starting…' : 'Start cooking'}
+        </button>
       </section>
+      {cookingError && (
+        <p className="error-banner" role="alert">
+          {cookingError}
+        </p>
+      )}
+      {sessions.map((session) => (
+        <p key={session.id}>
+          <a href={cookingUrl(session.id)}>Resume cooking</a> ·{' '}
+          {session.portions} portions · Step {session.currentStep + 1} of{' '}
+          {session.recipe.steps.length}
+        </p>
+      ))}
       {quantityError && (
         <p role="alert" id="quantity-error" className="error-banner">
           {quantityError}
@@ -199,14 +243,34 @@ export function App({
   initialRecipes,
   initialCoverPhotos,
   initialRatings,
+  initialCookingSessions,
 }: {
   initialRecipes: Recipe[];
   initialCoverPhotos: Record<string, Blob>;
   initialRatings: Record<string, RecipeRating>;
+  initialCookingSessions: CookingSession[];
 }) {
   const [recipes, setRecipes] = useState(initialRecipes);
   const [coverPhotos, setCoverPhotos] = useState(initialCoverPhotos);
   const [ratings, setRatings] = useState(initialRatings);
+  const [sessions, setSessions] = useState(initialCookingSessions);
+  const [refreshError, setRefreshError] = useState('');
+  useEffect(
+    () =>
+      subscribeToRecipeChanges(() => {
+        void loadRecipes()
+          .then((recipes) => {
+            setRecipes(recipes);
+            setRefreshError('');
+          })
+          .catch(() =>
+            setRefreshError(
+              'Recipe changes could not be loaded. Reload to try again.',
+            ),
+          );
+      }),
+    [],
+  );
   const route = useSyncExternalStore(
     subscribeToRoute,
     () => window.location.hash || '#/',
@@ -215,10 +279,21 @@ export function App({
   const selected = recipes.find(
     (recipe) => recipeUrl(recipe.id) === (editing ? route.slice(0, -5) : route),
   );
+  const selectedSession = sessions.find(
+    (session) => cookingUrl(session.id) === route,
+  );
 
   useEffect(() => {
-    document.title = `${selected?.name ?? (route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
-  }, [route, selected]);
+    document.title = `${selectedSession?.recipe.name ?? selected?.name ?? (route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
+  }, [route, selected, selectedSession]);
+
+  async function saveSession(session: CookingSession) {
+    await saveCookingSession(session);
+    setSessions((current) => [
+      ...current.filter((item) => item.id !== session.id),
+      session,
+    ]);
+  }
 
   async function save(recipe: Recipe) {
     await saveRecipe(recipe);
@@ -280,7 +355,21 @@ export function App({
           </span>
         </header>
         <main id="main-content" tabIndex={-1}>
-          {route === '#/recipes/new' || (selected && editing) ? (
+          {refreshError && (
+            <p className="error-banner" role="alert">
+              {refreshError}
+            </p>
+          )}
+          {selectedSession ? (
+            <CookingView
+              key={selectedSession.id}
+              session={selectedSession}
+              currentRecipe={recipes.find(
+                (recipe) => recipe.id === selectedSession.recipe.id,
+              )}
+              onSave={saveSession}
+            />
+          ) : route === '#/recipes/new' || (selected && editing) ? (
             <RecipeForm
               key={selected?.id ?? 'new'}
               recipe={selected}
@@ -293,6 +382,14 @@ export function App({
             <RecipeDetails
               key={selected.id}
               recipe={selected}
+              sessions={sessions.filter(
+                (session) => session.recipe.id === selected.id,
+              )}
+              onStartCooking={async (portions) => {
+                const session = startCooking(selected, portions);
+                await saveSession(session);
+                window.location.hash = cookingUrl(session.id);
+              }}
               photo={coverPhotos[selected.id]}
               rating={ratings[selected.id]}
               onSaveRating={async (value) => {
@@ -347,6 +444,23 @@ export function App({
                 {recipes.length} {recipes.length === 1 ? 'recipe' : 'recipes'}
                 <span>Made by you. Kept for next time.</span>
               </div>
+              {sessions.length > 0 && (
+                <section className="panel" aria-label="Cooking sessions">
+                  <h2>Cooking sessions</h2>
+                  <ul className="session-list">
+                    {sessions.map((session) => (
+                      <li key={session.id}>
+                        <a href={cookingUrl(session.id)}>
+                          Resume {session.recipe.name}
+                        </a>{' '}
+                        · {session.portions} portions · Step{' '}
+                        {session.currentStep + 1} of{' '}
+                        {session.recipe.steps.length}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
               {recipes.length === 0 ? (
                 <div className="empty-state">
                   <div className="bowl" aria-hidden="true">
