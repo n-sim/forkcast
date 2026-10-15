@@ -1,0 +1,8 @@
+node_modules/
+dist/
+target/
+crates/recipe-domain/pkg/
+playwright-report/
+test-results/
+*.tsbuildinfo
+.DS_Store
