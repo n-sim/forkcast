@@ -98,6 +98,10 @@ textarea:focus-visible {
   line-height: 1.8;
   margin: 24px 0 45px;
 }
+.sidebar nav {
+  display: grid;
+  gap: 8px;
+}
 .nav-link {
   padding: 13px 12px;
   display: flex;
