@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   calculateRecipe,
+  validateRecipe,
   formatQuantity,
   unitLabels,
   stepTimerRemaining,
@@ -159,7 +160,8 @@ export function CookingView({
         </div>
       </dialog>
       {currentRecipe &&
-        JSON.stringify(currentRecipe) !== JSON.stringify(session.recipe) && (
+        JSON.stringify(validateRecipe(currentRecipe).recipe) !==
+          JSON.stringify(validateRecipe(session.recipe).recipe) && (
           <p
             className="allocation-checks"
             role="status"

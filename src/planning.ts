@@ -1,12 +1,9 @@
 import { validate_planned_cooking } from '../crates/recipe-domain/pkg/forkcast_recipe_domain';
 import type { FieldError, Recipe } from './domain';
-import type { Nutrition } from './food-log';
 
 // The planner reads current per-portion nutrition when supplied by the recipe
 // nutrition workflow. It does not own nutrition versions or intake totals.
-export interface PlanningRecipe extends Recipe {
-  nutritionPerPortion?: Nutrition;
-}
+export type PlanningRecipe = Recipe;
 
 export interface PlannedCookingDraft {
   id: string;

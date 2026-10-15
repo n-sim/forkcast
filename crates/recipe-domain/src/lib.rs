@@ -1,6 +1,7 @@
 pub mod calendar;
 pub mod cooking;
 pub mod food_log;
+pub mod nutrition;
 pub mod planning;
 pub mod quantities;
 pub mod rating;
@@ -8,6 +9,35 @@ pub mod recipe;
 
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+pub fn recipe_nutrition(value: JsValue) -> Result<JsValue, JsValue> {
+    let draft = serde_wasm_bindgen::from_value(value)?;
+    let recipe = recipe::validate_recipe(draft)
+        .map_err(|_| JsValue::from_str("Check the recipe nutrition and base portions."))?;
+    let per_portion = recipe
+        .nutrition
+        .scale(1.0 / recipe.base_portions)
+        .map_err(|error| JsValue::from_str(&error))?;
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true);
+    Ok(per_portion.serialize(&serializer)?)
+}
+
+#[wasm_bindgen]
+pub fn recipe_nutrition_change(value: JsValue, previous: JsValue) -> Result<JsValue, JsValue> {
+    let draft = serde_wasm_bindgen::from_value(value)?;
+    let previous: Option<recipe::RecipeDraft> = serde_wasm_bindgen::from_value(previous)?;
+    let invalid = || JsValue::from_str("Check the recipe nutrition and base portions.");
+    let recipe = recipe::validate_recipe(draft).map_err(|_| invalid())?;
+    let previous = previous
+        .map(recipe::validate_recipe)
+        .transpose()
+        .map_err(|_| invalid())?;
+    let change = nutrition::recipe_nutrition_change(recipe, previous)
+        .map_err(|error| JsValue::from_str(&error))?;
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true);
+    Ok(change.serialize(&serializer)?)
+}
 
 #[derive(Serialize)]
 struct PlannedCookingValidation {
@@ -38,6 +68,29 @@ struct ManualEntryValidation {
     errors: Vec<recipe::FieldError>,
 }
 
+#[derive(Serialize)]
+struct RecipeEntryValidation {
+    entry: Option<food_log::RecipeFoodLogEntry>,
+    errors: Vec<recipe::FieldError>,
+}
+
+#[wasm_bindgen]
+pub fn validate_recipe_food_log_entry(value: JsValue) -> Result<JsValue, JsValue> {
+    let entry = serde_wasm_bindgen::from_value(value)?;
+    let result = match food_log::validate_recipe_entry(entry) {
+        Ok(entry) => RecipeEntryValidation {
+            entry: Some(entry),
+            errors: vec![],
+        },
+        Err(errors) => RecipeEntryValidation {
+            entry: None,
+            errors,
+        },
+    };
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true);
+    Ok(result.serialize(&serializer)?)
+}
+
 #[wasm_bindgen]
 pub fn validate_manual_food_log_entry(value: JsValue) -> Result<JsValue, JsValue> {
     let entry = serde_wasm_bindgen::from_value(value)?;
@@ -56,11 +109,20 @@ pub fn validate_manual_food_log_entry(value: JsValue) -> Result<JsValue, JsValue
 }
 
 #[wasm_bindgen]
-pub fn daily_manual_food_log(entries: JsValue, date: &str) -> Result<JsValue, JsValue> {
-    let entries = serde_wasm_bindgen::from_value(entries)?;
-    let result = food_log::daily_manual_food_log(entries, date)
+pub fn daily_food_log(
+    manual_entries: JsValue,
+    recipe_entries: JsValue,
+    versions: JsValue,
+    date: &str,
+) -> Result<JsValue, JsValue> {
+    let manual_entries = serde_wasm_bindgen::from_value(manual_entries)?;
+    let recipe_entries = serde_wasm_bindgen::from_value(recipe_entries)?;
+    let versions = serde_wasm_bindgen::from_value(versions)?;
+    let result = food_log::daily_food_log(manual_entries, recipe_entries, versions, date)
         .map_err(|error| JsValue::from_str(&error))?;
-    let serializer = serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true);
+    let serializer = serde_wasm_bindgen::Serializer::new()
+        .serialize_missing_as_null(true)
+        .serialize_maps_as_objects(true);
     Ok(result.serialize(&serializer)?)
 }
 

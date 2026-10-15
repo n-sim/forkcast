@@ -534,9 +534,22 @@ test('reopen recipes, planned cookings, and cooking snapshots saved before recip
         currentStep: 0,
         timers: {},
       });
-      db.createObjectStore('manualFoodLogEntries', {
+      const foodLog = db.createObjectStore('manualFoodLogEntries', {
         keyPath: 'id',
-      }).createIndex('personId', 'personId');
+      });
+      foodLog.createIndex('personId', 'personId');
+      foodLog.put({
+        id: 'existing-snack',
+        personId: 'existing-person',
+        description: 'Existing snack',
+        consumedAt: '2026-10-13T09:00',
+        nutrition: {
+          calories: 50,
+          protein: null,
+          fat: null,
+          carbohydrates: null,
+        },
+      });
       const cookings = db.createObjectStore('plannedCookings', {
         keyPath: 'id',
       });
@@ -576,6 +589,35 @@ test('reopen recipes, planned cookings, and cooking snapshots saved before recip
   await expect(
     page.getByRole('status', { name: 'Recipe changes', exact: true }),
   ).toHaveCount(0);
+  await page.getByRole('link', { name: 'Food log', exact: true }).click();
+  await page.getByLabel('Food log date', { exact: true }).fill('2026-10-13');
+  await expect(
+    page.getByRole('list', { name: 'Food-log entries', exact: true }),
+  ).toContainText('Existing snack');
+  await page
+    .getByRole('button', { name: 'Log recipe portions', exact: true })
+    .click();
+  await page
+    .getByLabel('Recipe', { exact: true })
+    .selectOption({ label: 'Existing pasta' });
+  await page
+    .getByLabel('Consumed at', { exact: true })
+    .fill('2026-10-13T18:30');
+  await page.getByRole('button', { name: 'Save entry', exact: true }).click();
+  await expect(
+    page.getByRole('status', { name: 'Food log status', exact: true }),
+  ).toContainText('Food-log entry saved');
+  await expect(
+    page
+      .getByRole('list', { name: 'Food-log entries', exact: true })
+      .getByRole('heading'),
+  ).toHaveText(['Existing snack', 'Existing pasta']);
+  await expect(
+    page.getByRole('region', { name: 'Daily nutrition', exact: true }),
+  ).toContainText('50 kcal');
+  await expect(
+    page.getByRole('region', { name: 'Daily nutrition', exact: true }),
+  ).toContainText('Incomplete nutrition totals');
 });
 
 test('keep the planner usable at the supported calendar boundaries', async ({
