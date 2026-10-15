@@ -1,0 +1,40 @@
+import { useLayoutEffect, useRef } from 'react';
+import { cookingUrl, type CookingSession } from './cooking';
+
+export function SuspendedCookingBar({ session }: { session: CookingSession }) {
+  const bar = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const element = bar.current!;
+    const reserveSpace = () =>
+      document.documentElement.style.setProperty(
+        '--cooking-bar-height',
+        `${element.getBoundingClientRect().height}px`,
+      );
+    reserveSpace();
+    const observer = new ResizeObserver(reserveSpace);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      document.documentElement.style.removeProperty('--cooking-bar-height');
+    };
+  }, []);
+  return (
+    <section
+      ref={bar}
+      className="suspended-cooking-bar"
+      aria-label="Suspended cooking"
+    >
+      <div className="suspended-cooking-summary">
+        <p className="eyebrow">Cooking suspended</p>
+        <p className="suspended-cooking-title">{session.recipe.name}</p>
+        <p className="section-note">
+          {session.portions} {session.portions === 1 ? 'portion' : 'portions'} ·
+          Step {session.currentStep + 1} of {session.recipe.steps.length}
+        </p>
+      </div>
+      <a className="button primary" href={cookingUrl(session.id)}>
+        Resume cooking
+      </a>
+    </section>
+  );
+}

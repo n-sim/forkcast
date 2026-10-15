@@ -78,7 +78,9 @@ test('cook scaled step amounts and resume saved navigation after closing and reo
   await context.setOffline(true);
   const reopened = await context.newPage();
   await reopened.goto('/');
-  await reopened.getByRole('link', { name: /Resume Lentil supper/ }).click();
+  await reopened
+    .getByRole('link', { name: 'Resume cooking', exact: true })
+    .click();
   const resumed = reopened.getByRole('region', {
     name: 'Current cooking step',
   });
@@ -559,6 +561,6 @@ test('upgrade existing local recipes and ratings, cook unallocated steps, and re
     .getByRole('link', { name: 'Recipe collection', exact: true })
     .click();
   await expect(
-    page.getByRole('region', { name: 'Cooking sessions' }),
+    page.getByRole('region', { name: 'Suspended cooking', exact: true }),
   ).toHaveCount(0);
 });
