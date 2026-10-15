@@ -56,7 +56,12 @@ export async function loadCookingSessions(): Promise<CookingSession[]> {
       .getAll(personId);
     transaction.onabort = () => reject(transaction.error);
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result as CookingSession[]);
+    request.onsuccess = () =>
+      resolve(
+        (request.result as CookingSession[]).filter(
+          (session) => session.completedAt == null,
+        ),
+      );
   });
 }
 

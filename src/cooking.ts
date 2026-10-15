@@ -6,6 +6,7 @@ export interface CookingSession {
   portions: number;
   currentStep: number;
   timers: Record<string, StepTimer>;
+  completedAt?: number;
 }
 
 export function cookingUrl(id: string) {

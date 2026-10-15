@@ -15,10 +15,12 @@ export function CookingView({
   session,
   currentRecipe,
   onSave,
+  onFinish,
 }: {
   session: CookingSession;
   currentRecipe?: Recipe;
   onSave: (session: CookingSession) => Promise<void>;
+  onFinish: () => Promise<void>;
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -35,14 +37,15 @@ export function CookingView({
   }, []);
   const quantities = calculateRecipe(session.recipe, session.portions);
   const step = quantities.steps[session.currentStep]!;
+  const lastStep = session.currentStep === quantities.steps.length - 1;
 
-  async function save(update: () => CookingSession) {
+  async function persist(action: () => Promise<void>) {
     if (busy.current) return;
     busy.current = true;
     setSaving(true);
     setError('');
     try {
-      await onSave(update());
+      await action();
       setNow(Date.now());
     } catch (error) {
       setError(
@@ -57,17 +60,19 @@ export function CookingView({
   }
 
   function changeTimer(action: TimerAction) {
-    void save(() => ({
-      ...session,
-      timers: {
-        ...session.timers,
-        [step.id]: updateStepTimer(
-          session.timers[step.id] ?? null,
-          action,
-          Date.now(),
-        ),
-      },
-    }));
+    void persist(() =>
+      onSave({
+        ...session,
+        timers: {
+          ...session.timers,
+          [step.id]: updateStepTimer(
+            session.timers[step.id] ?? null,
+            action,
+            Date.now(),
+          ),
+        },
+      }),
+    );
   }
 
   return (
@@ -150,27 +155,32 @@ export function CookingView({
           className="button secondary"
           disabled={saving || session.currentStep === 0}
           onClick={() =>
-            void save(() => ({
-              ...session,
-              currentStep: session.currentStep - 1,
-            }))
+            void persist(() =>
+              onSave({
+                ...session,
+                currentStep: session.currentStep - 1,
+              }),
+            )
           }
         >
           Back step
         </button>
         <button
           className="button primary"
-          disabled={
-            saving || session.currentStep === quantities.steps.length - 1
-          }
+          disabled={saving}
+          aria-busy={saving}
           onClick={() =>
-            void save(() => ({
-              ...session,
-              currentStep: session.currentStep + 1,
-            }))
+            lastStep
+              ? void persist(onFinish)
+              : void persist(() =>
+                  onSave({
+                    ...session,
+                    currentStep: session.currentStep + 1,
+                  }),
+                )
           }
         >
-          Next step
+          {lastStep ? 'Finish cooking' : 'Next step'}
         </button>
       </div>
       <p className="section-note cooking-save-note">
