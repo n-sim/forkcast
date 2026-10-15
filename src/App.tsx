@@ -27,6 +27,7 @@ import { cookingUrl, startCooking, type CookingSession } from './cooking';
 import { CookingView } from './CookingView';
 import { CookingConflictDialog } from './CookingConflictDialog';
 import { SuspendedCookingBar } from './SuspendedCookingBar';
+import { BackendAccounts, useBackendConnection } from './BackendAccounts';
 
 function subscribeToRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -251,6 +252,7 @@ export function App({
   initialCookingSessions: CookingSession[];
 }) {
   const [recipes, setRecipes] = useState(initialRecipes);
+  const connection = useBackendConnection();
   const [coverPhotos, setCoverPhotos] = useState(initialCoverPhotos);
   const [ratings, setRatings] = useState(initialRatings);
   const [sessions, setSessions] = useState(initialCookingSessions);
@@ -306,7 +308,7 @@ export function App({
       : undefined;
 
   useEffect(() => {
-    document.title = `${selectedSession?.recipe.name ?? selected?.name ?? (route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
+    document.title = `${selectedSession?.recipe.name ?? selected?.name ?? (route === '#/backend' ? 'Backend & accounts' : route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
   }, [route, selected, selectedSession]);
 
   async function saveSession(session: CookingSession) {
@@ -394,6 +396,13 @@ export function App({
           >
             <span aria-hidden="true">▤</span> Recipe collection
           </a>
+          <a
+            className="nav-link"
+            href="#/backend"
+            aria-current={route === '#/backend' ? 'page' : undefined}
+          >
+            Backend &amp; accounts
+          </a>
         </nav>
         <div className="device-note">
           <span className="status-dot" />
@@ -408,9 +417,13 @@ export function App({
       <div className="workspace">
         <header className="topbar">
           <span>Your everyday kitchen companion</span>
-          <span className="local-badge">
+          <span
+            className="local-badge"
+            role="status"
+            aria-label="Backend connection"
+          >
             <span className="status-dot" />
-            Standalone
+            {connection.label}
           </span>
         </header>
         <main id="main-content" tabIndex={-1}>
@@ -431,7 +444,9 @@ export function App({
               {refreshError}
             </p>
           )}
-          {selectedSession ? (
+          {route === '#/backend' ? (
+            <BackendAccounts connection={connection} />
+          ) : selectedSession ? (
             <CookingView
               key={selectedSession.id}
               session={selectedSession}

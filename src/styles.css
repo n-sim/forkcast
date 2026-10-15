@@ -112,6 +112,40 @@ textarea:focus-visible {
 .nav-link:hover {
   background: #d9e0cb;
 }
+.nav-link + .nav-link {
+  margin-top: 8px;
+}
+.account-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+.account-form label {
+  display: grid;
+  gap: 6px;
+}
+.account-form input {
+  width: 100%;
+}
+.account-form .button {
+  justify-self: start;
+}
+.account-form table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.account-form th,
+.account-form td {
+  padding: 12px 6px;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .device-note {
   margin-top: auto;
   padding-top: 30px;

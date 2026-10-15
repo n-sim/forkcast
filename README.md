@@ -23,9 +23,79 @@ npm run build
 npm run preview
 ```
 
-Deploy `dist/` to a static host over HTTPS (or serve it on localhost). There is no
-application server to configure. Hash URLs let recipe links reopen on static hosts
+Deploy `dist/` to a static host over HTTPS (or serve it on localhost). Standalone use
+needs no application server. Hash URLs let recipe links reopen on static hosts
 without route rewrites. Keep the same origin to retain access to this device's data.
+
+## Optional self-hosted backend and accounts
+
+In a separate terminal, run:
+
+```sh
+npm run backend:dev
+```
+
+The Rust backend listens at `http://127.0.0.1:8787` and creates `forkcast.sqlite3`
+in the working directory. SQLite is bundled; no database server is needed. Use
+**Backend & accounts** in the frontend, enter that URL, and choose **Connect backend**.
+An empty instance offers **Set up your household**: enter a household name, username,
+and password to create its administrator. Each instance has one household. Setup
+is atomic: concurrent requests cannot create another administrator or household.
+Complete initial setup before making a new instance available to others.
+
+The administrator creates local member accounts with **Create household account**
+and shares their credentials and backend URL directly. No email or external identity
+provider is involved. Usernames use 3–32 ASCII letters, numbers, dots, underscores,
+or hyphens and are case insensitive; passwords use 12–128 characters. The administrator
+can disable or re-enable members and reset their passwords. Disabling or resetting
+ends all sessions for that member. This interface cannot disable or reset the
+instance administrator.
+
+Connection and authenticated account state appear in the top bar and are rechecked
+every 30 seconds, when the application regains focus, and when connectivity changes. Sessions survive
+browser and backend restarts, expire after 30 days, and are revoked by **Sign out**.
+Passwords use salted Argon2id hashes; SQLite stores only hashes of random bearer
+session tokens. The browser stores the connection URL and bearer token in its local
+storage, never the password. Five failed sign-ins for a username temporarily block
+further attempts for one minute; this survives backend restarts. API responses are
+marked `no-store` and are not added to the offline cache.
+
+Connecting, signing out, switching accounts, or disconnecting does not upload,
+merge, or replace standalone recipes, photos, ratings, or cooking sessions. They
+continue to use the existing local person identity and IndexedDB, independently
+of the backend account. The account page explains this boundary. Backend outages
+do not prevent local workflows or offline reopening. **Disconnect backend** forgets
+the browser's connection; when a backend is unavailable, an existing server session
+expires normally. Use **Sign out** while connected to revoke it immediately.
+Record synchronization and backups are subsequent work.
+
+For a release binary, run `npm run backend:build`, then run
+`target/release/forkcast-backend` (`.exe` on Windows). Configuration uses environment
+variables:
+
+| Variable                   | Default                                       | Purpose                                                 |
+| -------------------------- | --------------------------------------------- | ------------------------------------------------------- |
+| `FORKCAST_BIND`            | `127.0.0.1:8787`                              | Listening address and port                              |
+| `FORKCAST_DATABASE`        | `forkcast.sqlite3`                            | Persistent SQLite file; its parent directory must exist |
+| `FORKCAST_ALLOWED_ORIGINS` | `http://127.0.0.1:5173,http://127.0.0.1:4173` | Comma-separated frontend origins allowed by CORS        |
+
+For remote access, put the backend behind an HTTPS reverse proxy and set the allowed
+origin to the frontend's exact origin (scheme, hostname, and port). The frontend
+accepts HTTPS backend URLs and HTTP on localhost only. The API uses `/api/` paths;
+a proxy can expose it under a URL prefix if it strips that prefix before forwarding.
+Keep the SQLite file on persistent storage and restrict filesystem access to the
+backend service account.
+
+The authenticated session supplies the account and household identities. Shared
+records must authorize their stored household owner; personal records must authorize
+their stored account owner, including when the caller is the administrator. The
+Rust `Authenticated::require` boundary implements both scopes. The initial API proves
+them through `GET /api/households/{id}` and `GET /api/accounts/{id}`; the latter permits
+only the account itself. Separate administrator-only `GET/POST /api/accounts` and
+`PATCH /api/accounts/{id}` operations manage safe account metadata and credentials,
+without granting access to another person's records. Subsequent synchronization
+endpoints must apply these same owner checks. Client-supplied roles or household
+identities are not accepted when creating accounts.
 
 ## Data and offline use
 
@@ -114,7 +184,7 @@ recipe’s shared difficulty, active time, or total time.
 Cover photos are stored as household recipe assets keyed by recipe identity.
 Ratings are separate personal records keyed by a persistent local person identity
 and recipe identity. Standalone mode has one local person without login; a later
-account/sync slice can map that identity to an account. Existing recipe collections
+synchronization slice can explicitly map that identity to an account. Existing recipe collections
 upgrade in place without discarding recipes.
 Cooking sessions are separate personal records belonging to that local identity;
 upgrading storage preserves the identity, recipes, cover photos, and ratings.
@@ -126,7 +196,7 @@ not contact external services.
 
 Browser data belongs to the browser profile and origin. Clearing site data removes
 recipes, photos, ratings, and cooking sessions; private browsing may discard them when the session ends. Cross-device
-synchronization and backups require the future optional backend.
+synchronization and backups are subsequent additions to the optional backend.
 
 ## Development and verification
 
@@ -140,8 +210,13 @@ npm test
 
 The Playwright suite builds and serves the production application, including the
 actual Rust/WebAssembly module and offline cache. It exercises visible workflows
-with real IndexedDB in isolated browser contexts at desktop and tablet sizes. No
-backend, provider credentials, or network-service fixtures are needed for this slice.
+with real IndexedDB in isolated browser contexts at desktop and tablet sizes.
+Account workflows start a real Rust backend with a fresh temporary SQLite database
+per test and clean up the process and files afterward. They cover setup, separate
+devices, administration, reload/restart, invalid credentials, and preservation of
+standalone records while disconnected or offline. Focused HTTP tests cover ownership,
+unauthorized requests, session revocation, setup races, and sign-in throttling. No
+external provider credentials or network-service fixtures are needed.
 To run one workflow:
 
 ```sh
@@ -156,7 +231,8 @@ Rust changes need a new WebAssembly build; restart `npm run dev` or build it aga
 
 - `src/`: React screens, typed WebAssembly boundary, and local recipe storage.
 - `crates/recipe-domain/`: Rust recipe types, normalization, validation, scaling, conversions, and step timers, also
-  usable by a future native Rust backend. Generated WebAssembly is not committed.
+  usable by native Rust code. Generated WebAssembly is not committed.
+- `crates/backend/`: optional Rust HTTP service, SQLite accounts, authentication, and ownership boundaries.
 - `tests/`: browser workflow specifications, the confirmed main testing seam.
 - `docs/adr/` and `GLOSSARY.md`: accepted decisions and domain vocabulary.
 
@@ -164,5 +240,6 @@ The application implements standalone recipes ([issue #2](https://github.com/n-s
 and recipe cover photos and personal ratings ([issue #3](https://github.com/n-sim/forkcast/issues/3)),
 plus ingredient scaling, allocations, and compatible conversions
 ([issue #4](https://github.com/n-sim/forkcast/issues/4)) and resumable guided cooking
-with foreground timers ([issue #9](https://github.com/n-sim/forkcast/issues/9)).
-Planning, cooking history, nutrition, AI, and backend synchronization are later work.
+with foreground timers ([issue #9](https://github.com/n-sim/forkcast/issues/9)) and optional
+backend household accounts ([issue #22](https://github.com/n-sim/forkcast/issues/22)).
+Planning, cooking history, nutrition, AI, record synchronization, and backups are later work.
