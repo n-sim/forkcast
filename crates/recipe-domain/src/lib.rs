@@ -1,11 +1,36 @@
+pub mod calendar;
 pub mod cooking;
 pub mod food_log;
+pub mod planning;
 pub mod quantities;
 pub mod rating;
 pub mod recipe;
 
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
+
+#[derive(Serialize)]
+struct PlannedCookingValidation {
+    cooking: Option<planning::PlannedCooking>,
+    errors: Vec<recipe::FieldError>,
+}
+
+#[wasm_bindgen]
+pub fn validate_planned_cooking(value: JsValue) -> Result<JsValue, JsValue> {
+    let cooking = serde_wasm_bindgen::from_value(value)?;
+    let result = match planning::validate_planned_cooking(cooking) {
+        Ok(cooking) => PlannedCookingValidation {
+            cooking: Some(cooking),
+            errors: vec![],
+        },
+        Err(errors) => PlannedCookingValidation {
+            cooking: None,
+            errors,
+        },
+    };
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true);
+    Ok(result.serialize(&serializer)?)
+}
 
 #[derive(Serialize)]
 struct ManualEntryValidation {

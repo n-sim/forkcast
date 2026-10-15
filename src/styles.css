@@ -413,6 +413,30 @@ h2 {
   list-style: none;
   padding: 0;
 }
+.meal-plan-days {
+  display: grid;
+  gap: 16px;
+}
+.meal-plan-day {
+  margin-bottom: 0;
+}
+@media (min-width: 1101px) {
+  .meal-plan-week {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+.planned-cooking {
+  padding-block: 20px;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.planned-cooking h3 {
+  margin: 0 0 12px;
+}
+.planned-cooking .section-note:last-child {
+  margin-bottom: 0;
+}
 .food-log-entries h3 {
   overflow-wrap: anywhere;
 }
@@ -854,6 +878,7 @@ dialog .form-actions {
     gap: 25px;
     border-right: 0;
     border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
   }
   .brand-tagline,
   .device-note {

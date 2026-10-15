@@ -1,4 +1,7 @@
-use crate::recipe::FieldError;
+use crate::{
+    calendar::{valid_date, valid_time},
+    recipe::FieldError,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -69,45 +72,9 @@ pub fn validate_manual_entry(
     Ok(entry)
 }
 
-fn valid_date(date: &str) -> bool {
-    let bytes = date.as_bytes();
-    if bytes.len() != 10
-        || bytes[4] != b'-'
-        || bytes[7] != b'-'
-        || !bytes
-            .iter()
-            .enumerate()
-            .all(|(i, b)| i == 4 || i == 7 || b.is_ascii_digit())
-    {
-        return false;
-    }
-    let year: u32 = date[..4].parse().unwrap_or(0);
-    let month: u32 = date[5..7].parse().unwrap_or(0);
-    let day: u32 = date[8..].parse().unwrap_or(0);
-    let days = match month {
-        4 | 6 | 9 | 11 => 30,
-        2 if year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400)) => {
-            29
-        }
-        2 => 28,
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        _ => 0,
-    };
-    year > 0 && day > 0 && day <= days
-}
-
 fn valid_consumption_time(value: &str) -> bool {
     let bytes = value.as_bytes();
-    bytes.len() == 16
-        && bytes[10] == b'T'
-        && bytes[13] == b':'
-        && bytes[11..13]
-            .iter()
-            .chain(&bytes[14..])
-            .all(u8::is_ascii_digit)
-        && valid_date(&value[..10])
-        && value[11..13].parse::<u32>().is_ok_and(|hour| hour < 24)
-        && value[14..].parse::<u32>().is_ok_and(|minute| minute < 60)
+    bytes.len() == 16 && bytes[10] == b'T' && valid_date(&value[..10]) && valid_time(&value[11..])
 }
 
 #[derive(Serialize)]
