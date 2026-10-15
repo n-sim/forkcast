@@ -1,9 +1,28 @@
+pub mod cooking;
 pub mod quantities;
 pub mod rating;
 pub mod recipe;
 
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+pub fn update_step_timer(timer: JsValue, action: JsValue, now: f64) -> Result<JsValue, JsValue> {
+    let timer = serde_wasm_bindgen::from_value(timer)?;
+    let action = serde_wasm_bindgen::from_value(action)?;
+    let timer = cooking::update_step_timer(timer, action, now)
+        .map_err(|error| JsValue::from_str(&error))?;
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true);
+    Ok(timer.serialize(&serializer)?)
+}
+
+#[wasm_bindgen]
+pub fn step_timer_remaining(timer: JsValue, now: f64) -> Result<f64, JsValue> {
+    let timer: cooking::StepTimer = serde_wasm_bindgen::from_value(timer)?;
+    timer
+        .remaining(now)
+        .map_err(|error| JsValue::from_str(&error))
+}
 
 #[derive(Serialize)]
 struct ValidationResult {

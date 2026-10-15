@@ -2,9 +2,32 @@ import initialize, {
   validate_recipe,
   validate_recipe_rating,
   calculate_recipe,
+  update_step_timer,
+  step_timer_remaining,
 } from '../crates/recipe-domain/pkg/forkcast_recipe_domain';
 
 export type Difficulty = 'easy' | 'medium' | 'challenging';
+
+export interface StepTimer {
+  durationMs: number;
+  remainingMs: number;
+  endsAt: number | null;
+}
+
+export type TimerAction =
+  { type: 'start'; minutes: number } | { type: 'pause' | 'resume' | 'reset' };
+
+export function updateStepTimer(
+  timer: StepTimer | null,
+  action: TimerAction,
+  now: number,
+): StepTimer {
+  return update_step_timer(timer, action, now);
+}
+
+export function stepTimerRemaining(timer: StepTimer, now: number): number {
+  return step_timer_remaining(timer, now);
+}
 export type Unit =
   | 'mg'
   | 'g'

@@ -1,0 +1,376 @@
+import { expect, test, type Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+
+async function createRecipe(page: Page) {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'New recipe', exact: true }).click();
+  await page.getByLabel('Recipe name').fill('Lentil supper');
+  await page.getByLabel('Ingredient 1 name').fill('Lentils');
+  await page.getByLabel('Ingredient 1 quantity').fill('300');
+  await page.getByLabel('Step 1 instruction').fill('Simmer the first lentils.');
+  await page
+    .getByRole('button', { name: 'Add allocation to step 1', exact: true })
+    .click();
+  await page
+    .getByLabel('Step 1 allocation 1 quantity', { exact: true })
+    .fill('100');
+  await page.getByRole('button', { name: '+ Add step', exact: true }).click();
+  await page
+    .getByLabel('Step 2 instruction')
+    .fill('Stir in the remaining lentils.');
+  await page
+    .getByRole('button', { name: 'Add allocation to step 2', exact: true })
+    .click();
+  await page
+    .getByLabel('Step 2 allocation 1 quantity', { exact: true })
+    .fill('200');
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Lentil supper', exact: true }),
+  ).toBeVisible();
+}
+
+test('cook scaled step amounts and resume saved navigation after closing and reopening offline', async ({
+  page,
+  context,
+}) => {
+  await createRecipe(page);
+  await page.getByLabel('Cooking portions', { exact: true }).fill('3');
+  await page
+    .getByRole('button', { name: 'Start cooking', exact: true })
+    .click();
+  await expect(
+    page.getByText('Cooking 3 portions', { exact: true }),
+  ).toBeVisible();
+  const step = page.getByRole('region', { name: 'Current cooking step' });
+  await expect(step).toContainText('Step 1 of 2');
+  await expect(step).toContainText('Simmer the first lentils.');
+  await expect(step.getByRole('list', { name: 'Step ingredients' })).toHaveText(
+    '150 g Lentils',
+  );
+  await expect(
+    page.getByRole('button', { name: 'Back step', exact: true }),
+  ).toBeDisabled();
+  await page.getByRole('button', { name: 'Next step', exact: true }).click();
+  await expect(step).toContainText('Step 2 of 2');
+  await expect(step.getByRole('list', { name: 'Step ingredients' })).toHaveText(
+    '300 g Lentils',
+  );
+  await expect(
+    page.getByRole('button', { name: 'Next step', exact: true }),
+  ).toBeDisabled();
+  await page.getByRole('button', { name: 'Back step', exact: true }).click();
+  await expect(step).toContainText('Step 1 of 2');
+  await page.getByRole('button', { name: 'Next step', exact: true }).click();
+  await expect(step).toContainText('Step 2 of 2');
+  await page.getByRole('link', { name: 'Close cooking', exact: true }).click();
+  await page.getByRole('link', { name: 'Resume cooking', exact: true }).click();
+  await expect(step).toContainText('Step 2 of 2');
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+  await page.close();
+  await context.setOffline(true);
+  const reopened = await context.newPage();
+  await reopened.goto('/');
+  await reopened.getByRole('link', { name: /Resume Lentil supper/ }).click();
+  const resumed = reopened.getByRole('region', {
+    name: 'Current cooking step',
+  });
+  await expect(resumed).toContainText('Step 2 of 2');
+  await expect(
+    resumed.getByRole('list', { name: 'Step ingredients' }),
+  ).toHaveText('300 g Lentils');
+  await expect(
+    reopened.getByText('Cooking 3 portions', { exact: true }),
+  ).toBeVisible();
+});
+
+test('run independent step timers, pause and resume them, and restore deadlines after closing the application', async ({
+  page,
+  context,
+}) => {
+  const start = new Date('2026-10-15T12:00:00Z');
+  await page.clock.install({ time: start });
+  await page.clock.pauseAt(start);
+  await createRecipe(page);
+  await page
+    .getByRole('button', { name: 'Start cooking', exact: true })
+    .click();
+  await expect(
+    page.getByText('No alarms while the application is closed or suspended.', {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.getByLabel('Timer minutes', { exact: true }).fill('2');
+  await page.getByRole('button', { name: 'Start timer', exact: true }).click();
+  const timer = page.getByRole('timer', { name: 'Step 1 timer' });
+  await expect(timer).toHaveText('02:00');
+  await page.clock.runFor(30_000);
+  await expect(timer).toHaveText('01:30');
+  await page.getByRole('button', { name: 'Pause timer', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Resume timer', exact: true }),
+  ).toBeEnabled();
+  await page.clock.runFor(60_000);
+  await expect(timer).toHaveText('01:30');
+  await page.reload();
+  await expect(timer).toHaveText('01:30');
+  await page.getByRole('button', { name: 'Resume timer', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Pause timer', exact: true }),
+  ).toBeEnabled();
+  await page.getByRole('button', { name: 'Next step', exact: true }).click();
+  await page.getByLabel('Timer minutes', { exact: true }).fill('0.5');
+  await page.getByRole('button', { name: 'Start timer', exact: true }).click();
+  const secondTimer = page.getByRole('timer', { name: 'Step 2 timer' });
+  await expect(secondTimer).toHaveText('00:30');
+  await page.clock.runFor(30_000);
+  await expect(secondTimer).toHaveText('00:00');
+  await expect(
+    page.getByRole('status', { name: 'Timer notifications' }),
+  ).toContainText('Step 2 timer finished');
+  await page.getByRole('button', { name: 'Back step', exact: true }).click();
+  await expect(timer).toHaveText('01:00');
+  const sessionUrl = page.url();
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+  await page.close();
+  await context.setOffline(true);
+  const reopened = await context.newPage();
+  const later = new Date('2026-10-15T12:02:15Z');
+  await reopened.clock.install({ time: later });
+  await reopened.clock.pauseAt(later);
+  await reopened.goto(sessionUrl);
+  const restoredTimer = reopened.getByRole('timer', { name: 'Step 1 timer' });
+  await expect(restoredTimer).toHaveText('00:45');
+  await reopened.clock.runFor(45_000);
+  await expect(restoredTimer).toHaveText('00:00');
+  await expect(
+    reopened.getByRole('status', { name: 'Timer notifications' }),
+  ).toContainText('Step 1 timer finished');
+  await reopened
+    .getByRole('button', { name: 'Reset timer', exact: true })
+    .click();
+  await expect(restoredTimer).toHaveText('02:00');
+  await expect(
+    reopened.getByRole('button', { name: 'Resume timer', exact: true }),
+  ).toBeEnabled();
+});
+
+test('keep captured ingredients, scale, ordered instructions and timer progress when the recipe is edited', async ({
+  page,
+}) => {
+  const start = new Date('2026-10-15T12:00:00Z');
+  await page.clock.install({ time: start });
+  await page.clock.pauseAt(start);
+  await createRecipe(page);
+  const recipeUrl = page.url();
+  await page.getByLabel('Cooking portions', { exact: true }).fill('0');
+  await expect(
+    page.getByRole('button', { name: 'Start cooking', exact: true }),
+  ).toBeDisabled();
+  await page.getByLabel('Cooking portions', { exact: true }).fill('0.5');
+  await page
+    .getByRole('button', { name: 'Start cooking', exact: true })
+    .click();
+  await expect(
+    page.getByRole('region', { name: 'Current cooking step' }),
+  ).toBeVisible();
+  const sessionUrl = page.url();
+  await page.getByRole('button', { name: 'Next step', exact: true }).click();
+  await expect(
+    page.getByRole('region', { name: 'Current cooking step' }),
+  ).toContainText('Step 2 of 2');
+  await page.getByLabel('Timer minutes', { exact: true }).fill('3');
+  await page.getByRole('button', { name: 'Start timer', exact: true }).click();
+  await page.getByRole('button', { name: 'Pause timer', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Resume timer', exact: true }),
+  ).toBeEnabled();
+  await page.getByRole('link', { name: 'Close cooking', exact: true }).click();
+  await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
+  await page.getByLabel('Recipe name').fill('New lentil supper');
+  await page.getByLabel('Base portions', { exact: true }).fill('4');
+  await page.getByLabel('Ingredient 1 name').fill('Beans');
+  await page.getByLabel('Ingredient 1 quantity').fill('800');
+  await page.getByLabel('Step 2 instruction').fill('Bake the beans instead.');
+  await page
+    .getByRole('button', { name: 'Move step 2 up', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'New lentil supper', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('link', { name: 'Resume cooking', exact: true }).click();
+  await expect(
+    page.getByRole('status', { name: 'Recipe changes' }),
+  ).toContainText('Recipe changed since this cooking session started.');
+  await expect(
+    page.getByRole('heading', { name: 'Lentil supper', exact: true }),
+  ).toBeVisible();
+  const step = page.getByRole('region', { name: 'Current cooking step' });
+  await expect(step).toContainText('Stir in the remaining lentils.');
+  await expect(step.getByRole('list', { name: 'Step ingredients' })).toHaveText(
+    '50 g Lentils',
+  );
+  await expect(page.getByRole('timer', { name: 'Step 2 timer' })).toHaveText(
+    '03:00',
+  );
+  await page.reload();
+  await expect(
+    page.getByRole('status', { name: 'Recipe changes' }),
+  ).toContainText('Recipe changed since this cooking session started.');
+  await expect(step).toContainText('Step 2 of 2');
+  await page.getByRole('button', { name: 'Back step', exact: true }).click();
+  await expect(step).toContainText('Simmer the first lentils.');
+  await expect(step.getByRole('list', { name: 'Step ingredients' })).toHaveText(
+    '25 g Lentils',
+  );
+  await page.goto(recipeUrl);
+  await expect(
+    page.getByRole('list', { name: 'Ingredients', exact: true }),
+  ).toHaveText('800 g Beans');
+  await page
+    .getByRole('button', { name: 'Start cooking', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'New lentil supper', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Current cooking step' }),
+  ).toContainText('Bake the beans instead.');
+  await expect(
+    page.getByRole('status', { name: 'Recipe changes' }),
+  ).toHaveCount(0);
+  await page.goto(sessionUrl);
+  await expect(step.getByRole('list', { name: 'Step ingredients' })).toHaveText(
+    '25 g Lentils',
+  );
+});
+
+test('notice recipe edits made in another tab while keeping the current cooking session', async ({
+  page,
+  context,
+}) => {
+  await createRecipe(page);
+  const recipeUrl = page.url();
+  await page
+    .getByRole('button', { name: 'Start cooking', exact: true })
+    .click();
+  const editor = await context.newPage();
+  await editor.goto(`${recipeUrl}/edit`);
+  await editor
+    .getByLabel('Step 1 instruction')
+    .fill('A new instruction from another tab.');
+  await editor
+    .getByRole('button', { name: 'Save recipe', exact: true })
+    .click();
+  await expect(
+    editor.getByRole('heading', { name: 'Lentil supper', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('status', { name: 'Recipe changes' }),
+  ).toContainText('Recipe changed since this cooking session started.');
+  await expect(
+    page.getByRole('region', { name: 'Current cooking step' }),
+  ).toContainText('Simmer the first lentils.');
+});
+
+test('upgrade existing local recipes and ratings, cook unallocated steps, and reject invalid timer amounts', async ({
+  page,
+}) => {
+  // Previous-release browser data is fixture input; all verification uses the UI.
+  await page.addInitScript(
+    (cover) => {
+      const request = indexedDB.open('forkcast', 2);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        db.createObjectStore('recipes', { keyPath: 'id' }).put({
+          id: 'existing-soup',
+          name: 'Existing soup',
+          basePortions: 2,
+          ingredients: [
+            { id: 'stock', name: 'Stock', quantity: 500, unit: 'ml' },
+          ],
+          steps: [
+            { id: 'simmer', instruction: 'Simmer the soup.', allocations: [] },
+          ],
+          difficulty: null,
+          activeMinutes: null,
+          totalMinutes: null,
+        });
+        db.createObjectStore('recipeCoverPhotos', { keyPath: 'recipeId' }).put({
+          recipeId: 'existing-soup',
+          image: new Blob([new Uint8Array(cover)], { type: 'image/png' }),
+        });
+        const ratings = db.createObjectStore('personalRecipeRatings', {
+          keyPath: ['personId', 'recipeId'],
+        });
+        ratings.createIndex('personId', 'personId');
+        ratings.put({
+          personId: 'existing-person',
+          recipeId: 'existing-soup',
+          value: 4,
+        });
+        db.createObjectStore('localSettings').put(
+          'existing-person',
+          'personId',
+        );
+      };
+      request.onsuccess = () => request.result.close();
+    },
+    Array.from(readFileSync('tests/fixtures/cover-photo.png')),
+  );
+  const start = new Date('2026-10-15T12:00:00Z');
+  await page.clock.install({ time: start });
+  await page.clock.pauseAt(start);
+  await page.goto('/');
+  await expect(
+    page.getByText('Your rating: 4 / 5', { exact: true }),
+  ).toBeVisible();
+  await page.getByRole('link', { name: /Existing soup/ }).click();
+  await expect(
+    page.getByRole('img', { name: 'Existing soup cover photo' }),
+  ).toHaveJSProperty('naturalWidth', 48);
+  await expect(page.getByLabel('Your rating', { exact: true })).toHaveValue(
+    '4',
+  );
+  await page
+    .getByRole('button', { name: 'Start cooking', exact: true })
+    .click();
+  await expect(
+    page.getByText('No ingredients allocated to this step.', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Back step', exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole('button', { name: 'Next step', exact: true }),
+  ).toBeDisabled();
+  for (const invalid of ['', '0', '-1']) {
+    await page.getByLabel('Timer minutes', { exact: true }).fill(invalid);
+    await page
+      .getByRole('button', { name: 'Start timer', exact: true })
+      .click();
+    await expect(page.getByRole('alert')).toContainText(
+      'Timer minutes must be greater than zero',
+    );
+    await expect(page.getByRole('timer')).toHaveCount(0);
+  }
+  await page.getByLabel('Timer minutes', { exact: true }).fill('0.5');
+  await page.getByRole('button', { name: 'Start timer', exact: true }).click();
+  await expect(page.getByRole('timer', { name: 'Step 1 timer' })).toHaveText(
+    '00:30',
+  );
+  await page.getByRole('link', { name: 'Close cooking', exact: true }).click();
+  await page.clock.runFor(45_000);
+  await page.getByRole('link', { name: 'Resume cooking', exact: true }).click();
+  await expect(page.getByRole('timer', { name: 'Step 1 timer' })).toHaveText(
+    '00:00',
+  );
+  await expect(
+    page.getByRole('status', { name: 'Timer notifications' }),
+  ).toContainText('Step 1 timer finished');
+});
