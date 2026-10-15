@@ -83,7 +83,9 @@ Recipe edits, including edits in
 another tab, show a changed-recipe notice in an existing session while its
 captured ingredients, instructions, order, and scale stay unchanged.
 On the last step, **Finish cooking** saves completion and returns to the recipe.
-**Cancel cooking**, next to **Suspend cooking**, ends a session without marking it finished or the recipe cooked.
+**Cancel cooking**, next to **Suspend cooking**, asks for confirmation before
+ending the session without marking it finished or the recipe cooked. Choose
+**Keep cooking** or press Escape to return without changing its progress or timers.
 Finished and canceled sessions no longer appear in the resume links, including
 after reopening. Their saved records remain distinct for later cooking-history work.
 Sessions and their start/replacement checks belong to the current person;

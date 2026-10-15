@@ -606,6 +606,9 @@ dialog {
 dialog::backdrop {
   background: rgb(30 38 25 / 40%);
 }
+.cancel-cooking-dialog {
+  overflow-wrap: anywhere;
+}
 dialog .form-actions {
   flex-wrap: wrap;
 }
