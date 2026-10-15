@@ -70,14 +70,22 @@ that recipe, scale, and unit preference for a cooking session. The session keeps
 display units when resumed, independently of later choices in the recipe view.
 **Next step** and **Back step** show each captured
 instruction with its scaled ingredient allocations. Progress saves locally before
-the next step opens. **Close cooking** returns to the recipe; **Resume cooking**
+the next step opens. **Suspend cooking** saves progress and returns to the recipe; **Resume cooking**
 there or a session's **Resume** link in the collection returns to the saved step,
-including after reopening offline. Starting another session captures the current
-recipe without replacing an earlier session. Recipe edits, including edits in
+including after reopening offline. Each person can have one unfinished cooking
+session across all recipes. Starting another offers **Keep current session** or
+**Cancel current and start cooking**; keeping it leaves its progress untouched.
+Replacement cancels the previous session and captures the new recipe in one saved
+operation, including when different tabs try to start cooking together.
+Recipe edits, including edits in
 another tab, show a changed-recipe notice in an existing session while its
 captured ingredients, instructions, order, and scale stay unchanged.
 On the last step, **Finish cooking** saves completion and returns to the recipe.
-Finished sessions no longer appear in the resume links, including after reopening.
+**Cancel cooking** ends a session without marking it finished or the recipe cooked.
+Finished and canceled sessions no longer appear in the resume links, including
+after reopening. Their saved records remain distinct for later cooking-history work.
+Sessions and their start/replacement checks belong to the current person;
+sharing recipes does not share cooking progress or prevent another person cooking.
 
 Each step offers a timer with a duration in minutes, including fractional minutes.
 Timers run independently across steps. **Pause timer** holds the remaining time,

@@ -589,6 +589,20 @@ dd {
   white-space: pre-wrap;
   line-height: 1.6;
 }
+dialog {
+  max-width: min(620px, calc(100% - 32px));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 28px;
+  background: #fffdf9;
+  color: inherit;
+}
+dialog::backdrop {
+  background: rgb(30 38 25 / 40%);
+}
+dialog .form-actions {
+  flex-wrap: wrap;
+}
 .cooking-save-note {
   margin-top: 20px;
 }

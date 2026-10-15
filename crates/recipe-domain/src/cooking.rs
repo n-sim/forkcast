@@ -2,6 +2,73 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CookingProgress {
+    current_step: usize,
+    completed_at: Option<f64>,
+    canceled_at: Option<f64>,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum CookingAction {
+    Step { step: usize },
+    Finish,
+    Cancel,
+}
+
+pub fn update_cooking_progress(
+    mut progress: CookingProgress,
+    action: CookingAction,
+    step_count: usize,
+    now: f64,
+) -> Result<CookingProgress, String> {
+    if step_count == 0 || progress.current_step >= step_count {
+        return Err("Choose a step from this cooking session.".to_owned());
+    }
+    if !now.is_finite()
+        || progress.completed_at.is_some_and(|time| !time.is_finite())
+        || progress.canceled_at.is_some_and(|time| !time.is_finite())
+        || (progress.completed_at.is_some() && progress.canceled_at.is_some())
+    {
+        return Err("This cooking session's progress could not be read.".to_owned());
+    }
+    match action {
+        CookingAction::Step { step } => {
+            if progress.completed_at.is_some() || progress.canceled_at.is_some() {
+                return Err("This cooking session has already ended.".to_owned());
+            }
+            if step >= step_count {
+                return Err("Choose a step from this cooking session.".to_owned());
+            }
+            progress.current_step = step;
+        }
+        CookingAction::Finish => {
+            if progress.canceled_at.is_some() {
+                return Err("This cooking session has already been canceled.".to_owned());
+            }
+            if progress.completed_at.is_none() {
+                if progress.current_step != step_count - 1 {
+                    return Err(
+                        "Follow the cooking session to its last step before finishing.".to_owned(),
+                    );
+                }
+                progress.completed_at = Some(now);
+            }
+        }
+        CookingAction::Cancel => {
+            if progress.completed_at.is_some() {
+                return Err("This cooking session has already finished.".to_owned());
+            }
+            if progress.canceled_at.is_none() {
+                progress.canceled_at = Some(now);
+            }
+        }
+    }
+    Ok(progress)
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StepTimer {
     duration_ms: f64,
     remaining_ms: f64,

@@ -1,18 +1,17 @@
 import {
   calculateRecipe,
   type DisplayUnits,
+  type CookingProgress,
   type Recipe,
   type StepTimer,
 } from './domain';
 
-export interface CookingSession {
+export interface CookingSession extends CookingProgress {
   id: string;
   recipe: Recipe;
   portions: number;
   displayUnits?: DisplayUnits;
-  currentStep: number;
   timers: Record<string, StepTimer>;
-  completedAt?: number;
 }
 
 export function cookingUrl(id: string) {

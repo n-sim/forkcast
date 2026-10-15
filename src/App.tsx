@@ -13,6 +13,10 @@ import {
   saveRecipeCoverPhoto,
   savePersonalRecipeRating,
   saveCookingSession,
+  beginCookingSession,
+  endCookingSession,
+  loadCookingSessions,
+  subscribeToCookingChanges,
   loadRecipes,
   subscribeToRecipeChanges,
 } from './recipe-store';
@@ -21,6 +25,7 @@ import { RecipeCoverPhoto, RecipePhotoEditor } from './RecipePhoto';
 import { PersonalRecipeRating } from './RecipeRating';
 import { cookingUrl, startCooking, type CookingSession } from './cooking';
 import { CookingView } from './CookingView';
+import { CookingConflictDialog } from './CookingConflictDialog';
 
 function subscribeToRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -257,7 +262,24 @@ export function App({
   const [coverPhotos, setCoverPhotos] = useState(initialCoverPhotos);
   const [ratings, setRatings] = useState(initialRatings);
   const [sessions, setSessions] = useState(initialCookingSessions);
+  const [cookingConflict, setCookingConflict] = useState<{
+    proposed: CookingSession;
+    existing: CookingSession[];
+  } | null>(null);
   const [refreshError, setRefreshError] = useState('');
+  useEffect(
+    () =>
+      subscribeToCookingChanges(() => {
+        void loadCookingSessions()
+          .then(setSessions)
+          .catch(() =>
+            setRefreshError(
+              'Cooking changes could not be loaded. Reload to try again.',
+            ),
+          );
+      }),
+    [],
+  );
   useEffect(
     () =>
       subscribeToRecipeChanges(() => {
@@ -298,14 +320,41 @@ export function App({
     ]);
   }
 
-  async function finishSession(session: CookingSession) {
-    await saveCookingSession({ ...session, completedAt: Date.now() });
-    setSessions((current) => current.filter((item) => item.id !== session.id));
+  function leaveCooking(session: CookingSession) {
     window.location.hash = recipes.some(
       (recipe) => recipe.id === session.recipe.id,
     )
       ? recipeUrl(session.recipe.id)
       : '#/';
+  }
+
+  async function endSession(
+    session: CookingSession,
+    outcome: 'finished' | 'canceled',
+  ) {
+    await endCookingSession(session.id, outcome);
+    setSessions((current) => current.filter((item) => item.id !== session.id));
+    leaveCooking(session);
+  }
+
+  async function suspendSession(session: CookingSession) {
+    await saveSession(session);
+    leaveCooking(session);
+  }
+
+  async function beginSession(
+    proposed: CookingSession,
+    cancelSessionIds: string[] = [],
+  ) {
+    const result = await beginCookingSession(proposed, cancelSessionIds);
+    if (!result.session) {
+      setSessions(result.conflicts);
+      setCookingConflict({ proposed, existing: result.conflicts });
+      return;
+    }
+    setCookingConflict(null);
+    setSessions([result.session]);
+    window.location.hash = cookingUrl(result.session.id);
   }
 
   async function save(recipe: Recipe) {
@@ -368,6 +417,18 @@ export function App({
           </span>
         </header>
         <main id="main-content" tabIndex={-1}>
+          {cookingConflict && (
+            <CookingConflictDialog
+              sessions={cookingConflict.existing}
+              onKeep={() => setCookingConflict(null)}
+              onReplace={() =>
+                beginSession(
+                  cookingConflict.proposed,
+                  cookingConflict.existing.map((session) => session.id),
+                )
+              }
+            />
+          )}
           {refreshError && (
             <p className="error-banner" role="alert">
               {refreshError}
@@ -381,7 +442,9 @@ export function App({
                 (recipe) => recipe.id === selectedSession.recipe.id,
               )}
               onSave={saveSession}
-              onFinish={() => finishSession(selectedSession)}
+              onFinish={() => endSession(selectedSession, 'finished')}
+              onCancel={() => endSession(selectedSession, 'canceled')}
+              onSuspend={() => suspendSession(selectedSession)}
             />
           ) : route === '#/recipes/new' || (selected && editing) ? (
             <RecipeForm
@@ -401,8 +464,7 @@ export function App({
               )}
               onStartCooking={async (portions, displayUnits) => {
                 const session = startCooking(selected, portions, displayUnits);
-                await saveSession(session);
-                window.location.hash = cookingUrl(session.id);
+                await beginSession(session);
               }}
               photo={coverPhotos[selected.id]}
               rating={ratings[selected.id]}
@@ -430,8 +492,16 @@ export function App({
             />
           ) : route !== '#/' ? (
             <div className="empty-state">
-              <h1>Recipe not found</h1>
-              <p>This recipe is not in this device’s collection.</p>
+              <h1>
+                {route.startsWith('#/cooking/')
+                  ? 'Cooking session unavailable'
+                  : 'Recipe not found'}
+              </h1>
+              <p>
+                {route.startsWith('#/cooking/')
+                  ? 'This cooking session has ended or is not available to you on this device.'
+                  : 'This recipe is not in this device’s collection.'}
+              </p>
               <a className="button primary" href="#/">
                 Back to collection
               </a>
