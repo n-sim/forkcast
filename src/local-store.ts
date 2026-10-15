@@ -2,7 +2,7 @@ let database: Promise<IDBDatabase> | undefined;
 
 export function openDatabase(): Promise<IDBDatabase> {
   database ??= new Promise((resolve, reject) => {
-    const request = indexedDB.open('forkcast', 4);
+    const request = indexedDB.open('forkcast', 5);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains('recipes'))
@@ -29,6 +29,11 @@ export function openDatabase(): Promise<IDBDatabase> {
         db.createObjectStore('manualFoodLogEntries', {
           keyPath: 'id',
         }).createIndex('personId', 'personId');
+      if (!db.objectStoreNames.contains('plannedCookings'))
+        db.createObjectStore('plannedCookings', { keyPath: 'id' }).createIndex(
+          'personId',
+          'personId',
+        );
     };
     request.onsuccess = () => {
       request.result.onversionchange = () => request.result.close();

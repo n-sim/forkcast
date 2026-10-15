@@ -1,7 +1,7 @@
 # Forkcast
 
-A local-first recipe collection with resumable guided cooking and a personal food
-log. Create recipes and record intake without an account, application backend, or
+A local-first recipe collection with personal cooking plans, resumable guided cooking, and a personal food
+log. Create recipes, plan cooking, and record intake without an account, application backend, or
 AI connection. The interface is English with metric defaults.
 
 ## Run locally
@@ -63,7 +63,7 @@ further attempts for one minute; this survives backend restarts. API responses a
 marked `no-store` and are not added to the offline cache.
 
 Connecting, signing out, switching accounts, or disconnecting does not upload,
-merge, or replace standalone recipes, photos, ratings, or cooking sessions. They
+merge, or replace standalone recipes, photos, ratings, plans, or cooking sessions. They
 continue to use the existing local person identity and IndexedDB, independently
 of the backend account. The account page explains this boundary. Backend outages
 do not prevent local workflows or offline reopening. **Disconnect backend** forgets
@@ -189,6 +189,30 @@ local person identity and have their own nutrition, independently of recipes,
 plans, and cooking sessions. They do not create reusable foods in a catalog.
 Recipe-linked entries and dated nutrition goals are subsequent additions.
 
+Open **Meal plan** for a Monday–Sunday cooking schedule. Use **Previous week**,
+**Next week**, **This week**, or **Week containing** to choose a period.
+**Plan cooking** schedules a current recipe with a cooking date and positive portion
+count, including fractional portions. Set the total quantity for everyone you are
+feeding: four portions can provide dinner and the next day's lunch for two people.
+Multiple entries can share a date and recipe; each can have its own optional cooking
+time and label. **Edit planned cooking** changes that entry's recipe, date, portions,
+time, or label. Saving in the weekly view opens the week containing the saved date;
+**Cancel** leaves the saved entry unchanged.
+
+**Today** shows only today's scheduled cooking, with each recipe's current active
+and total times, portions to cook, and optional time and label. It updates when the
+local date changes. Recipe links open current contents, and edits in another tab
+refresh the displayed recipe information. Times left blank are identified as
+unspecified. Dates and optional times keep their entered local calendar values.
+
+Plans belong to the persistent local person, even when their portions feed other
+household members. They save to IndexedDB, survive reopening offline, and remain
+independent of backend account connections until record synchronization is added.
+Scheduling creates no food-log entries, consumption times, or portion stock.
+Cards support a per-portion recipe nutrition brief when supplied by the recipe
+nutrition workflow; until that workflow is available, they show **Recipe nutrition
+not available**. Daily intake totals remain in **Food log**.
+
 Open a recipe to attach or replace its cover photo (JPEG, PNG, or WebP, up to
 10 MB), or remove it with **Remove cover photo**. Photos save automatically and
 appear in both the recipe view and collection, including offline. Replacing or
@@ -204,9 +228,9 @@ Ratings are separate personal records keyed by a persistent local person identit
 and recipe identity. Standalone mode has one local person without login; a later
 synchronization slice can explicitly map that identity to an account. Existing recipe collections
 upgrade in place without discarding recipes.
-Cooking sessions and manual food-log entries are separate personal records
+Planned cookings, cooking sessions, and manual food-log entries are separate personal records
 belonging to that local identity; upgrading storage preserves the identity,
-recipes, cover photos, ratings, and cooking sessions.
+recipes, cover photos, ratings, plans, and cooking sessions.
 
 The production build caches the application and WebAssembly assets using a service
 worker. After the first online visit and cache installation, it can reopen offline.
@@ -214,7 +238,7 @@ The development server does not install an offline cache. Manual recipe and
 food-log actions do not contact external services.
 
 Browser data belongs to the browser profile and origin. Clearing site data removes
-recipes, photos, ratings, cooking sessions, and the food log; private browsing may discard them when the session ends. Cross-device
+recipes, photos, ratings, plans, cooking sessions, and the food log; private browsing may discard them when the session ends. Cross-device
 synchronization and backups are subsequent additions to the optional backend.
 
 ## Development and verification
@@ -257,8 +281,8 @@ Rust changes need a new WebAssembly build; restart `npm run dev` or build it aga
 
 The application implements standalone recipes ([issue #2](https://github.com/n-sim/forkcast/issues/2))
 and recipe cover photos and personal ratings ([issue #3](https://github.com/n-sim/forkcast/issues/3)),
-plus ingredient scaling, allocations, and compatible conversions
+plus personal weekly planning and today's cooking ([issue #5](https://github.com/n-sim/forkcast/issues/5)), ingredient scaling, allocations, and compatible conversions
 ([issue #4](https://github.com/n-sim/forkcast/issues/4)) and resumable guided cooking
 with foreground timers ([issue #9](https://github.com/n-sim/forkcast/issues/9)) and optional
 backend household accounts ([issue #22](https://github.com/n-sim/forkcast/issues/22)).
-Planning, cooking history, nutrition, AI, record synchronization, and backups are later work.
+Cooking history, recipe nutrition, AI, record synchronization, and backups are later work.

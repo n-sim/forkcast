@@ -265,7 +265,7 @@ test('validate local credentials and reject duplicate usernames without changing
   ).toHaveCount(2);
 });
 
-test('backend outages and disconnecting preserve standalone photos, ratings, and cooking progress offline', async ({
+test('backend outages and disconnecting preserve standalone photos, ratings, plans, and cooking progress offline', async ({
   page,
   context,
   backend,
@@ -302,6 +302,21 @@ test('backend outages and disconnecting preserve standalone photos, ratings, and
   await expect(
     page.getByRole('region', { name: 'Suspended cooking' }),
   ).toBeVisible();
+  await page.getByRole('link', { name: 'Today', exact: true }).click();
+  await page.getByRole('button', { name: 'Plan cooking', exact: true }).click();
+  await page
+    .getByLabel('Recipe', { exact: true })
+    .selectOption({ label: 'Offline pasta' });
+  await page.getByLabel('Portions to cook', { exact: true }).fill('4');
+  await page
+    .getByLabel('Label (optional)', { exact: true })
+    .fill('Our local dinner');
+  await page
+    .getByRole('button', { name: 'Save planned cooking', exact: true })
+    .click();
+  await expect(
+    page.getByRole('article', { name: 'Offline pasta', exact: true }),
+  ).toContainText('4 portions');
   await setupHousehold(page, backend.url);
   await page.goto(recipeUrl);
   await page.evaluate(async () => {
@@ -342,6 +357,16 @@ test('backend outages and disconnecting preserve standalone photos, ratings, and
   await expect(page.getByLabel('Your rating', { exact: true })).toHaveValue(
     '4',
   );
+  await page.getByRole('link', { name: 'Today', exact: true }).click();
+  await expect(
+    page.getByRole('article', { name: 'Offline pasta', exact: true }),
+  ).toContainText('Our local dinner');
+  await expect(
+    page.getByRole('article', { name: 'Offline pasta', exact: true }),
+  ).toContainText('4 portions');
+  await expect(
+    page.getByRole('region', { name: 'Suspended cooking' }),
+  ).toBeVisible();
   await page.getByRole('link', { name: 'Resume cooking', exact: true }).click();
   await expect(
     page.getByText('Boil the pasta.', { exact: true }),
