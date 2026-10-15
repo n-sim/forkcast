@@ -60,8 +60,9 @@ and 3 US tsp = 1 US tbsp. These are US customary measures, distinct from metric,
 imperial, or nutrition-label cup and spoon measures; see
 [NIST's conversion tables](https://www.nist.gov/pml/special-publication-811/nist-guide-si-appendix-b-conversion-factors/nist-guide-si-appendix-b9).
 Calculations retain floating point precision, with a relative tolerance of one
-part in a billion for allocation checks. Only the displayed amounts are rounded
-to ten significant digits. Quantities outside the calculation range show an error.
+part in a billion for allocation checks. Displayed fractional amounts are truncated
+to two decimal places; amounts below 0.01 retain up to two significant digits so
+small quantities remain visible. Quantities outside the calculation range show an error.
 
 Open a recipe to attach or replace its cover photo (JPEG, PNG, or WebP, up to
 10 MB), or remove it with **Remove cover photo**. Photos save automatically and

@@ -21,6 +21,63 @@ async function allocate(page: Page, step: number, quantity: string) {
     .fill(quantity);
 }
 
+test('truncate displayed quantities to two decimal places while retaining small amounts and precise calculations', async ({
+  page,
+}) => {
+  await startRecipe(page);
+  await page.getByLabel('Ingredient 1 quantity').fill('0.3');
+  await page.getByLabel('Ingredient 1 unit').selectOption('oz');
+  await allocate(page, 1, '0.15');
+  await page
+    .getByRole('button', { name: '+ Add ingredient', exact: true })
+    .click();
+  await page.getByLabel('Ingredient 2 name').fill('Oil');
+  await page.getByLabel('Ingredient 2 quantity').fill('0.003');
+  await page.getByLabel('Ingredient 2 unit').selectOption('ml');
+  await page
+    .getByRole('button', { name: 'Add allocation to step 1', exact: true })
+    .click();
+  await page
+    .getByLabel('Step 1 allocation 2 quantity', { exact: true })
+    .fill('0.003');
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Split lentils', exact: true }),
+  ).toBeVisible();
+  const ingredients = page.getByRole('list', {
+    name: 'Ingredients',
+    exact: true,
+  });
+  const steps = page.getByRole('list', { name: 'Cooking steps', exact: true });
+  const checks = page.getByRole('region', { name: 'Allocation checks' });
+  await expect(ingredients).toHaveText('8.50 g Lentils0.003 ml Oil');
+  await expect(steps).toContainText('4.25 g Lentils');
+  await expect(steps).toContainText('0.003 ml Oil');
+  await expect(checks).toContainText(
+    'Lentils: 4.25 / 8.50 g allocated; 4.25 g unallocated.',
+  );
+  await page.getByLabel('Cooking portions', { exact: true }).fill('4');
+  await expect(ingredients).toHaveText('17.00 g Lentils0.006 ml Oil');
+  await page.getByLabel('Cooking portions', { exact: true }).fill('20');
+  await expect(ingredients).toHaveText('85.04 g Lentils0.03 ml Oil');
+  await page.getByLabel('Cooking portions', { exact: true }).fill('1');
+  await expect(ingredients).toHaveText('4.25 g Lentils0.0015 ml Oil');
+  await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
+  await expect(page.getByLabel('Ingredient 1 quantity')).toHaveValue('0.3');
+  await expect(
+    page.getByLabel('Step 1 allocation 1 quantity', { exact: true }),
+  ).toHaveValue('0.15');
+  await page.getByLabel('Ingredient 1 quantity').fill('1');
+  await page
+    .getByLabel('Step 1 allocation 1 quantity', { exact: true })
+    .fill('1');
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await expect(ingredients).toHaveText('28.34 g Lentils0.003 ml Oil');
+  await expect(checks).toContainText(
+    'All ingredient totals are fully allocated.',
+  );
+});
+
 test('allocate ingredient totals across steps and scale both after reopening offline', async ({
   page,
   context,
@@ -140,10 +197,10 @@ test('convert compatible mass and US volume measures for totals and allocations 
     exact: true,
   });
   const steps = page.getByRole('list', { name: 'Cooking steps', exact: true });
-  await expect(ingredients).toContainText('453.59237 g Lentils');
-  await expect(ingredients).toContainText('236.5882365 ml Stock');
-  await expect(steps).toContainText('453.59237 g Lentils');
-  await expect(steps).toContainText('236.5882365 ml Stock');
+  await expect(ingredients).toContainText('453.59 g Lentils');
+  await expect(ingredients).toContainText('236.58 ml Stock');
+  await expect(steps).toContainText('453.59 g Lentils');
+  await expect(steps).toContainText('236.58 ml Stock');
   await page.getByLabel('Display units', { exact: true }).selectOption('us');
   await expect(ingredients).toContainText('1 lb Lentils');
   await expect(ingredients).toContainText('1 US cup Stock');
@@ -158,7 +215,7 @@ test('convert compatible mass and US volume measures for totals and allocations 
   await expect(steps).toContainText('32 oz Lentils');
   await expect(steps).toContainText('32 US tbsp Stock');
   await page.reload();
-  await expect(ingredients).toContainText('453.59237 g Lentils');
+  await expect(ingredients).toContainText('453.59 g Lentils');
   await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
   await expect(page.getByLabel('Ingredient 1 unit')).toHaveValue('lb');
   await expect(
@@ -193,7 +250,7 @@ test('review missing and excess allocations without changing totals, and keep re
   const savedUrl = page.url();
   await page.getByLabel('Cooking portions', { exact: true }).fill('4');
   await expect(checks).toContainText(
-    'Lentils: 1.5 / 2 kg allocated; 0.5 kg unallocated.',
+    'Lentils: 1.50 / 2 kg allocated; 0.50 kg unallocated.',
   );
   await expect(
     page.getByRole('list', { name: 'Ingredients', exact: true }),
@@ -368,7 +425,7 @@ test('combine US fluid ounces and teaspoons as volume allocations without confus
     exact: true,
   });
   const steps = page.getByRole('list', { name: 'Cooking steps', exact: true });
-  await expect(ingredients).toHaveText('29.57352956 ml Oil');
+  await expect(ingredients).toHaveText('29.57 ml Oil');
   await page.getByLabel('Display units', { exact: true }).selectOption('us');
   await expect(ingredients).toHaveText('2 US tbsp Oil');
   await expect(steps.getByRole('listitem').nth(0)).toContainText(
@@ -380,7 +437,7 @@ test('combine US fluid ounces and teaspoons as volume allocations without confus
   await page
     .getByLabel('Display units', { exact: true })
     .selectOption('original');
-  await expect(steps).toContainText('0.5 US fl oz Oil');
+  await expect(steps).toContainText('0.50 US fl oz Oil');
   await expect(steps).toContainText('3 US tsp Oil');
 });
 

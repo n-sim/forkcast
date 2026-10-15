@@ -122,8 +122,15 @@ export function calculateRecipe(
 }
 
 export function formatQuantity(quantity: number) {
-  return new Intl.NumberFormat('en', {
-    maximumSignificantDigits: 10,
+  const [whole = '0', fraction] = new Intl.NumberFormat('en', {
+    maximumSignificantDigits: 21,
     useGrouping: false,
-  }).format(quantity);
+  })
+    .format(quantity)
+    .split('.');
+  if (!fraction) return whole;
+  // Small amounts keep two significant digits instead of disappearing as 0.00.
+  const decimalPlaces =
+    Math.abs(quantity) < 0.01 ? fraction.search(/[1-9]/) + 2 : 2;
+  return `${whole}.${fraction.slice(0, decimalPlaces).padEnd(2, '0')}`;
 }
