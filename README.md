@@ -1,7 +1,8 @@
 # Forkcast
 
-A local-first recipe collection with resumable guided cooking. Create, view, and edit recipes without an account,
-application backend, or AI connection. The interface is English with metric defaults.
+A local-first recipe collection with resumable guided cooking and a personal food
+log. Create recipes and record intake without an account, application backend, or
+AI connection. The interface is English with metric defaults.
 
 ## Run locally
 
@@ -172,6 +173,22 @@ are announced visibly in the cooking view, including timers from other steps.
 No alarms are provided while the application is closed or suspended.
 Cooking sessions do not create food-log entries or track leftover portions.
 
+Open **Food log** in the sidebar and choose a **Food log date** to see that day's
+intake. **Add manual entry** records a food description, consumption date/time,
+and calories (kcal), protein, fat, and carbohydrates (g) for the amount eaten.
+The entry appears on its consumption day, even if added while viewing another
+day. Consumption dates and times retain the entered local calendar values rather
+than moving between days when a device's timezone changes.
+
+Leave each unknown nutrient blank; enter zero only when it is known to be zero.
+Daily nutrition sums the known values separately for each nutrient. Incomplete
+totals identify how many entries have unknown values; a nutrient with no known
+values displays **Unknown**. Entries, unknown values, and the last selected daily
+view persist locally and work offline. Manual entries belong to the persistent
+local person identity and have their own nutrition, independently of recipes,
+plans, and cooking sessions. They do not create reusable foods in a catalog.
+Recipe-linked entries and dated nutrition goals are subsequent additions.
+
 Open a recipe to attach or replace its cover photo (JPEG, PNG, or WebP, up to
 10 MB), or remove it with **Remove cover photo**. Photos save automatically and
 appear in both the recipe view and collection, including offline. Replacing or
@@ -187,16 +204,17 @@ Ratings are separate personal records keyed by a persistent local person identit
 and recipe identity. Standalone mode has one local person without login; a later
 synchronization slice can explicitly map that identity to an account. Existing recipe collections
 upgrade in place without discarding recipes.
-Cooking sessions are separate personal records belonging to that local identity;
-upgrading storage preserves the identity, recipes, cover photos, and ratings.
+Cooking sessions and manual food-log entries are separate personal records
+belonging to that local identity; upgrading storage preserves the identity,
+recipes, cover photos, ratings, and cooking sessions.
 
 The production build caches the application and WebAssembly assets using a service
 worker. After the first online visit and cache installation, it can reopen offline.
-The development server does not install an offline cache. Manual recipe actions do
-not contact external services.
+The development server does not install an offline cache. Manual recipe and
+food-log actions do not contact external services.
 
 Browser data belongs to the browser profile and origin. Clearing site data removes
-recipes, photos, ratings, and cooking sessions; private browsing may discard them when the session ends. Cross-device
+recipes, photos, ratings, cooking sessions, and the food log; private browsing may discard them when the session ends. Cross-device
 synchronization and backups are subsequent additions to the optional backend.
 
 ## Development and verification

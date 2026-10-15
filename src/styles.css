@@ -395,6 +395,32 @@ h2 {
   margin-bottom: 24px;
   min-width: 0;
 }
+.food-entry-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.food-entry-fields .form-actions {
+  margin-top: 24px;
+}
+.food-log-entries {
+  list-style: none;
+  padding: 0;
+}
+.food-log-entries h3 {
+  overflow-wrap: anywhere;
+}
+.nutrition-incomplete {
+  color: #805022;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.food-log-entries .recipe-metadata {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
 .section-heading {
   display: flex;
   gap: 12px;

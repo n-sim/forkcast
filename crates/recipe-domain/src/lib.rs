@@ -1,10 +1,43 @@
 pub mod cooking;
+pub mod food_log;
 pub mod quantities;
 pub mod rating;
 pub mod recipe;
 
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
+
+#[derive(Serialize)]
+struct ManualEntryValidation {
+    entry: Option<food_log::ManualFoodLogEntry>,
+    errors: Vec<recipe::FieldError>,
+}
+
+#[wasm_bindgen]
+pub fn validate_manual_food_log_entry(value: JsValue) -> Result<JsValue, JsValue> {
+    let entry = serde_wasm_bindgen::from_value(value)?;
+    let result = match food_log::validate_manual_entry(entry) {
+        Ok(entry) => ManualEntryValidation {
+            entry: Some(entry),
+            errors: vec![],
+        },
+        Err(errors) => ManualEntryValidation {
+            entry: None,
+            errors,
+        },
+    };
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true);
+    Ok(result.serialize(&serializer)?)
+}
+
+#[wasm_bindgen]
+pub fn daily_manual_food_log(entries: JsValue, date: &str) -> Result<JsValue, JsValue> {
+    let entries = serde_wasm_bindgen::from_value(entries)?;
+    let result = food_log::daily_manual_food_log(entries, date)
+        .map_err(|error| JsValue::from_str(&error))?;
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true);
+    Ok(result.serialize(&serializer)?)
+}
 
 #[wasm_bindgen]
 pub fn update_cooking_progress(
