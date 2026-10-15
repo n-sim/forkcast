@@ -48,12 +48,14 @@ function RecipeDetails({
   rating,
   onSaveRating,
   onStartCooking,
+  loggedNutritionVersionId,
 }: {
   recipe: Recipe;
   photo?: Blob;
   onSavePhoto: (photo: Blob | null) => Promise<void>;
   rating?: RecipeRating;
   onSaveRating: (value: number | null) => Promise<void>;
+  loggedNutritionVersionId: string | null;
   onStartCooking: (
     portions: number,
     displayUnits: DisplayUnits,
@@ -96,6 +98,17 @@ function RecipeDetails({
           Edit recipe
         </a>
       </div>
+      {loggedNutritionVersionId &&
+        loggedNutritionVersionId !== recipe.nutritionVersionId && (
+          <p
+            className="nutrition-version-notice"
+            role="status"
+            aria-label="Food-log nutrition"
+          >
+            This food-log entry uses older nutrition. You are viewing the
+            current recipe. The entry keeps its logged values.
+          </p>
+        )}
       <dl className="recipe-metadata" aria-label="Recipe details">
         <div>
           <dt>Base yield</dt>
@@ -299,13 +312,19 @@ export function App({
     subscribeToRoute,
     () => window.location.hash || '#/',
   );
+  const [recipeRoute = route, recipeQuery] = route.split('?');
+  const loggedNutritionVersionId = new URLSearchParams(recipeQuery).get(
+    'nutritionVersion',
+  );
   const settingsOpen = route === '#/settings' || route === '#/backend';
   const foodLogOpen = route === '#/food-log';
   const planningView =
     route === '#/meal-plan' ? 'week' : route === '#/today' ? 'today' : null;
-  const editing = route.endsWith('/edit');
+  const editing = recipeRoute.endsWith('/edit');
   const selected = recipes.find(
-    (recipe) => recipeUrl(recipe.id) === (editing ? route.slice(0, -5) : route),
+    (recipe) =>
+      recipeUrl(recipe.id) ===
+      (editing ? recipeRoute.slice(0, -5) : recipeRoute),
   );
   const selectedSession = sessions.find(
     (session) => cookingUrl(session.id) === route,
@@ -527,6 +546,7 @@ export function App({
             <RecipeDetails
               key={selected.id}
               recipe={selected}
+              loggedNutritionVersionId={loggedNutritionVersionId}
               onStartCooking={async (portions, displayUnits) => {
                 const session = startCooking(selected, portions, displayUnits);
                 await beginSession(session);
