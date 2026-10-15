@@ -37,6 +37,13 @@ async function usePerson(page: Page, personId: string) {
   await page.reload();
 }
 
+async function confirmCancellation(page: Page) {
+  await page
+    .getByRole('dialog', { name: 'Cancel cooking?', exact: true })
+    .getByRole('button', { name: 'Cancel cooking', exact: true })
+    .click();
+}
+
 test('suspend cooking with saved progress and timers, then cancel it without finishing', async ({
   page,
 }) => {
@@ -75,6 +82,7 @@ test('suspend cooking with saved progress and timers, then cancel it without fin
   await page
     .getByRole('button', { name: 'Cancel cooking', exact: true })
     .click();
+  await confirmCancellation(page);
   await expect(
     page.getByRole('region', { name: 'Current cooking step' }),
   ).toHaveCount(0);
@@ -91,6 +99,64 @@ test('suspend cooking with saved progress and timers, then cancel it without fin
     .click();
   await expect(
     page.getByRole('region', { name: 'Suspended cooking', exact: true }),
+  ).toHaveCount(0);
+});
+
+test('confirm cancellation or keep cooking with progress and timers intact', async ({
+  page,
+}) => {
+  const now = new Date('2026-10-15T12:00:00Z');
+  await page.clock.install({ time: now });
+  await page.clock.pauseAt(now);
+  await createRecipe(page);
+  await page
+    .getByRole('button', { name: 'Start cooking', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Next step', exact: true }).click();
+  const step = page.getByRole('region', { name: 'Current cooking step' });
+  await expect(step).toContainText('Step 2 of 2');
+  await page.getByLabel('Timer minutes', { exact: true }).fill('2');
+  await page.getByRole('button', { name: 'Start timer', exact: true }).click();
+  await expect(page.getByRole('timer', { name: 'Step 2 timer' })).toHaveText(
+    '02:00',
+  );
+  const cancel = page.getByRole('button', {
+    name: 'Cancel cooking',
+    exact: true,
+  });
+  await cancel.click();
+  const dialog = page.getByRole('dialog', {
+    name: 'Cancel cooking?',
+    exact: true,
+  });
+  await expect(dialog).toContainText('Lentil supper');
+  await expect(
+    dialog.getByRole('button', { name: 'Keep cooking', exact: true }),
+  ).toBeFocused();
+  await page.clock.runFor(30_000);
+  await dialog
+    .getByRole('button', { name: 'Keep cooking', exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(cancel).toBeFocused();
+  await expect(step).toContainText('Step 2 of 2');
+  await expect(page.getByRole('timer', { name: 'Step 2 timer' })).toHaveText(
+    '01:30',
+  );
+  await page.reload();
+  await cancel.click();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(step).toContainText('Step 2 of 2');
+  await cancel.click();
+  await dialog
+    .getByRole('button', { name: 'Cancel cooking', exact: true })
+    .click();
+  await expect(step).toHaveCount(0);
+  await page.reload();
+  await expect(
+    page.getByRole('link', { name: 'Resume cooking', exact: true }),
   ).toHaveCount(0);
 });
 
@@ -178,6 +244,7 @@ test('resume suspended cooking from a bottom overlay across the collection, reci
   ).toBeVisible();
   await expect(bar).toHaveCount(0);
   await cancel.click();
+  await confirmCancellation(page);
   await expect(
     page.getByRole('region', { name: 'Current cooking step' }),
   ).toHaveCount(0);
@@ -321,6 +388,7 @@ test('keep cooking sessions personal while the recipe collection is shared', asy
   await page
     .getByRole('button', { name: 'Cancel cooking', exact: true })
     .click();
+  await confirmCancellation(page);
   await expect(
     page.getByRole('region', { name: 'Current cooking step' }),
   ).toHaveCount(0);
