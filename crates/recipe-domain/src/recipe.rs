@@ -9,16 +9,30 @@ pub enum Difficulty {
     Challenging,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub enum Unit {
+    #[serde(rename = "mg")]
+    Milligram,
     #[serde(rename = "g")]
     Gram,
     #[serde(rename = "kg")]
     Kilogram,
+    #[serde(rename = "oz")]
+    Ounce,
+    #[serde(rename = "lb")]
+    Pound,
     #[serde(rename = "ml")]
     Millilitre,
     #[serde(rename = "l")]
     Litre,
+    #[serde(rename = "tsp")]
+    Teaspoon,
+    #[serde(rename = "tbsp")]
+    Tablespoon,
+    #[serde(rename = "fl-oz")]
+    FluidOunce,
+    #[serde(rename = "cup")]
+    Cup,
     #[serde(rename = "piece")]
     Piece,
 }
@@ -33,9 +47,34 @@ pub struct IngredientDraft {
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IngredientAllocationDraft {
+    pub ingredient_id: String,
+    pub quantity: Option<f64>,
+    pub unit: Unit,
+}
+
+#[derive(Deserialize)]
+pub struct CookingStepDraft {
+    pub id: String,
+    pub instruction: String,
+    #[serde(default)]
+    pub allocations: Vec<IngredientAllocationDraft>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IngredientAllocation {
+    pub ingredient_id: String,
+    pub quantity: f64,
+    pub unit: Unit,
+}
+
+#[derive(Clone, Serialize)]
 pub struct CookingStep {
     pub id: String,
     pub instruction: String,
+    pub allocations: Vec<IngredientAllocation>,
 }
 
 #[derive(Deserialize)]
@@ -45,13 +84,13 @@ pub struct RecipeDraft {
     pub name: String,
     pub base_portions: Option<f64>,
     pub ingredients: Vec<IngredientDraft>,
-    pub steps: Vec<CookingStep>,
+    pub steps: Vec<CookingStepDraft>,
     pub difficulty: Option<Difficulty>,
     pub active_minutes: Option<f64>,
     pub total_minutes: Option<f64>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct Ingredient {
     pub id: String,
     pub name: String,
@@ -164,6 +203,45 @@ pub fn validate_recipe(draft: RecipeDraft) -> Result<Recipe, Vec<FieldError>> {
                 format!("Enter an instruction for step {}.", index + 1),
             );
         }
+        let mut allocated_ingredients = HashSet::new();
+        for (allocation_index, allocation) in step.allocations.iter().enumerate() {
+            let path = format!("steps.{index}.allocations.{allocation_index}");
+            let ingredient = draft
+                .ingredients
+                .iter()
+                .find(|ingredient| ingredient.id == allocation.ingredient_id);
+            if let Some(ingredient) = ingredient {
+                if crate::quantities::convert_quantity(1.0, allocation.unit, ingredient.unit)
+                    .is_err()
+                {
+                    add_error(
+                        &mut errors,
+                        &format!("{path}.unit"),
+                        "Allocation units must be compatible with the ingredient total. Mass, volume, and pieces cannot be interchanged.",
+                    );
+                }
+            } else {
+                add_error(
+                    &mut errors,
+                    &format!("{path}.ingredientId"),
+                    "Choose an ingredient from the recipe totals.",
+                );
+            }
+            if !allocated_ingredients.insert(&allocation.ingredient_id) {
+                add_error(
+                    &mut errors,
+                    &format!("{path}.ingredientId"),
+                    "Allocate each ingredient only once per step.",
+                );
+            }
+            if !valid_positive(allocation.quantity) {
+                add_error(
+                    &mut errors,
+                    &format!("{path}.quantity"),
+                    "Allocation quantity must be greater than zero.",
+                );
+            }
+        }
     }
     for (path, label, minutes) in [
         ("activeMinutes", "Active time", draft.active_minutes),
@@ -212,6 +290,15 @@ pub fn validate_recipe(draft: RecipeDraft) -> Result<Recipe, Vec<FieldError>> {
             .map(|step| CookingStep {
                 id: step.id,
                 instruction: step.instruction.trim().to_owned(),
+                allocations: step
+                    .allocations
+                    .into_iter()
+                    .map(|allocation| IngredientAllocation {
+                        ingredient_id: allocation.ingredient_id,
+                        quantity: allocation.quantity.unwrap_or_default(),
+                        unit: allocation.unit,
+                    })
+                    .collect(),
             })
             .collect(),
         difficulty: draft.difficulty,

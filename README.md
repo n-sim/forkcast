@@ -35,6 +35,34 @@ transaction completes. Active time means dedicated work or attention; total time
 means elapsed preparation time until the dish is ready. Difficulty and times may be
 left unspecified.
 
+In the recipe editor, use **Allocate ingredient** on a cooking step to assign an
+amount from a recipe ingredient total. Split an ingredient across steps as needed.
+**Allocation checks** show missing or excess amounts, including ingredients with no
+allocations. These warnings allow a recipe to be saved for later correction;
+invalid amounts, duplicate ingredients within a step, and incompatible units must
+be corrected before saving. Removing an ingredient removes its allocations;
+reordering steps keeps their allocations attached. Instructions never supply or
+change the structured ingredient totals. Recipes saved before allocations were
+introduced open with empty allocations and show their unallocated amounts.
+
+In the recipe view, change **Cooking portions** to scale both ingredient totals
+and step allocations, including fractional portions. This is a viewing choice;
+it does not edit the recipe's base yield or saved quantities. **Display units**
+defaults to useful metric units and also offers **US customary** and **As entered**.
+Display choices reset when reopening the recipe. Supported mass units are mg, g,
+kg, avoirdupois oz, and lb; volume units are ml, l, US tsp, US tbsp, US fl oz,
+and US cup. Pieces scale without changing dimension. No density or AI conversion
+is assumed between mass, volume, and pieces.
+
+Conversions use fixed definitions: 1 lb = 453.59237 g, 16 oz = 1 lb,
+1 US cup = 236.5882365 ml, 8 US fl oz = 1 US cup, 16 US tbsp = 1 US cup,
+and 3 US tsp = 1 US tbsp. These are US customary measures, distinct from metric,
+imperial, or nutrition-label cup and spoon measures; see
+[NIST's conversion tables](https://www.nist.gov/pml/special-publication-811/nist-guide-si-appendix-b-conversion-factors/nist-guide-si-appendix-b9).
+Calculations retain floating point precision, with a relative tolerance of one
+part in a billion for allocation checks. Only the displayed amounts are rounded
+to ten significant digits. Quantities outside the calculation range show an error.
+
 Open a recipe to attach or replace its cover photo (JPEG, PNG, or WebP, up to
 10 MB), or remove it with **Remove cover photo**. Photos save automatically and
 appear in both the recipe view and collection, including offline. Replacing or
@@ -87,11 +115,13 @@ Rust changes need a new WebAssembly build; restart `npm run dev` or build it aga
 ## Layout
 
 - `src/`: React screens, typed WebAssembly boundary, and local recipe storage.
-- `crates/recipe-domain/`: Rust recipe types, normalization, and validation, also
+- `crates/recipe-domain/`: Rust recipe types, normalization, validation, scaling, and conversions, also
   usable by a future native Rust backend. Generated WebAssembly is not committed.
 - `tests/`: browser workflow specifications, the confirmed main testing seam.
 - `docs/adr/` and `GLOSSARY.md`: accepted decisions and domain vocabulary.
 
 The application implements standalone recipes ([issue #2](https://github.com/n-sim/forkcast/issues/2))
-and recipe cover photos and personal ratings ([issue #3](https://github.com/n-sim/forkcast/issues/3)).
+and recipe cover photos and personal ratings ([issue #3](https://github.com/n-sim/forkcast/issues/3)),
+plus ingredient scaling, allocations, and compatible conversions
+([issue #4](https://github.com/n-sim/forkcast/issues/4)).
 Planning, guided cooking, nutrition, AI, and backend synchronization are later work.

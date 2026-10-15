@@ -2,12 +2,16 @@ import { useRef, useState, type FormEvent } from 'react';
 import {
   difficultyLabels,
   validateRecipe,
+  calculateRecipe,
+  unitLabels,
   type Difficulty,
   type FieldError,
   type Recipe,
   type RecipeDraft,
   type Unit,
 } from './domain';
+import { StepAllocations } from './StepAllocations';
+import { AllocationChecks } from './AllocationChecks';
 
 function emptyIngredient() {
   return {
@@ -19,7 +23,7 @@ function emptyIngredient() {
 }
 
 function emptyStep() {
-  return { id: crypto.randomUUID(), instruction: '' };
+  return { id: crypto.randomUUID(), instruction: '', allocations: [] };
 }
 
 function numberValue(value: string): number | null {
@@ -52,6 +56,15 @@ export function RecipeForm({
   const [errors, setErrors] = useState<FieldError[]>([]);
   const errorSummary = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
+  const { recipe: validDraft } = validateRecipe(draft);
+  let checks = null;
+  if (validDraft) {
+    try {
+      checks = calculateRecipe(validDraft, validDraft.basePortions).checks;
+    } catch {
+      /* Out-of-range quantities are reported when viewed. */
+    }
+  }
 
   function fieldStatus(path: string) {
     const invalid = errors.some((error) => error.path === path);
@@ -295,11 +308,11 @@ export function RecipeForm({
                     })
                   }
                 >
-                  <option value="g">g</option>
-                  <option value="kg">kg</option>
-                  <option value="ml">ml</option>
-                  <option value="l">l</option>
-                  <option value="piece">piece</option>
+                  {Object.entries(unitLabels).map(([unit, label]) => (
+                    <option key={unit} value={unit}>
+                      {label}
+                    </option>
+                  ))}
                 </select>
               </label>
               <button
@@ -312,6 +325,13 @@ export function RecipeForm({
                     ingredients: draft.ingredients.filter(
                       (item) => item.id !== ingredient.id,
                     ),
+                    steps: draft.steps.map((step) => ({
+                      ...step,
+                      allocations: step.allocations.filter(
+                        (allocation) =>
+                          allocation.ingredientId !== ingredient.id,
+                      ),
+                    })),
                   })
                 }
               >
@@ -344,7 +364,9 @@ export function RecipeForm({
           <h2 id="steps-heading">Cooking steps</h2>
         </div>
         <p className="section-note">
-          One instruction at a time, in the order you’ll cook.
+          Allocate amounts from the ingredient totals. Instructions do not
+          change those totals. Removing an ingredient also removes its
+          allocations.
         </p>
         {draft.steps.map((step, index) => (
           <div className="step-row" key={step.id}>
@@ -371,6 +393,20 @@ export function RecipeForm({
                   }
                 />
               </label>
+              <StepAllocations
+                step={step}
+                index={index}
+                ingredients={draft.ingredients}
+                fieldStatus={fieldStatus}
+                onChange={(allocations) =>
+                  setDraft({
+                    ...draft,
+                    steps: draft.steps.map((item) =>
+                      item.id === step.id ? { ...item, allocations } : item,
+                    ),
+                  })
+                }
+              />
               <div className="step-actions">
                 <button
                   type="button"
@@ -413,6 +449,7 @@ export function RecipeForm({
         >
           + Add step
         </button>
+        {checks && <AllocationChecks recipe={draft} checks={checks} />}
       </section>
       <div className="form-actions">
         <p>Saved on this device. Ready when you are.</p>

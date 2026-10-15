@@ -330,7 +330,7 @@ test('create a recipe, then close and reopen it with its saved quantities and or
     '400 g Red lentils',
   );
   await expect(page.getByRole('list', { name: 'Ingredients' })).toContainText(
-    '1000 ml Vegetable stock',
+    '1 l Vegetable stock',
   );
   await expect(
     page.getByRole('list', { name: 'Cooking steps' }).getByRole('listitem'),
@@ -562,7 +562,7 @@ test('create, edit, and reopen offline with fractional metric amounts and option
   ).toBeVisible();
   await expect(
     reopened.getByRole('list', { name: 'Ingredients' }),
-  ).toContainText('0.75 kg Pasta');
+  ).toContainText('750 g Pasta');
   await expect(reopened.getByLabel('Recipe details')).toContainText(
     '1.5 portions',
   );

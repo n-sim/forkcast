@@ -1,3 +1,4 @@
+pub mod quantities;
 pub mod rating;
 pub mod recipe;
 
@@ -33,4 +34,19 @@ pub fn validate_recipe_rating(value: JsValue) -> Result<JsValue, JsValue> {
     let rating =
         rating::validate_recipe_rating(rating).map_err(|error| JsValue::from_str(&error))?;
     Ok(serde_wasm_bindgen::to_value(&rating)?)
+}
+
+#[wasm_bindgen]
+pub fn calculate_recipe(
+    value: JsValue,
+    portions: f64,
+    preference: JsValue,
+) -> Result<JsValue, JsValue> {
+    let draft = serde_wasm_bindgen::from_value(value)?;
+    let recipe = recipe::validate_recipe(draft)
+        .map_err(|_| JsValue::from_str("The recipe contains invalid quantities or allocations."))?;
+    let preference = serde_wasm_bindgen::from_value(preference)?;
+    let result = quantities::calculate_recipe(&recipe, portions, preference)
+        .map_err(|error| JsValue::from_str(&error))?;
+    Ok(serde_wasm_bindgen::to_value(&result)?)
 }

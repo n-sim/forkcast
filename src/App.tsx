@@ -1,5 +1,13 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { difficultyLabels, type Recipe, type RecipeRating } from './domain';
+import {
+  calculateRecipe,
+  formatQuantity,
+  unitLabels,
+  difficultyLabels,
+  type DisplayUnits,
+  type Recipe,
+  type RecipeRating,
+} from './domain';
 import {
   saveRecipe,
   saveRecipeCoverPhoto,
@@ -8,6 +16,7 @@ import {
 import { RecipeForm } from './RecipeForm';
 import { RecipeCoverPhoto, RecipePhotoEditor } from './RecipePhoto';
 import { PersonalRecipeRating } from './RecipeRating';
+import { AllocationChecks } from './AllocationChecks';
 
 function subscribeToRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -31,6 +40,15 @@ function RecipeDetails({
   rating?: RecipeRating;
   onSaveRating: (value: number | null) => Promise<void>;
 }) {
+  const [portions, setPortions] = useState(String(recipe.basePortions));
+  const [displayUnits, setDisplayUnits] = useState<DisplayUnits>('metric');
+  let quantities = null;
+  let quantityError = '';
+  try {
+    quantities = calculateRecipe(recipe, Number(portions), displayUnits);
+  } catch (error) {
+    quantityError = String(error);
+  }
   return (
     <article>
       <div className="page-heading">
@@ -85,35 +103,96 @@ function RecipeDetails({
         />
         <PersonalRecipeRating value={rating?.value} onSave={onSaveRating} />
       </div>
-      <div className="recipe-content">
-        <section className="panel" aria-labelledby="ingredients-heading">
-          <p className="eyebrow">What you’ll need</p>
-          <h2 id="ingredients-heading">Ingredients</h2>
-          <p className="section-note">
-            For {recipe.basePortions}{' '}
-            {recipe.basePortions === 1 ? 'portion' : 'portions'}
-          </p>
-          <ul className="ingredient-list" aria-label="Ingredients">
-            {recipe.ingredients.map((ingredient) => (
-              <li key={ingredient.id}>
-                <strong>
-                  {ingredient.quantity} {ingredient.unit}
-                </strong>{' '}
-                <span>{ingredient.name}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-        <section className="panel" aria-labelledby="steps-heading">
-          <p className="eyebrow">Let’s make it</p>
-          <h2 id="steps-heading">Cooking steps</h2>
-          <ol className="cooking-steps" aria-label="Cooking steps">
-            {recipe.steps.map((step) => (
-              <li key={step.id}>{step.instruction}</li>
-            ))}
-          </ol>
-        </section>
-      </div>
+      <section
+        className="panel quantity-controls"
+        aria-label="Cooking quantities"
+      >
+        <label>
+          Cooking portions
+          <input
+            type="number"
+            step="any"
+            value={portions}
+            aria-invalid={Boolean(quantityError)}
+            aria-describedby={quantityError ? 'quantity-error' : undefined}
+            onChange={(event) => setPortions(event.target.value)}
+          />
+        </label>
+        <label>
+          Display units
+          <select
+            aria-label="Display units"
+            value={displayUnits}
+            onChange={(event) =>
+              setDisplayUnits(event.target.value as DisplayUnits)
+            }
+          >
+            <option value="metric">Metric</option>
+            <option value="us">US customary</option>
+            <option value="original">As entered</option>
+          </select>
+        </label>
+        <p className="section-note">
+          Scale ingredient totals and step allocations for this cooking. Base
+          yield stays {recipe.basePortions} portions.
+        </p>
+      </section>
+      {quantityError && (
+        <p role="alert" id="quantity-error" className="error-banner">
+          {quantityError}
+        </p>
+      )}
+      {quantities && (
+        <>
+          <AllocationChecks recipe={recipe} checks={quantities.checks} />
+          <div className="recipe-content">
+            <section className="panel" aria-labelledby="ingredients-heading">
+              <p className="eyebrow">What you’ll need</p>
+              <h2 id="ingredients-heading">Ingredients</h2>
+              <p className="section-note">
+                For {portions} {Number(portions) === 1 ? 'portion' : 'portions'}
+              </p>
+              <ul className="ingredient-list" aria-label="Ingredients">
+                {quantities.ingredients.map((ingredient) => (
+                  <li key={ingredient.id}>
+                    <strong>
+                      {formatQuantity(ingredient.quantity)}{' '}
+                      {unitLabels[ingredient.unit]}
+                    </strong>{' '}
+                    <span>{ingredient.name}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+            <section className="panel" aria-labelledby="steps-heading">
+              <p className="eyebrow">Let’s make it</p>
+              <h2 id="steps-heading">Cooking steps</h2>
+              <ol className="cooking-steps" aria-label="Cooking steps">
+                {quantities.steps.map((step) => (
+                  <li key={step.id}>
+                    {step.instruction}
+                    {step.allocations.map((allocation) => (
+                      <div
+                        className="step-amount"
+                        key={allocation.ingredientId}
+                      >
+                        {formatQuantity(allocation.quantity!)}{' '}
+                        {unitLabels[allocation.unit]}{' '}
+                        {
+                          recipe.ingredients.find(
+                            (ingredient) =>
+                              ingredient.id === allocation.ingredientId,
+                          )?.name
+                        }
+                      </div>
+                    ))}
+                  </li>
+                ))}
+              </ol>
+            </section>
+          </div>
+        </>
+      )}
     </article>
   );
 }

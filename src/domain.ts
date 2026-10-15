@@ -1,10 +1,38 @@
 import initialize, {
   validate_recipe,
   validate_recipe_rating,
+  calculate_recipe,
 } from '../crates/recipe-domain/pkg/forkcast_recipe_domain';
 
 export type Difficulty = 'easy' | 'medium' | 'challenging';
-export type Unit = 'g' | 'kg' | 'ml' | 'l' | 'piece';
+export type Unit =
+  | 'mg'
+  | 'g'
+  | 'kg'
+  | 'oz'
+  | 'lb'
+  | 'ml'
+  | 'l'
+  | 'tsp'
+  | 'tbsp'
+  | 'fl-oz'
+  | 'cup'
+  | 'piece';
+export type DisplayUnits = 'metric' | 'us' | 'original';
+export const unitLabels: Record<Unit, string> = {
+  mg: 'mg',
+  g: 'g',
+  kg: 'kg',
+  oz: 'oz',
+  lb: 'lb',
+  ml: 'ml',
+  l: 'l',
+  tsp: 'US tsp',
+  tbsp: 'US tbsp',
+  'fl-oz': 'US fl oz',
+  cup: 'US cup',
+  piece: 'piece',
+};
 
 export interface IngredientDraft {
   id: string;
@@ -16,6 +44,13 @@ export interface IngredientDraft {
 export interface CookingStep {
   id: string;
   instruction: string;
+  allocations: IngredientAllocation[];
+}
+
+export interface IngredientAllocation {
+  ingredientId: string;
+  quantity: number | null;
+  unit: Unit;
 }
 
 export interface RecipeDraft {
@@ -64,4 +99,31 @@ export function validateRecipe(draft: RecipeDraft): {
 
 export function validateRecipeRating(rating: RecipeRating): RecipeRating {
   return validate_recipe_rating(rating);
+}
+
+export interface AllocationCheck {
+  ingredientId: string;
+  total: number;
+  allocated: number;
+  difference: number;
+  unit: Unit;
+}
+
+export function calculateRecipe(
+  recipe: Recipe,
+  portions: number,
+  preference: DisplayUnits = 'metric',
+): {
+  ingredients: Recipe['ingredients'];
+  steps: CookingStep[];
+  checks: AllocationCheck[];
+} {
+  return calculate_recipe(recipe, portions, preference);
+}
+
+export function formatQuantity(quantity: number) {
+  return new Intl.NumberFormat('en', {
+    maximumSignificantDigits: 10,
+    useGrouping: false,
+  }).format(quantity);
 }
