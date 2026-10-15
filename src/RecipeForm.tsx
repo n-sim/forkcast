@@ -44,6 +44,7 @@ export function RecipeForm({
       initialRecipe ?? {
         id: crypto.randomUUID(),
         name: '',
+        label: null,
         basePortions: 2,
         ingredients: [emptyIngredient()],
         steps: [emptyStep()],
@@ -161,6 +162,16 @@ export function RecipeForm({
               setDraft({ ...draft, name: event.target.value })
             }
             placeholder="What are we cooking?"
+          />
+        </label>
+        <label className="name-field">
+          Label (optional)
+          <input
+            {...fieldStatus('label')}
+            value={draft.label ?? ''}
+            onChange={(event) =>
+              setDraft({ ...draft, label: event.target.value || null })
+            }
           />
         </label>
         <div className="metadata-fields">

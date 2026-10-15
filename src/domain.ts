@@ -98,6 +98,7 @@ export interface IngredientAllocation {
 export interface RecipeDraft {
   id: string;
   name: string;
+  label?: string | null;
   basePortions: number | null;
   ingredients: IngredientDraft[];
   steps: CookingStep[];

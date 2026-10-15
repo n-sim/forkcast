@@ -14,7 +14,6 @@ export interface PlannedCookingDraft {
   cookingDate: string;
   portions: number | null;
   cookingTime: string | null;
-  label: string | null;
 }
 
 export interface PlannedCooking extends PlannedCookingDraft {

@@ -274,6 +274,9 @@ test('backend outages and disconnecting preserve standalone photos, ratings, pla
   await page.goto('/');
   await page.getByRole('button', { name: 'New recipe', exact: true }).click();
   await page.getByLabel('Recipe name').fill('Offline pasta');
+  await page
+    .getByLabel('Label (optional)', { exact: true })
+    .fill('Our local dinner');
   await page.getByLabel('Ingredient 1 name').fill('Pasta');
   await page.getByLabel('Ingredient 1 quantity').fill('250');
   await page.getByLabel('Step 1 instruction').fill('Boil the pasta.');
@@ -308,9 +311,6 @@ test('backend outages and disconnecting preserve standalone photos, ratings, pla
     .getByLabel('Recipe', { exact: true })
     .selectOption({ label: 'Offline pasta' });
   await page.getByLabel('Portions to cook', { exact: true }).fill('4');
-  await page
-    .getByLabel('Label (optional)', { exact: true })
-    .fill('Our local dinner');
   await page
     .getByRole('button', { name: 'Save planned cooking', exact: true })
     .click();
