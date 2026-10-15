@@ -46,7 +46,10 @@ function RecipeDetails({
   rating?: RecipeRating;
   onSaveRating: (value: number | null) => Promise<void>;
   sessions: CookingSession[];
-  onStartCooking: (portions: number) => Promise<void>;
+  onStartCooking: (
+    portions: number,
+    displayUnits: DisplayUnits,
+  ) => Promise<void>;
 }) {
   const [portions, setPortions] = useState(String(recipe.basePortions));
   const [displayUnits, setDisplayUnits] = useState<DisplayUnits>('metric');
@@ -64,7 +67,7 @@ function RecipeDetails({
     setStarting(true);
     setCookingError('');
     try {
-      await onStartCooking(Number(portions));
+      await onStartCooking(Number(portions), displayUnits);
     } catch {
       setCookingError(
         'The cooking session could not be saved. Please try again.',
@@ -396,8 +399,8 @@ export function App({
               sessions={sessions.filter(
                 (session) => session.recipe.id === selected.id,
               )}
-              onStartCooking={async (portions) => {
-                const session = startCooking(selected, portions);
+              onStartCooking={async (portions, displayUnits) => {
+                const session = startCooking(selected, portions, displayUnits);
                 await saveSession(session);
                 window.location.hash = cookingUrl(session.id);
               }}

@@ -65,8 +65,10 @@ part in a billion for allocation checks. Displayed fractional amounts are trunca
 to two decimal places; amounts below 0.01 retain up to two significant digits so
 small quantities remain visible. Quantities outside the calculation range show an error.
 
-Choose **Cooking portions**, then **Start cooking** to capture that recipe and
-scale for a cooking session. **Next step** and **Back step** show each captured
+Choose **Cooking portions** and **Display units**, then **Start cooking** to capture
+that recipe, scale, and unit preference for a cooking session. The session keeps its
+display units when resumed, independently of later choices in the recipe view.
+**Next step** and **Back step** show each captured
 instruction with its scaled ingredient allocations. Progress saves locally before
 the next step opens. **Close cooking** returns to the recipe; **Resume cooking**
 there or a session's **Resume** link in the collection returns to the saved step,
