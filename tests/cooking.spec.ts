@@ -58,7 +58,10 @@ test('cook scaled step amounts and resume saved navigation after closing and reo
   );
   await expect(
     page.getByRole('button', { name: 'Next step', exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Finish cooking', exact: true }),
+  ).toBeEnabled();
   await page.getByRole('button', { name: 'Back step', exact: true }).click();
   await expect(step).toContainText('Step 1 of 2');
   await page.getByRole('button', { name: 'Next step', exact: true }).click();
@@ -84,6 +87,61 @@ test('cook scaled step amounts and resume saved navigation after closing and reo
   await expect(
     reopened.getByText('Cooking 3 portions', { exact: true }),
   ).toBeVisible();
+});
+
+test('finish cooking from the last step and keep only unfinished sessions available after reopening', async ({
+  page,
+}) => {
+  await createRecipe(page);
+  const recipeUrl = page.url();
+  await page
+    .getByRole('button', { name: 'Start cooking', exact: true })
+    .click();
+  await expect(
+    page.getByRole('region', { name: 'Current cooking step' }),
+  ).toContainText('Step 1 of 2');
+  await page.getByRole('link', { name: 'Close cooking', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Start cooking', exact: true })
+    .click();
+  const next = page.getByRole('button', { name: 'Next step', exact: true });
+  const finish = page.getByRole('button', {
+    name: 'Finish cooking',
+    exact: true,
+  });
+  await expect(next).toBeEnabled();
+  await expect(finish).toHaveCount(0);
+  await next.click();
+  await expect(finish).toBeEnabled();
+  await expect(next).toHaveCount(0);
+  await page.getByRole('button', { name: 'Back step', exact: true }).click();
+  await expect(next).toBeEnabled();
+  await expect(finish).toHaveCount(0);
+  await next.click();
+  await finish.click();
+  await expect(page).toHaveURL(recipeUrl);
+  await expect(
+    page.getByRole('region', { name: 'Current cooking step' }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('link', { name: 'Resume cooking', exact: true }),
+  ).toHaveCount(1);
+  await page.reload();
+  await expect(
+    page.getByRole('link', { name: 'Resume cooking', exact: true }),
+  ).toHaveCount(1);
+  await page
+    .getByRole('link', { name: 'Recipe collection', exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole('region', { name: 'Cooking sessions' })
+      .getByRole('listitem'),
+  ).toHaveCount(1);
+  await page.getByRole('link', { name: /Resume Lentil supper/ }).click();
+  await expect(
+    page.getByRole('region', { name: 'Current cooking step' }),
+  ).toContainText('Step 1 of 2');
 });
 
 test('run independent step timers, pause and resume them, and restore deadlines after closing the application', async ({
@@ -348,7 +406,10 @@ test('upgrade existing local recipes and ratings, cook unallocated steps, and re
   ).toBeDisabled();
   await expect(
     page.getByRole('button', { name: 'Next step', exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Finish cooking', exact: true }),
+  ).toBeEnabled();
   for (const invalid of ['', '0', '-1']) {
     await page.getByLabel('Timer minutes', { exact: true }).fill(invalid);
     await page
@@ -373,4 +434,23 @@ test('upgrade existing local recipes and ratings, cook unallocated steps, and re
   await expect(
     page.getByRole('status', { name: 'Timer notifications' }),
   ).toContainText('Step 1 timer finished');
+  await page
+    .getByRole('button', { name: 'Finish cooking', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Existing soup', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Current cooking step' }),
+  ).toHaveCount(0);
+  await page.reload();
+  await expect(
+    page.getByRole('link', { name: 'Resume cooking', exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole('link', { name: 'Recipe collection', exact: true })
+    .click();
+  await expect(
+    page.getByRole('region', { name: 'Cooking sessions' }),
+  ).toHaveCount(0);
 });

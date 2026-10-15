@@ -295,6 +295,16 @@ export function App({
     ]);
   }
 
+  async function finishSession(session: CookingSession) {
+    await saveCookingSession({ ...session, completedAt: Date.now() });
+    setSessions((current) => current.filter((item) => item.id !== session.id));
+    window.location.hash = recipes.some(
+      (recipe) => recipe.id === session.recipe.id,
+    )
+      ? recipeUrl(session.recipe.id)
+      : '#/';
+  }
+
   async function save(recipe: Recipe) {
     await saveRecipe(recipe);
     setRecipes((current) => [
@@ -368,6 +378,7 @@ export function App({
                 (recipe) => recipe.id === selectedSession.recipe.id,
               )}
               onSave={saveSession}
+              onFinish={() => finishSession(selectedSession)}
             />
           ) : route === '#/recipes/new' || (selected && editing) ? (
             <RecipeForm

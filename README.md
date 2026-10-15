@@ -74,6 +74,8 @@ including after reopening offline. Starting another session captures the current
 recipe without replacing an earlier session. Recipe edits, including edits in
 another tab, show a changed-recipe notice in an existing session while its
 captured ingredients, instructions, order, and scale stay unchanged.
+On the last step, **Finish cooking** saves completion and returns to the recipe.
+Finished sessions no longer appear in the resume links, including after reopening.
 
 Each step offers a timer with a duration in minutes, including fractional minutes.
 Timers run independently across steps. **Pause timer** holds the remaining time,
