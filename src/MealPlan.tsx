@@ -78,7 +78,7 @@ function PlannedCookingCard({
           'Recipe unavailable'
         )}
       </h3>
-      {cooking.label && <p>{cooking.label}</p>}
+      {recipe?.label && <p className="recipe-label">{recipe.label}</p>}
       <p>
         <strong>
           {cooking.portions} {cooking.portions === 1 ? 'portion' : 'portions'}{' '}

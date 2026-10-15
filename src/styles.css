@@ -384,6 +384,9 @@ h2 {
   color: var(--muted);
   font-size: 12px;
 }
+.recipe-label {
+  overflow-wrap: anywhere;
+}
 .card-footer {
   display: flex;
   justify-content: space-between;

@@ -82,6 +82,7 @@ pub struct CookingStep {
 pub struct RecipeDraft {
     pub id: String,
     pub name: String,
+    pub label: Option<String>,
     pub base_portions: Option<f64>,
     pub ingredients: Vec<IngredientDraft>,
     pub steps: Vec<CookingStepDraft>,
@@ -103,6 +104,9 @@ pub struct Ingredient {
 pub struct Recipe {
     pub id: String,
     pub name: String,
+    // Keep unlabeled recipes compatible with existing cooking snapshots.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
     pub base_portions: f64,
     pub ingredients: Vec<Ingredient>,
     pub steps: Vec<CookingStep>,
@@ -273,6 +277,10 @@ pub fn validate_recipe(draft: RecipeDraft) -> Result<Recipe, Vec<FieldError>> {
     Ok(Recipe {
         id: draft.id,
         name: draft.name.trim().to_owned(),
+        label: draft
+            .label
+            .map(|label| label.trim().to_owned())
+            .filter(|label| !label.is_empty()),
         base_portions: draft.base_portions.unwrap_or_default(),
         ingredients: draft
             .ingredients

@@ -192,15 +192,22 @@ Recipe-linked entries and dated nutrition goals are subsequent additions.
 Open **Meal plan** for a Monday–Sunday cooking schedule. Use **Previous week**,
 **Next week**, **This week**, or **Week containing** to choose a period.
 **Plan cooking** schedules a current recipe with a cooking date and positive portion
-count, including fractional portions. Set the total quantity for everyone you are
+count, including fractional portions. Selecting a recipe defaults **Portions to cook**
+to that recipe's **Base yield**. Override this to set the total quantity for everyone you are
 feeding: four portions can provide dinner and the next day's lunch for two people.
 Multiple entries can share a date and recipe; each can have its own optional cooking
-time and label. **Edit planned cooking** changes that entry's recipe, date, portions,
-time, or label. Saving in the weekly view opens the week containing the saved date;
+time. **Edit planned cooking** changes that entry's recipe, date, portions,
+or time. Opening an existing entry retains its saved portions; selecting a different
+recipe defaults the quantity to that recipe's base yield. Saving in the weekly view opens the week containing the saved date;
 **Cancel** leaves the saved entry unchanged.
 
+Assign or clear **Label (optional)** in the recipe editor. The label belongs to the
+shared recipe and appears in its collection card, recipe view, and every planned
+cooking of that recipe. Editing the recipe label updates those views; planned
+cookings do not have individual labels.
+
 **Today** shows only today's scheduled cooking, with each recipe's current active
-and total times, portions to cook, and optional time and label. It updates when the
+and total times and label, portions to cook, and optional cooking time. It updates when the
 local date changes. Recipe links open current contents, and edits in another tab
 refresh the displayed recipe information. Times left blank are identified as
 unspecified. Dates and optional times keep their entered local calendar values.

@@ -89,6 +89,7 @@ function RecipeDetails({
         <div>
           <p className="eyebrow">From your collection</p>
           <h1>{recipe.name}</h1>
+          {recipe.label && <p className="recipe-label">{recipe.label}</p>}
         </div>
         <a className="button secondary" href={`${recipeUrl(recipe.id)}/edit`}>
           Edit recipe
@@ -632,6 +633,9 @@ export function App({
                         )}
                         <p className="eyebrow">Your recipe</p>
                         <h2>{recipe.name}</h2>
+                        {recipe.label && (
+                          <p className="recipe-label">{recipe.label}</p>
+                        )}
                         {ratings[recipe.id] && (
                           <p>Your rating: {ratings[recipe.id]!.value} / 5</p>
                         )}

@@ -25,9 +25,8 @@ export function PlannedCookingForm({
         id: crypto.randomUUID(),
         recipeId: '',
         cookingDate: date,
-        portions: 2,
+        portions: null,
         cookingTime: null,
-        label: null,
       },
   );
   const [errors, setErrors] = useState<FieldError[]>([]);
@@ -122,7 +121,13 @@ export function PlannedCookingForm({
               autoFocus
               value={draft.recipeId}
               onChange={(event) =>
-                setDraft({ ...draft, recipeId: event.target.value })
+                setDraft({
+                  ...draft,
+                  recipeId: event.target.value,
+                  portions:
+                    recipes.find((recipe) => recipe.id === event.target.value)
+                      ?.basePortions ?? null,
+                })
               }
             >
               <option value="">Choose a recipe</option>
@@ -183,16 +188,6 @@ export function PlannedCookingForm({
                     ...draft,
                     cookingTime: event.target.value || null,
                   })
-                }
-              />
-            </label>
-            <label>
-              Label (optional)
-              <input
-                {...fieldStatus('label')}
-                value={draft.label ?? ''}
-                onChange={(event) =>
-                  setDraft({ ...draft, label: event.target.value || null })
                 }
               />
             </label>

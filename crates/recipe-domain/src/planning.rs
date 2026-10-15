@@ -13,7 +13,6 @@ pub struct PlannedCooking {
     pub cooking_date: String,
     pub portions: Option<f64>,
     pub cooking_time: Option<String>,
-    pub label: Option<String>,
 }
 
 pub fn validate_planned_cooking(
@@ -61,9 +60,5 @@ pub fn validate_planned_cooking(
         return Err(errors);
     }
     cooking.cooking_time = cooking.cooking_time.filter(|time| !time.is_empty());
-    cooking.label = cooking
-        .label
-        .map(|label| label.trim().to_owned())
-        .filter(|label| !label.is_empty());
     Ok(cooking)
 }
