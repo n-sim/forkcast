@@ -28,6 +28,7 @@ import { CookingView } from './CookingView';
 import { CookingConflictDialog } from './CookingConflictDialog';
 import { SuspendedCookingBar } from './SuspendedCookingBar';
 import { BackendAccounts, useBackendConnection } from './BackendAccounts';
+import { FoodLog } from './FoodLog';
 
 function subscribeToRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -295,6 +296,7 @@ export function App({
     () => window.location.hash || '#/',
   );
   const settingsOpen = route === '#/settings' || route === '#/backend';
+  const foodLogOpen = route === '#/food-log';
   const editing = route.endsWith('/edit');
   const selected = recipes.find(
     (recipe) => recipeUrl(recipe.id) === (editing ? route.slice(0, -5) : route),
@@ -304,13 +306,13 @@ export function App({
   );
   const suspendedSession =
     !selectedSession &&
-    (route === '#/' || selected || route === '#/recipes/new')
+    (route === '#/' || selected || route === '#/recipes/new' || foodLogOpen)
       ? sessions[0]
       : undefined;
 
   useEffect(() => {
-    document.title = `${selectedSession?.recipe.name ?? selected?.name ?? (settingsOpen ? 'Settings' : route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
-  }, [route, selected, selectedSession, settingsOpen]);
+    document.title = `${selectedSession?.recipe.name ?? selected?.name ?? (settingsOpen ? 'Settings' : foodLogOpen ? 'Food log' : route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
+  }, [route, selected, selectedSession, settingsOpen, foodLogOpen]);
 
   async function saveSession(session: CookingSession) {
     await saveCookingSession(session);
@@ -397,6 +399,13 @@ export function App({
           >
             <span aria-hidden="true">▤</span> Recipe collection
           </a>
+          <a
+            className="nav-link"
+            href="#/food-log"
+            aria-current={foodLogOpen ? 'page' : undefined}
+          >
+            <span aria-hidden="true">◷</span> Food log
+          </a>
         </nav>
         <div className="sidebar-footer">
           <div className="device-note">
@@ -449,7 +458,9 @@ export function App({
               {refreshError}
             </p>
           )}
-          {settingsOpen ? (
+          {foodLogOpen ? (
+            <FoodLog />
+          ) : settingsOpen ? (
             <article>
               <h1>Settings</h1>
               <BackendAccounts connection={connection} />

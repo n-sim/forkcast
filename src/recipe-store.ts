@@ -7,44 +7,7 @@ import {
   type RecipeRating,
 } from './domain';
 import type { CookingSession } from './cooking';
-
-let database: Promise<IDBDatabase> | undefined;
-
-function openDatabase(): Promise<IDBDatabase> {
-  database ??= new Promise((resolve, reject) => {
-    const request = indexedDB.open('forkcast', 3);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains('recipes'))
-        db.createObjectStore('recipes', { keyPath: 'id' });
-      if (!db.objectStoreNames.contains('recipeCoverPhotos'))
-        db.createObjectStore('recipeCoverPhotos', { keyPath: 'recipeId' });
-      if (!db.objectStoreNames.contains('personalRecipeRatings'))
-        db.createObjectStore('personalRecipeRatings', {
-          keyPath: ['personId', 'recipeId'],
-        }).createIndex('personId', 'personId');
-      // Standalone has one person without login; sync can later map this identity
-      // to an account without moving personal ratings into shared recipe data.
-      if (!db.objectStoreNames.contains('localSettings'))
-        db.createObjectStore('localSettings').put(
-          crypto.randomUUID(),
-          'personId',
-        );
-      db.createObjectStore('cookingSessions', { keyPath: 'id' }).createIndex(
-        'personId',
-        'personId',
-      );
-    };
-    request.onsuccess = () => {
-      request.result.onversionchange = () => request.result.close();
-      resolve(request.result);
-    };
-    request.onerror = () => reject(request.error);
-    request.onblocked = () =>
-      reject(new Error('Close other Forkcast tabs and try again.'));
-  });
-  return database;
-}
+import { openDatabase, localPersonId } from './local-store';
 
 export async function loadCookingSessions(): Promise<CookingSession[]> {
   const personId = await localPersonId();
@@ -255,22 +218,6 @@ export async function saveRecipeCoverPhoto(
     transaction.oncomplete = () => resolve();
     transaction.onabort = () => reject(transaction.error);
     transaction.onerror = () => reject(transaction.error);
-  });
-}
-
-async function localPersonId(): Promise<string> {
-  const db = await openDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction('localSettings', 'readonly');
-    const request = transaction.objectStore('localSettings').get('personId');
-    transaction.onabort = () => reject(transaction.error);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => {
-      if (typeof request.result === 'string' && request.result.trim())
-        resolve(request.result);
-      else
-        reject(new Error('This device’s personal identity could not be read.'));
-    };
   });
 }
 
