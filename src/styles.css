@@ -13,6 +13,7 @@
 }
 html {
   scroll-padding-bottom: var(--cooking-bar-height);
+  scrollbar-gutter: stable;
 }
 * {
   box-sizing: border-box;
