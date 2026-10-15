@@ -294,6 +294,7 @@ export function App({
     subscribeToRoute,
     () => window.location.hash || '#/',
   );
+  const settingsOpen = route === '#/settings' || route === '#/backend';
   const editing = route.endsWith('/edit');
   const selected = recipes.find(
     (recipe) => recipeUrl(recipe.id) === (editing ? route.slice(0, -5) : route),
@@ -308,8 +309,8 @@ export function App({
       : undefined;
 
   useEffect(() => {
-    document.title = `${selectedSession?.recipe.name ?? selected?.name ?? (route === '#/backend' ? 'Backend & accounts' : route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
-  }, [route, selected, selectedSession]);
+    document.title = `${selectedSession?.recipe.name ?? selected?.name ?? (settingsOpen ? 'Settings' : route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
+  }, [route, selected, selectedSession, settingsOpen]);
 
   async function saveSession(session: CookingSession) {
     await saveCookingSession(session);
@@ -396,22 +397,26 @@ export function App({
           >
             <span aria-hidden="true">▤</span> Recipe collection
           </a>
-          <a
-            className="nav-link"
-            href="#/backend"
-            aria-current={route === '#/backend' ? 'page' : undefined}
-          >
-            Backend &amp; accounts
-          </a>
         </nav>
-        <div className="device-note">
-          <span className="status-dot" />
-          On this device
-          <p>
-            Your recipes stay in your browser.
-            <br />
-            No account needed.
-          </p>
+        <div className="sidebar-footer">
+          <div className="device-note">
+            <span className="status-dot" />
+            On this device
+            <p>
+              Your recipes stay in your browser.
+              <br />
+              No account needed.
+            </p>
+          </div>
+          <nav aria-label="Settings navigation">
+            <a
+              className="nav-link"
+              href="#/settings"
+              aria-current={settingsOpen ? 'page' : undefined}
+            >
+              <span aria-hidden="true">⚙</span> Settings
+            </a>
+          </nav>
         </div>
       </aside>
       <div className="workspace">
@@ -444,8 +449,11 @@ export function App({
               {refreshError}
             </p>
           )}
-          {route === '#/backend' ? (
-            <BackendAccounts connection={connection} />
+          {settingsOpen ? (
+            <article>
+              <h1>Settings</h1>
+              <BackendAccounts connection={connection} />
+            </article>
           ) : selectedSession ? (
             <CookingView
               key={selectedSession.id}

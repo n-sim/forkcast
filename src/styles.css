@@ -112,9 +112,6 @@ textarea:focus-visible {
 .nav-link:hover {
   background: #d9e0cb;
 }
-.nav-link + .nav-link {
-  margin-top: 8px;
-}
 .account-form {
   display: grid;
   gap: 16px;
@@ -146,8 +143,12 @@ textarea:focus-visible {
   flex-wrap: wrap;
   gap: 8px;
 }
-.device-note {
+.sidebar-footer {
   margin-top: auto;
+  display: grid;
+  gap: 24px;
+}
+.device-note {
   padding-top: 30px;
   font-size: 12px;
   font-weight: 600;
@@ -826,6 +827,9 @@ dialog .form-actions {
   .brand-tagline,
   .device-note {
     display: none;
+  }
+  .sidebar-footer {
+    margin-top: 0;
   }
   .topbar {
     height: 60px;

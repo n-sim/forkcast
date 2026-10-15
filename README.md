@@ -37,7 +37,8 @@ npm run backend:dev
 
 The Rust backend listens at `http://127.0.0.1:8787` and creates `forkcast.sqlite3`
 in the working directory. SQLite is bundled; no database server is needed. Use
-**Backend & accounts** in the frontend, enter that URL, and choose **Connect backend**.
+**Settings** at the bottom of the sidebar, then use its **Backend & accounts** section
+to enter that URL and choose **Connect backend**.
 An empty instance offers **Set up your household**: enter a household name, username,
 and password to create its administrator. Each instance has one household. Setup
 is atomic: concurrent requests cannot create another administrator or household.

@@ -92,7 +92,7 @@ function HouseholdAccounts({ config }: { config: BackendConfig }) {
 
   return (
     <section className="panel account-form">
-      <h2>Household accounts</h2>
+      <h3>Household accounts</h3>
       {error && (
         <p role="alert" className="error-banner">
           {error}
@@ -157,7 +157,7 @@ function HouseholdAccounts({ config }: { config: BackendConfig }) {
             void change(resetAccount, { password: replacementPassword });
           }}
         >
-          <h3>Reset password for {resetAccount.username}</h3>
+          <h4>Reset password for {resetAccount.username}</h4>
           <label>
             Replacement password
             <input
@@ -189,7 +189,7 @@ function HouseholdAccounts({ config }: { config: BackendConfig }) {
         </form>
       )}
       <form className="account-form" onSubmit={(event) => void create(event)}>
-        <h3>Create a household account</h3>
+        <h4>Create a household account</h4>
         <p>
           No email or external identity provider is required. Household members
           use their own username and password.
@@ -416,10 +416,10 @@ export function BackendAccounts({
   }
 
   return (
-    <article>
-      <h1>Backend &amp; accounts</h1>
+    <section aria-labelledby="backend-accounts-heading">
+      <h2 id="backend-accounts-heading">Backend &amp; accounts</h2>
       <section className="panel">
-        <h2>Standalone records stay on this device</h2>
+        <h3>Standalone records stay on this device</h3>
         <p>
           Recipes, photos, personal ratings, and cooking sessions remain in this
           browser. Connecting an account does not upload, merge, or replace
@@ -440,7 +440,7 @@ export function BackendAccounts({
             void run(() => connection.connect(url));
           }}
         >
-          <h2>Connect a self-hosted instance</h2>
+          <h3>Connect a self-hosted instance</h3>
           <label>
             Backend URL
             <input
@@ -461,7 +461,7 @@ export function BackendAccounts({
             <p role="status">Checking connection…</p>
           ) : connection.session ? (
             <>
-              <h2>{connection.session.household.name}</h2>
+              <h3>{connection.session.household.name}</h3>
               <p>
                 Signed in as{' '}
                 <strong>{connection.session.account.username}</strong> (
@@ -485,9 +485,9 @@ export function BackendAccounts({
             </>
           ) : !connection.connectionError ? (
             <form className="account-form" onSubmit={submit}>
-              <h2>
+              <h3>
                 {connection.setupRequired ? 'Set up your household' : 'Sign in'}
-              </h2>
+              </h3>
               {connection.setupRequired && (
                 <>
                   <p>
@@ -578,6 +578,6 @@ export function BackendAccounts({
         connection.session?.account.role === 'administrator' && (
           <HouseholdAccounts config={connection.config} />
         )}
-    </article>
+    </section>
   );
 }

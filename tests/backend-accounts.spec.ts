@@ -2,7 +2,7 @@ import { expect, test } from './backend-fixture';
 import type { Page } from '@playwright/test';
 
 async function connect(page: Page, url: string) {
-  await page.goto('/#/backend');
+  await page.goto('/#/settings');
   await page.getByLabel('Backend URL').fill(url);
   await page
     .getByRole('button', { name: 'Connect backend', exact: true })
@@ -38,7 +38,10 @@ test('standalone records remain available without configuring an account', async
   await page.getByLabel('Ingredient 1 quantity').fill('250');
   await page.getByLabel('Step 1 instruction').fill('Boil the pasta.');
   await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
-  await page.getByRole('link', { name: 'Backend & accounts' }).click();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Settings', level: 1 }),
+  ).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Backend & accounts' }),
   ).toBeVisible();
@@ -179,7 +182,7 @@ test('set up the first administrator and reconnect after reopening without losin
   await page.getByLabel('Ingredient 1 quantity').fill('250');
   await page.getByLabel('Step 1 instruction').fill('Boil it.');
   await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
-  await page.getByRole('link', { name: 'Backend & accounts' }).click();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByLabel('Backend URL').fill(backend.url);
   await page
     .getByRole('button', { name: 'Connect backend', exact: true })
@@ -207,7 +210,7 @@ test('set up the first administrator and reconnect after reopening without losin
     .getByRole('link', { name: 'Recipe collection', exact: true })
     .click();
   await expect(page.getByRole('link', { name: 'Keep my pasta' })).toBeVisible();
-  await page.getByRole('link', { name: 'Backend & accounts' }).click();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await page.getByLabel('Username', { exact: true }).fill('noah');
   await page
@@ -325,7 +328,7 @@ test('backend outages and disconnecting preserve standalone photos, ratings, and
   await expect(
     page.getByRole('status', { name: 'Backend connection' }),
   ).toContainText('Backend unavailable');
-  await page.getByRole('link', { name: 'Backend & accounts' }).click();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Backend unavailable');
   await page.getByRole('button', { name: 'Disconnect backend' }).click();
   await expect(
