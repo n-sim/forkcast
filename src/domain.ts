@@ -1,5 +1,6 @@
 import initialize, {
   validate_recipe,
+  validate_recipe_rating,
 } from '../crates/recipe-domain/pkg/forkcast_recipe_domain';
 
 export type Difficulty = 'easy' | 'medium' | 'challenging';
@@ -33,6 +34,12 @@ export interface Recipe extends RecipeDraft {
   ingredients: (IngredientDraft & { quantity: number })[];
 }
 
+export interface RecipeRating {
+  personId: string;
+  recipeId: string;
+  value: number;
+}
+
 export interface FieldError {
   path: string;
   message: string;
@@ -53,4 +60,8 @@ export function validateRecipe(draft: RecipeDraft): {
   errors: FieldError[];
 } {
   return validate_recipe(draft);
+}
+
+export function validateRecipeRating(rating: RecipeRating): RecipeRating {
+  return validate_recipe_rating(rating);
 }

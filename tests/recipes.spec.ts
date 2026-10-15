@@ -11,6 +11,292 @@ async function createSimpleRecipe(page: Page, name = 'Tomato pasta') {
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
 }
 
+test('attach a recipe cover photo and recognize it in the collection after reopening offline', async ({
+  page,
+  context,
+}) => {
+  await createSimpleRecipe(page);
+  const savedUrl = page.url();
+  await page
+    .getByLabel('Cover photo', { exact: true })
+    .setInputFiles('tests/fixtures/cover-photo.png');
+  await expect(
+    page.getByRole('status', { name: 'Cover photo status' }),
+  ).toContainText('Cover photo saved');
+  const photo = page.getByRole('img', { name: 'Tomato pasta cover photo' });
+  await expect(photo).toBeVisible();
+  await expect(photo).toHaveJSProperty('naturalWidth', 48);
+  await page
+    .getByRole('link', { name: 'Recipe collection', exact: true })
+    .click();
+  await expect(photo).toBeVisible();
+  await expect(photo).toHaveJSProperty('naturalWidth', 48);
+
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+  await page.close();
+  await context.setOffline(true);
+  const reopened = await context.newPage();
+  await reopened.goto(savedUrl);
+  await expect(
+    reopened.getByRole('img', { name: 'Tomato pasta cover photo' }),
+  ).toHaveJSProperty('naturalWidth', 48);
+  await expect(
+    reopened.getByRole('list', { name: 'Ingredients' }),
+  ).toContainText('250 g Pasta');
+  await reopened
+    .getByRole('link', { name: 'Recipe collection', exact: true })
+    .click();
+  await expect(
+    reopened.getByRole('img', { name: 'Tomato pasta cover photo' }),
+  ).toHaveJSProperty('naturalWidth', 48);
+});
+
+test('replace and remove only the selected recipe cover photo while keeping its identity and contents', async ({
+  page,
+}) => {
+  await createSimpleRecipe(page);
+  const savedUrl = page.url();
+  await page
+    .getByLabel('Cover photo', { exact: true })
+    .setInputFiles('tests/fixtures/cover-photo.png');
+  await expect(
+    page.getByRole('status', { name: 'Cover photo status' }),
+  ).toContainText('Cover photo saved');
+  await createSimpleRecipe(page, 'Other recipe');
+  await page
+    .getByLabel('Cover photo', { exact: true })
+    .setInputFiles('tests/fixtures/cover-photo.png');
+  await expect(
+    page.getByRole('status', { name: 'Cover photo status' }),
+  ).toContainText('Cover photo saved');
+
+  await page.goto(savedUrl);
+  await page
+    .getByLabel('Cover photo', { exact: true })
+    .setInputFiles('tests/fixtures/replacement-photo.png');
+  await expect(
+    page.getByRole('status', { name: 'Cover photo status' }),
+  ).toContainText('Cover photo saved');
+  await page.reload();
+  await expect(
+    page.getByRole('img', { name: 'Tomato pasta cover photo' }),
+  ).toHaveJSProperty('naturalWidth', 64);
+  await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
+  await page.getByLabel('Recipe name').fill('My pasta');
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await expect(page).toHaveURL(savedUrl);
+  await expect(
+    page.getByRole('img', { name: 'My pasta cover photo' }),
+  ).toHaveJSProperty('naturalWidth', 64);
+
+  await page
+    .getByRole('button', { name: 'Remove cover photo', exact: true })
+    .click();
+  await expect(
+    page.getByRole('status', { name: 'Cover photo status' }),
+  ).toContainText('Cover photo removed');
+  await page.reload();
+  await expect(page).toHaveURL(savedUrl);
+  await expect(
+    page.getByRole('heading', { name: 'My pasta', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('img', { name: 'My pasta cover photo' }),
+  ).toHaveCount(0);
+  await expect(page.getByRole('list', { name: 'Ingredients' })).toHaveText(
+    '250 g Pasta',
+  );
+  await expect(page.getByRole('list', { name: 'Cooking steps' })).toHaveText(
+    'Boil the pasta.',
+  );
+  await page
+    .getByRole('link', { name: 'Recipe collection', exact: true })
+    .click();
+  await expect(page.getByRole('link', { name: 'My pasta' })).toHaveCount(1);
+  await expect(
+    page.getByRole('img', { name: 'My pasta cover photo' }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('img', { name: 'Other recipe cover photo' }),
+  ).toHaveJSProperty('naturalWidth', 48);
+});
+
+test('record and edit a personal recipe rating independently of shared recipe metadata', async ({
+  page,
+  context,
+}) => {
+  await createSimpleRecipe(page);
+  const savedUrl = page.url();
+  await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
+  await page.getByLabel('Difficulty').selectOption('challenging');
+  await page.getByLabel('Active time (minutes)').fill('15');
+  await page.getByLabel('Total time (minutes)').fill('40');
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await page
+    .getByLabel('Cover photo', { exact: true })
+    .setInputFiles('tests/fixtures/cover-photo.png');
+  await expect(
+    page.getByRole('status', { name: 'Cover photo status' }),
+  ).toContainText('Cover photo saved');
+
+  await page.getByLabel('Your rating', { exact: true }).selectOption('4');
+  await page.getByRole('button', { name: 'Save rating', exact: true }).click();
+  await expect(
+    page.getByRole('status', { name: 'Rating status' }),
+  ).toContainText('Your rating saved');
+  await page.close();
+  const reopened = await context.newPage();
+  await reopened.goto(savedUrl);
+  await expect(reopened.getByLabel('Your rating', { exact: true })).toHaveValue(
+    '4',
+  );
+  await reopened.getByLabel('Your rating', { exact: true }).selectOption('2');
+  await reopened
+    .getByRole('button', { name: 'Save rating', exact: true })
+    .click();
+  await expect(
+    reopened.getByRole('status', { name: 'Rating status' }),
+  ).toContainText('Your rating saved');
+  await reopened.reload();
+  await expect(reopened).toHaveURL(savedUrl);
+  await expect(reopened.getByLabel('Your rating', { exact: true })).toHaveValue(
+    '2',
+  );
+  await expect(reopened.getByLabel('Recipe details')).toContainText(
+    'Challenging',
+  );
+  await expect(reopened.getByLabel('Recipe details')).toContainText('15 min');
+  await expect(reopened.getByLabel('Recipe details')).toContainText('40 min');
+  await expect(
+    reopened.getByRole('img', { name: 'Tomato pasta cover photo' }),
+  ).toHaveJSProperty('naturalWidth', 48);
+
+  await reopened
+    .getByRole('link', { name: 'Edit recipe', exact: true })
+    .click();
+  await reopened.getByLabel('Difficulty').selectOption('easy');
+  await reopened
+    .getByRole('button', { name: 'Save recipe', exact: true })
+    .click();
+  await expect(reopened).toHaveURL(savedUrl);
+  await reopened.reload();
+  await expect(reopened.getByLabel('Your rating', { exact: true })).toHaveValue(
+    '2',
+  );
+  await expect(reopened.getByLabel('Recipe details')).toContainText('Easy');
+  await reopened
+    .getByRole('link', { name: 'Recipe collection', exact: true })
+    .click();
+  await expect(
+    reopened.getByRole('link', { name: 'Tomato pasta' }),
+  ).toContainText('Your rating: 2 / 5');
+  await createSimpleRecipe(reopened, 'Unrated recipe');
+  await expect(reopened.getByLabel('Your rating', { exact: true })).toHaveValue(
+    '',
+  );
+});
+
+test('reject unreadable and oversized photos without losing the attached cover photo', async ({
+  page,
+}) => {
+  await createSimpleRecipe(page);
+  const picker = page.getByLabel('Cover photo', { exact: true });
+  await picker.setInputFiles('tests/fixtures/cover-photo.png');
+  await expect(
+    page.getByRole('status', { name: 'Cover photo status' }),
+  ).toContainText('Cover photo saved');
+
+  await picker.setInputFiles({
+    name: 'notes.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Not a photo'),
+  });
+  await expect(page.getByRole('alert')).toContainText(
+    'Choose a JPEG, PNG, or WebP photo',
+  );
+  await picker.setInputFiles({
+    name: 'broken.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('Not a PNG'),
+  });
+  await expect(page.getByRole('alert')).toContainText(
+    'This photo could not be read',
+  );
+  await picker.setInputFiles({
+    name: 'too-large.png',
+    mimeType: 'image/png',
+    buffer: Buffer.alloc(10 * 1024 * 1024 + 1),
+  });
+  await expect(page.getByRole('alert')).toContainText(
+    'Choose a photo smaller than 10 MB',
+  );
+  await picker.setInputFiles([]);
+  await page.reload();
+  await expect(
+    page.getByRole('img', { name: 'Tomato pasta cover photo' }),
+  ).toHaveJSProperty('naturalWidth', 48);
+});
+
+test('keep unsaved ratings out of the collection and edit or clear a saved rating offline', async ({
+  page,
+  context,
+}) => {
+  await createSimpleRecipe(page);
+  const savedUrl = page.url();
+  await page.getByLabel('Your rating', { exact: true }).selectOption('5');
+  await page.getByRole('button', { name: 'Save rating', exact: true }).click();
+  await expect(
+    page.getByRole('status', { name: 'Rating status' }),
+  ).toContainText('Your rating saved');
+  await page.getByLabel('Your rating', { exact: true }).selectOption('1');
+  await page
+    .getByRole('link', { name: 'Recipe collection', exact: true })
+    .click();
+  await expect(page.getByRole('link', { name: 'Tomato pasta' })).toContainText(
+    'Your rating: 5 / 5',
+  );
+  await page.getByRole('link', { name: 'Tomato pasta' }).click();
+  await expect(page.getByLabel('Your rating', { exact: true })).toHaveValue(
+    '5',
+  );
+
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+  await page.reload();
+  await context.setOffline(true);
+  await page.getByLabel('Your rating', { exact: true }).selectOption('1');
+  await page.getByRole('button', { name: 'Save rating', exact: true }).click();
+  await expect(
+    page.getByRole('status', { name: 'Rating status' }),
+  ).toContainText('Your rating saved');
+  await page.close();
+  const reopened = await context.newPage();
+  await reopened.goto(savedUrl);
+  await expect(reopened.getByLabel('Your rating', { exact: true })).toHaveValue(
+    '1',
+  );
+  await reopened.getByLabel('Your rating', { exact: true }).selectOption('');
+  await reopened
+    .getByRole('button', { name: 'Save rating', exact: true })
+    .click();
+  await expect(
+    reopened.getByRole('status', { name: 'Rating status' }),
+  ).toContainText('Your rating removed');
+  await reopened.reload();
+  await expect(reopened.getByLabel('Your rating', { exact: true })).toHaveValue(
+    '',
+  );
+  await reopened
+    .getByRole('link', { name: 'Recipe collection', exact: true })
+    .click();
+  await expect(
+    reopened.getByRole('link', { name: 'Tomato pasta' }),
+  ).not.toContainText('Your rating:');
+});
+
 test('create a recipe, then close and reopen it with its saved quantities and ordered instructions', async ({
   page,
   context,

@@ -35,13 +35,29 @@ transaction completes. Active time means dedicated work or attention; total time
 means elapsed preparation time until the dish is ready. Difficulty and times may be
 left unspecified.
 
+Open a recipe to attach or replace its cover photo (JPEG, PNG, or WebP, up to
+10 MB), or remove it with **Remove cover photo**. Photos save automatically and
+appear in both the recipe view and collection, including offline. Replacing or
+removing a photo keeps the recipe and its contents.
+
+Use **Your rating** and **Save rating** to record a personal score from 1 to 5.
+Choose **Not rated** and save to clear it. The collection shows your saved score;
+leaving without saving keeps the previous rating. Ratings do not change the
+recipe’s shared difficulty, active time, or total time.
+
+Cover photos are stored as household recipe assets keyed by recipe identity.
+Ratings are separate personal records keyed by a persistent local person identity
+and recipe identity. Standalone mode has one local person without login; a later
+account/sync slice can map that identity to an account. Existing recipe collections
+upgrade in place without discarding recipes.
+
 The production build caches the application and WebAssembly assets using a service
 worker. After the first online visit and cache installation, it can reopen offline.
 The development server does not install an offline cache. Manual recipe actions do
 not contact external services.
 
 Browser data belongs to the browser profile and origin. Clearing site data removes
-the collection; private browsing may discard it when the session ends. Cross-device
+recipes, photos, and ratings; private browsing may discard them when the session ends. Cross-device
 synchronization and backups require the future optional backend.
 
 ## Development and verification
@@ -76,5 +92,6 @@ Rust changes need a new WebAssembly build; restart `npm run dev` or build it aga
 - `tests/`: browser workflow specifications, the confirmed main testing seam.
 - `docs/adr/` and `GLOSSARY.md`: accepted decisions and domain vocabulary.
 
-This increment implements [issue #2](https://github.com/n-sim/forkcast/issues/2).
+The application implements standalone recipes ([issue #2](https://github.com/n-sim/forkcast/issues/2))
+and recipe cover photos and personal ratings ([issue #3](https://github.com/n-sim/forkcast/issues/3)).
 Planning, guided cooking, nutrition, AI, and backend synchronization are later work.
