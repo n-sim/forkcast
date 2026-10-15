@@ -1,3 +1,4 @@
+pub mod rating;
 pub mod recipe;
 
 use serde::Serialize;
@@ -24,4 +25,12 @@ pub fn validate_recipe(draft: JsValue) -> Result<JsValue, JsValue> {
     };
     let serializer = serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true);
     Ok(result.serialize(&serializer)?)
+}
+
+#[wasm_bindgen]
+pub fn validate_recipe_rating(value: JsValue) -> Result<JsValue, JsValue> {
+    let rating = serde_wasm_bindgen::from_value(value)?;
+    let rating =
+        rating::validate_recipe_rating(rating).map_err(|error| JsValue::from_str(&error))?;
+    Ok(serde_wasm_bindgen::to_value(&rating)?)
 }

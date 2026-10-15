@@ -1,7 +1,13 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { difficultyLabels, type Recipe } from './domain';
-import { saveRecipe } from './recipe-store';
+import { difficultyLabels, type Recipe, type RecipeRating } from './domain';
+import {
+  saveRecipe,
+  saveRecipeCoverPhoto,
+  savePersonalRecipeRating,
+} from './recipe-store';
 import { RecipeForm } from './RecipeForm';
+import { RecipeCoverPhoto, RecipePhotoEditor } from './RecipePhoto';
+import { PersonalRecipeRating } from './RecipeRating';
 
 function subscribeToRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -12,7 +18,19 @@ function recipeUrl(id: string) {
   return `#/recipes/${id}`;
 }
 
-function RecipeDetails({ recipe }: { recipe: Recipe }) {
+function RecipeDetails({
+  recipe,
+  photo,
+  onSavePhoto,
+  rating,
+  onSaveRating,
+}: {
+  recipe: Recipe;
+  photo?: Blob;
+  onSavePhoto: (photo: Blob | null) => Promise<void>;
+  rating?: RecipeRating;
+  onSaveRating: (value: number | null) => Promise<void>;
+}) {
   return (
     <article>
       <div className="page-heading">
@@ -59,6 +77,14 @@ function RecipeDetails({ recipe }: { recipe: Recipe }) {
           <small>Elapsed time until ready to eat</small>
         </div>
       </dl>
+      <div className="recipe-personalization">
+        <RecipePhotoEditor
+          recipeName={recipe.name}
+          photo={photo}
+          onSave={onSavePhoto}
+        />
+        <PersonalRecipeRating value={rating?.value} onSave={onSaveRating} />
+      </div>
       <div className="recipe-content">
         <section className="panel" aria-labelledby="ingredients-heading">
           <p className="eyebrow">What you’ll need</p>
@@ -92,8 +118,18 @@ function RecipeDetails({ recipe }: { recipe: Recipe }) {
   );
 }
 
-export function App({ initialRecipes }: { initialRecipes: Recipe[] }) {
+export function App({
+  initialRecipes,
+  initialCoverPhotos,
+  initialRatings,
+}: {
+  initialRecipes: Recipe[];
+  initialCoverPhotos: Record<string, Blob>;
+  initialRatings: Record<string, RecipeRating>;
+}) {
   const [recipes, setRecipes] = useState(initialRecipes);
+  const [coverPhotos, setCoverPhotos] = useState(initialCoverPhotos);
+  const [ratings, setRatings] = useState(initialRatings);
   const route = useSyncExternalStore(
     subscribeToRoute,
     () => window.location.hash || '#/',
@@ -177,7 +213,33 @@ export function App({ initialRecipes }: { initialRecipes: Recipe[] }) {
               }}
             />
           ) : selected ? (
-            <RecipeDetails recipe={selected} />
+            <RecipeDetails
+              key={selected.id}
+              recipe={selected}
+              photo={coverPhotos[selected.id]}
+              rating={ratings[selected.id]}
+              onSaveRating={async (value) => {
+                const rating = await savePersonalRecipeRating(
+                  selected.id,
+                  value,
+                );
+                setRatings((current) => {
+                  const next = { ...current };
+                  if (rating) next[selected.id] = rating;
+                  else delete next[selected.id];
+                  return next;
+                });
+              }}
+              onSavePhoto={async (photo) => {
+                await saveRecipeCoverPhoto(selected.id, photo);
+                setCoverPhotos((current) => {
+                  const next = { ...current };
+                  if (photo) next[selected.id] = photo;
+                  else delete next[selected.id];
+                  return next;
+                });
+              }}
+            />
           ) : route !== '#/' ? (
             <div className="empty-state">
               <h1>Recipe not found</h1>
@@ -237,11 +299,22 @@ export function App({ initialRecipes }: { initialRecipes: Recipe[] }) {
                         key={recipe.id}
                         href={recipeUrl(recipe.id)}
                       >
-                        <span className="card-icon" aria-hidden="true">
-                          ▤
-                        </span>
+                        {coverPhotos[recipe.id] ? (
+                          <RecipeCoverPhoto
+                            photo={coverPhotos[recipe.id]!}
+                            recipeName={recipe.name}
+                            className="card-cover"
+                          />
+                        ) : (
+                          <span className="card-icon" aria-hidden="true">
+                            ▤
+                          </span>
+                        )}
                         <p className="eyebrow">Your recipe</p>
                         <h2>{recipe.name}</h2>
+                        {ratings[recipe.id] && (
+                          <p>Your rating: {ratings[recipe.id]!.value} / 5</p>
+                        )}
                         <p>
                           {recipe.basePortions} portions
                           <span aria-hidden="true"> · </span>

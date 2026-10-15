@@ -1,7 +1,11 @@
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { initializeDomain } from './domain';
-import { loadRecipes } from './recipe-store';
+import {
+  loadRecipes,
+  loadRecipeCoverPhotos,
+  loadPersonalRecipeRatings,
+} from './recipe-store';
 import './styles.css';
 
 const root = createRoot(document.getElementById('root')!);
@@ -9,8 +13,18 @@ const root = createRoot(document.getElementById('root')!);
 async function start() {
   try {
     await initializeDomain();
-    const recipes = await loadRecipes();
-    root.render(<App initialRecipes={recipes} />);
+    const [recipes, coverPhotos, ratings] = await Promise.all([
+      loadRecipes(),
+      loadRecipeCoverPhotos(),
+      loadPersonalRecipeRatings(),
+    ]);
+    root.render(
+      <App
+        initialRecipes={recipes}
+        initialCoverPhotos={coverPhotos}
+        initialRatings={ratings}
+      />,
+    );
   } catch {
     root.render(
       <main className="startup-error">
