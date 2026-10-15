@@ -9,6 +9,8 @@
   "scripts": {
     "wasm:build": "wasm-pack build crates/recipe-domain --target web --out-dir pkg --release --no-pack --no-opt",
     "dev": "npm run wasm:build && vite --host 127.0.0.1",
+    "backend:dev": "cargo run -p forkcast-backend",
+    "backend:build": "cargo build --release -p forkcast-backend",
     "typecheck": "tsc --noEmit",
     "build": "npm run wasm:build && npm run typecheck && vite build",
     "preview": "vite preview --host 127.0.0.1",
