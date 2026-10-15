@@ -89,6 +89,8 @@ pub struct RecipeDraft {
     pub difficulty: Option<Difficulty>,
     pub active_minutes: Option<f64>,
     pub total_minutes: Option<f64>,
+    #[serde(default)]
+    pub nutrition: crate::nutrition::Nutrition,
 }
 
 #[derive(Clone, Serialize)]
@@ -113,6 +115,8 @@ pub struct Recipe {
     pub difficulty: Option<Difficulty>,
     pub active_minutes: Option<f64>,
     pub total_minutes: Option<f64>,
+    #[serde(skip_serializing_if = "crate::nutrition::Nutrition::is_unknown")]
+    pub nutrition: crate::nutrition::Nutrition,
 }
 
 #[derive(Serialize)]
@@ -150,6 +154,14 @@ fn check_identity<'a>(
 /// The native recipe boundary, shared with the browser's WebAssembly entry point.
 pub fn validate_recipe(draft: RecipeDraft) -> Result<Recipe, Vec<FieldError>> {
     let mut errors = Vec::new();
+    draft.nutrition.validate(&mut errors);
+    if valid_positive(draft.base_portions)
+        && let Err(message) = draft
+            .nutrition
+            .scale(1.0 / draft.base_portions.unwrap_or(1.0))
+    {
+        add_error(&mut errors, "basePortions", message);
+    }
     let mut identities = HashSet::new();
     check_identity(&draft.id, "id", &mut identities, &mut errors);
     if draft.name.trim().is_empty() {
@@ -312,5 +324,6 @@ pub fn validate_recipe(draft: RecipeDraft) -> Result<Recipe, Vec<FieldError>> {
         difficulty: draft.difficulty,
         active_minutes: draft.active_minutes,
         total_minutes: draft.total_minutes,
+        nutrition: draft.nutrition,
     })
 }

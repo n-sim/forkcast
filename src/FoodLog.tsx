@@ -1,30 +1,34 @@
 import { useEffect, useState } from 'react';
 import {
-  dailyManualFoodLog,
+  dailyFoodLog,
   localDateTime,
   nutrients,
   type ManualFoodLogEntry,
+  type RecipeFoodLogEntry,
+  type FoodLogData,
 } from './food-log';
 import {
   loadFoodLog,
   saveFoodLogDate,
   saveManualFoodLogEntry,
+  saveRecipeFoodLogEntry,
   subscribeToFoodLogChanges,
 } from './food-log-store';
 import { ManualFoodLogForm } from './ManualFoodLogForm';
+import { RecipeFoodLogForm } from './RecipeFoodLogForm';
+import type { Recipe } from './domain';
+import { nutritionValue } from './nutrition';
 
-const numberFormat = new Intl.NumberFormat('en', {
-  maximumSignificantDigits: 12,
-});
+const emptyLog: FoodLogData = {
+  entries: [],
+  recipeEntries: [],
+  nutritionVersions: [],
+};
 
-function nutritionValue(value: number | null, unit: string) {
-  return value === null ? 'Unknown' : `${numberFormat.format(value)} ${unit}`;
-}
-
-export function FoodLog() {
-  const [entries, setEntries] = useState<ManualFoodLogEntry[]>([]);
+export function FoodLog({ recipes }: { recipes: Recipe[] }) {
+  const [log, setLog] = useState<FoodLogData>(emptyLog);
   const [date, setDate] = useState('');
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<'manual' | 'recipe' | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
@@ -34,7 +38,7 @@ export function FoodLog() {
       try {
         const log = await loadFoodLog();
         if (active) {
-          setEntries(log.entries);
+          setLog(log);
           if (initial) setDate(log.date ?? localDateTime().slice(0, 10));
           setError('');
         }
@@ -56,7 +60,7 @@ export function FoodLog() {
   async function selectDate(date: string) {
     if (!date) return;
     try {
-      dailyManualFoodLog([], date);
+      dailyFoodLog(emptyLog, date);
       await saveFoodLogDate(date);
       setDate(date);
       setMessage('');
@@ -66,14 +70,12 @@ export function FoodLog() {
     }
   }
 
-  async function save(entry: ManualFoodLogEntry) {
-    await saveManualFoodLogEntry(entry);
-    setEntries((current) => [
-      ...current.filter((item) => item.id !== entry.id),
-      entry,
-    ]);
+  async function save(entry: ManualFoodLogEntry | RecipeFoodLogEntry) {
+    if ('recipeId' in entry) await saveRecipeFoodLogEntry(entry);
+    else await saveManualFoodLogEntry(entry);
+    setLog(await loadFoodLog());
     setDate(entry.consumedAt.slice(0, 10));
-    setAdding(false);
+    setAdding(null);
     setMessage('Food-log entry saved on this device.');
     setError('');
   }
@@ -82,7 +84,7 @@ export function FoodLog() {
   let calculationError = '';
   if (date) {
     try {
-      daily = dailyManualFoodLog(entries, date);
+      daily = dailyFoodLog(log, date);
     } catch (error) {
       calculationError = String(error);
     }
@@ -96,17 +98,29 @@ export function FoodLog() {
           <h1>Food log</h1>
           <p>Your personal daily intake.</p>
         </div>
-        <button
-          className="button primary"
-          aria-label="Add manual entry"
-          disabled={!daily || adding}
-          onClick={() => {
-            setAdding(true);
-            setMessage('');
-          }}
-        >
-          + Add manual entry
-        </button>
+        <div className="food-log-actions">
+          <button
+            className="button primary"
+            disabled={!daily || Boolean(adding) || recipes.length === 0}
+            onClick={() => {
+              setAdding('recipe');
+              setMessage('');
+            }}
+          >
+            Log recipe portions
+          </button>
+          <button
+            className="button primary"
+            aria-label="Add manual entry"
+            disabled={!daily || Boolean(adding)}
+            onClick={() => {
+              setAdding('manual');
+              setMessage('');
+            }}
+          >
+            + Add manual entry
+          </button>
+        </div>
       </div>
       {error && (
         <p className="error-banner" role="alert">
@@ -126,7 +140,7 @@ export function FoodLog() {
             <input
               type="date"
               value={date}
-              disabled={adding}
+              disabled={Boolean(adding)}
               onChange={(event) => void selectDate(event.target.value)}
             />
           </label>
@@ -139,11 +153,19 @@ export function FoodLog() {
       <p role="status" aria-label="Food log status">
         {message}
       </p>
-      {adding && (
+      {adding === 'recipe' && (
+        <RecipeFoodLogForm
+          date={date}
+          recipes={recipes}
+          onSave={save}
+          onCancel={() => setAdding(null)}
+        />
+      )}
+      {adding === 'manual' && (
         <ManualFoodLogForm
           date={date}
           onSave={save}
-          onCancel={() => setAdding(false)}
+          onCancel={() => setAdding(null)}
         />
       )}
       {daily && (
@@ -183,12 +205,18 @@ export function FoodLog() {
                 {daily.entries.map((entry) => (
                   <li key={entry.id} className="panel">
                     <p className="eyebrow">
-                      Manual entry ·{' '}
+                      {entry.recipeId ? 'Recipe entry' : 'Manual entry'} ·{' '}
                       <time dateTime={entry.consumedAt}>
                         {entry.consumedAt.slice(11)}
                       </time>
                     </p>
                     <h3>{entry.description}</h3>
+                    {entry.portions !== null && (
+                      <p>
+                        {entry.portions}{' '}
+                        {entry.portions === 1 ? 'portion' : 'portions'} eaten
+                      </p>
+                    )}
                     <dl className="recipe-metadata">
                       {nutrients.map(({ key, label, unit }) => (
                         <div key={key}>

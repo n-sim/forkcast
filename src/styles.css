@@ -416,6 +416,11 @@ h2 {
   list-style: none;
   padding: 0;
 }
+.food-log-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
 .meal-plan-days {
   display: grid;
   gap: 16px;

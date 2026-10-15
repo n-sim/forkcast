@@ -8,6 +8,7 @@ import {
 } from './domain';
 import type { CookingSession } from './cooking';
 import { openDatabase, localPersonId } from './local-store';
+import { recipeNutritionChange } from './nutrition';
 
 export async function loadCookingSessions(): Promise<CookingSession[]> {
   const personId = await localPersonId();
@@ -150,13 +151,15 @@ export async function loadRecipes(): Promise<Recipe[]> {
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       try {
-        const recipes = (request.result as RecipeDraft[]).map((stored) => {
+        const recipes = (
+          request.result as (RecipeDraft & { nutritionVersionId?: string })[]
+        ).map((stored) => {
           const { recipe } = validateRecipe(stored);
           if (!recipe)
             throw new Error(
               'A saved recipe could not be read. Your stored data has been kept.',
             );
-          return recipe;
+          return { ...recipe, nutritionVersionId: stored.nutritionVersionId };
         });
         resolve(recipes);
       } catch (error) {
@@ -166,18 +169,46 @@ export async function loadRecipes(): Promise<Recipe[]> {
   });
 }
 
-export async function saveRecipe(recipe: Recipe): Promise<void> {
+export async function saveRecipe(draft: Recipe): Promise<Recipe> {
+  const { recipe } = validateRecipe(draft);
+  if (!recipe) throw new Error('Check the recipe before saving.');
   const db = await openDatabase();
-  await new Promise<void>((resolve, reject) => {
-    const transaction = db.transaction('recipes', 'readwrite');
-    transaction.objectStore('recipes').put(recipe);
-    transaction.oncomplete = () => resolve();
-    transaction.onabort = () => reject(transaction.error);
+  const saved = await new Promise<Recipe>((resolve, reject) => {
+    const transaction = db.transaction(
+      ['recipes', 'nutritionVersions'],
+      'readwrite',
+    );
+    const recipes = transaction.objectStore('recipes');
+    const previous = recipes.get(recipe.id);
+    let saved: Recipe;
+    let failure: unknown;
+    previous.onsuccess = () => {
+      try {
+        const stored = previous.result as Recipe | undefined;
+        const change = recipeNutritionChange(recipe, stored);
+        const id =
+          !change.changed && stored?.nutritionVersionId
+            ? stored.nutritionVersionId
+            : crypto.randomUUID();
+        if (id !== stored?.nutritionVersionId)
+          transaction
+            .objectStore('nutritionVersions')
+            .add({ id, recipeId: recipe.id, perPortion: change.perPortion });
+        saved = { ...recipe, nutritionVersionId: id };
+        recipes.put(saved);
+      } catch (error) {
+        failure = error;
+        transaction.abort();
+      }
+    };
+    transaction.oncomplete = () => resolve(saved);
+    transaction.onabort = () => reject(failure ?? transaction.error);
     transaction.onerror = () => reject(transaction.error);
   });
   const channel = new BroadcastChannel('forkcast-recipes');
   channel.postMessage('changed');
   channel.close();
+  return saved;
 }
 
 export function subscribeToRecipeChanges(listener: () => void): () => void {

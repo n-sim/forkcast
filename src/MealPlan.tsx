@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { localDateTime, nutrients } from './food-log';
+import { localDateTime } from './food-log';
 import { type PlannedCooking, type PlanningRecipe } from './planning';
 import {
   loadPlannedCookings,
@@ -7,6 +7,8 @@ import {
   subscribeToPlanningChanges,
 } from './planning-store';
 import { PlannedCookingForm } from './PlannedCookingForm';
+import { recipeNutrition } from './nutrition';
+import { NutritionBrief } from './NutritionBrief';
 
 const firstDate = '0001-01-01';
 const lastDate = '9999-12-31';
@@ -59,6 +61,9 @@ function PlannedCookingCard({
   onEdit: () => void;
   editing: boolean;
 }) {
+  const perPortion = recipe ? recipeNutrition(recipe) : null;
+  const hasNutrition =
+    perPortion && Object.values(perPortion).some((value) => value !== null);
   return (
     <article
       className="planned-cooking"
@@ -96,16 +101,8 @@ function PlannedCookingCard({
               ? 'Total time not specified'
               : `${recipe.totalMinutes} min total`}
           </p>
-          {recipe.nutritionPerPortion ? (
-            <p className="section-note">
-              Recipe per portion:{' '}
-              {nutrients
-                .map(
-                  ({ key, label, unit }) =>
-                    `${label}: ${recipe.nutritionPerPortion![key] === null ? 'Unknown' : `${recipe.nutritionPerPortion![key]} ${unit}`}`,
-                )
-                .join(' · ')}
-            </p>
+          {hasNutrition ? (
+            <NutritionBrief perPortion={perPortion} />
           ) : (
             <p className="section-note">Recipe nutrition not available.</p>
           )}

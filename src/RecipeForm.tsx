@@ -12,6 +12,8 @@ import {
 } from './domain';
 import { StepAllocations } from './StepAllocations';
 import { AllocationChecks } from './AllocationChecks';
+import { nutrients } from './food-log';
+import { unknownNutrition } from './nutrition';
 
 function emptyIngredient() {
   return {
@@ -92,7 +94,18 @@ export function RecipeForm({
     setErrors([]);
     try {
       const { recipe, errors } = validateRecipe(draft);
-      if (!recipe) {
+      for (const { key, label } of nutrients) {
+        const input = event.currentTarget.elements.namedItem(
+          `nutrition.${key}`,
+        );
+        if (input instanceof HTMLInputElement && input.validity.badInput) {
+          errors.push({
+            path: `nutrition.${key}`,
+            message: `Enter a valid number for ${label}, or clear it to leave it unknown.`,
+          });
+        }
+      }
+      if (!recipe || errors.length > 0) {
         setErrors(errors);
         requestAnimationFrame(() => errorSummary.current?.focus());
         return;
@@ -461,6 +474,44 @@ export function RecipeForm({
           + Add step
         </button>
         {checks && <AllocationChecks recipe={draft} checks={checks} />}
+      </section>
+      <section className="panel" aria-labelledby="recipe-nutrition-heading">
+        <div className="section-heading">
+          <span className="section-number">04</span>
+          <h2 id="recipe-nutrition-heading">Recipe nutrition</h2>
+        </div>
+        <p className="section-note" id="recipe-nutrition-help">
+          Enter totals for the recipe’s base yield. Leave each unknown value
+          blank; zero means a known zero. Ingredient edits keep these values.
+        </p>
+        <div className="metadata-fields">
+          {nutrients.map(({ key, label, unit }) => (
+            <label key={key}>
+              {label} ({unit})
+              <input
+                {...fieldStatus(`nutrition.${key}`)}
+                name={`nutrition.${key}`}
+                type="number"
+                min="0"
+                step="any"
+                aria-describedby={
+                  fieldStatus(`nutrition.${key}`)['aria-describedby'] ??
+                  'recipe-nutrition-help'
+                }
+                value={draft.nutrition?.[key] ?? ''}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    nutrition: {
+                      ...(draft.nutrition ?? unknownNutrition()),
+                      [key]: numberValue(event.target.value),
+                    },
+                  })
+                }
+              />
+            </label>
+          ))}
+        </div>
       </section>
       <div className="form-actions">
         <p>Saved on this device. Ready when you are.</p>

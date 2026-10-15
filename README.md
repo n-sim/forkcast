@@ -187,7 +187,27 @@ values displays **Unknown**. Entries, unknown values, and the last selected dail
 view persist locally and work offline. Manual entries belong to the persistent
 local person identity and have their own nutrition, independently of recipes,
 plans, and cooking sessions. They do not create reusable foods in a catalog.
-Recipe-linked entries and dated nutrition goals are subsequent additions.
+Dated nutrition goals are a subsequent addition.
+
+In the recipe editor, enter **Recipe nutrition** as totals for the recipe's base
+yield. Calories (kcal), protein, fat, and carbohydrates (g) can each be known or
+left blank independently. Recipe views show whole-recipe and per-portion values;
+planner cards show a brief per-portion overview when any nutrition is known.
+Changing **Cooking portions** or planning more portions keeps this basis unchanged.
+
+In **Food log**, choose **Log recipe portions**, select a recipe, and record
+**Consumed at** and **Portions eaten**, including fractional portions. Each entry
+retains its recipe identity, portion count, and nutrition-version reference. Daily
+totals combine recipe and manual entries, sum known values, and identify unknowns.
+These records persist on this device and remain available offline.
+
+Every calorie or macro change creates a retained nutrition version. Changing a
+recipe's base yield also creates a version: a 2,000 kcal recipe yielding four
+portions has 500 kcal per portion; changing its yield to two gives new entries
+1,000 kcal per portion while past entries keep 500 kcal. Ingredient-only edits
+retain nutrition. Planning and cooking never create consumption entries or
+change per-portion nutrition. Older-version notices and explicitly updating an
+individual entry to current nutrition are subsequent work.
 
 Open **Meal plan** for a Monday–Sunday cooking schedule. Use **Previous week**,
 **Next week**, **This week**, or **Week containing** to choose a period.
@@ -216,9 +236,8 @@ Plans belong to the persistent local person, even when their portions feed other
 household members. They save to IndexedDB, survive reopening offline, and remain
 independent of backend account connections until record synchronization is added.
 Scheduling creates no food-log entries, consumption times, or portion stock.
-Cards support a per-portion recipe nutrition brief when supplied by the recipe
-nutrition workflow; until that workflow is available, they show **Recipe nutrition
-not available**. Daily intake totals remain in **Food log**.
+Cards show a per-portion recipe nutrition brief when at least one value is known,
+otherwise **Recipe nutrition not available**. Daily intake totals remain in **Food log**.
 
 Open a recipe to attach or replace its cover photo (JPEG, PNG, or WebP, up to
 10 MB), or remove it with **Remove cover photo**. Photos save automatically and
@@ -235,9 +254,9 @@ Ratings are separate personal records keyed by a persistent local person identit
 and recipe identity. Standalone mode has one local person without login; a later
 synchronization slice can explicitly map that identity to an account. Existing recipe collections
 upgrade in place without discarding recipes.
-Planned cookings, cooking sessions, and manual food-log entries are separate personal records
+Planned cookings, cooking sessions, and food-log entries are separate personal records
 belonging to that local identity; upgrading storage preserves the identity,
-recipes, cover photos, ratings, plans, and cooking sessions.
+recipes, cover photos, ratings, plans, cooking sessions, and existing food-log entries.
 
 The production build caches the application and WebAssembly assets using a service
 worker. After the first online visit and cache installation, it can reopen offline.
@@ -292,4 +311,6 @@ plus personal weekly planning and today's cooking ([issue #5](https://github.com
 ([issue #4](https://github.com/n-sim/forkcast/issues/4)) and resumable guided cooking
 with foreground timers ([issue #9](https://github.com/n-sim/forkcast/issues/9)) and optional
 backend household accounts ([issue #22](https://github.com/n-sim/forkcast/issues/22)).
-Cooking history, recipe nutrition, AI, record synchronization, and backups are later work.
+Recipe nutrition and retained portion logs are implemented in
+[issue #13](https://github.com/n-sim/forkcast/issues/13).
+Cooking history, AI, record synchronization, and backups are later work.

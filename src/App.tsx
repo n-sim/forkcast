@@ -30,6 +30,7 @@ import { SuspendedCookingBar } from './SuspendedCookingBar';
 import { BackendAccounts, useBackendConnection } from './BackendAccounts';
 import { FoodLog } from './FoodLog';
 import { MealPlan } from './MealPlan';
+import { RecipeNutrition } from './RecipeNutrition';
 
 function subscribeToRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -130,6 +131,7 @@ function RecipeDetails({
           <small>Elapsed time until ready to eat</small>
         </div>
       </dl>
+      <RecipeNutrition recipe={recipe} />
       <div className="recipe-personalization">
         <RecipePhotoEditor
           recipeName={recipe.name}
@@ -375,10 +377,10 @@ export function App({
   }
 
   async function save(recipe: Recipe) {
-    await saveRecipe(recipe);
+    const saved = await saveRecipe(recipe);
     setRecipes((current) => [
       ...current.filter((item) => item.id !== recipe.id),
-      recipe,
+      saved,
     ]);
     window.location.hash = recipeUrl(recipe.id);
   }
@@ -494,7 +496,7 @@ export function App({
               view={planningView}
             />
           ) : foodLogOpen ? (
-            <FoodLog />
+            <FoodLog recipes={recipes} />
           ) : settingsOpen ? (
             <article>
               <h1>Settings</h1>

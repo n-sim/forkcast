@@ -6,6 +6,7 @@ import initialize, {
   step_timer_remaining,
   update_cooking_progress,
 } from '../crates/recipe-domain/pkg/forkcast_recipe_domain';
+import type { Nutrition } from './food-log';
 
 export type Difficulty = 'easy' | 'medium' | 'challenging';
 
@@ -105,11 +106,13 @@ export interface RecipeDraft {
   difficulty: Difficulty | null;
   activeMinutes: number | null;
   totalMinutes: number | null;
+  nutrition?: Nutrition;
 }
 
 export interface Recipe extends RecipeDraft {
   basePortions: number;
   ingredients: (IngredientDraft & { quantity: number })[];
+  nutritionVersionId?: string;
 }
 
 export interface RecipeRating {

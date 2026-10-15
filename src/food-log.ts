@@ -1,8 +1,10 @@
 import {
   validate_manual_food_log_entry,
-  daily_manual_food_log,
+  daily_food_log,
+  validate_recipe_food_log_entry,
 } from '../crates/recipe-domain/pkg/forkcast_recipe_domain';
 import type { FieldError } from './domain';
+import type { NutritionVersion } from './nutrition';
 
 export interface Nutrition {
   calories: number | null;
@@ -16,6 +18,39 @@ export interface ManualFoodLogEntry {
   description: string;
   consumedAt: string;
   nutrition: Nutrition;
+}
+
+export interface RecipeFoodLogEntryDraft {
+  id: string;
+  recipeId: string;
+  recipeName: string;
+  nutritionVersionId: string;
+  consumedAt: string;
+  portions: number | null;
+}
+
+export interface RecipeFoodLogEntry extends RecipeFoodLogEntryDraft {
+  portions: number;
+}
+
+export interface FoodLogEntry extends ManualFoodLogEntry {
+  recipeId: string | null;
+  nutritionVersionId: string | null;
+  portions: number | null;
+}
+
+export interface FoodLogData {
+  entries: ManualFoodLogEntry[];
+  recipeEntries: RecipeFoodLogEntry[];
+  nutritionVersions: NutritionVersion[];
+  date?: string;
+}
+
+export function validateRecipeFoodLogEntry(entry: RecipeFoodLogEntryDraft): {
+  entry: RecipeFoodLogEntry | null;
+  errors: FieldError[];
+} {
+  return validate_recipe_food_log_entry(entry);
 }
 
 export const nutrients = [
@@ -32,18 +67,23 @@ export function validateManualFoodLogEntry(entry: ManualFoodLogEntry): {
   return validate_manual_food_log_entry(entry);
 }
 
-export function dailyManualFoodLog(
-  entries: ManualFoodLogEntry[],
+export function dailyFoodLog(
+  log: FoodLogData,
   date: string,
 ): {
-  entries: ManualFoodLogEntry[];
+  entries: FoodLogEntry[];
   totals: Record<
     keyof Nutrition,
     { knownValue: number | null; unknownEntries: number }
   >;
   incomplete: boolean;
 } {
-  return daily_manual_food_log(entries, date);
+  return daily_food_log(
+    log.entries,
+    log.recipeEntries,
+    log.nutritionVersions,
+    date,
+  );
 }
 
 export function localDateTime(now = new Date()): string {

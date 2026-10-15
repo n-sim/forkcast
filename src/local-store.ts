@@ -2,7 +2,7 @@ let database: Promise<IDBDatabase> | undefined;
 
 export function openDatabase(): Promise<IDBDatabase> {
   database ??= new Promise((resolve, reject) => {
-    const request = indexedDB.open('forkcast', 5);
+    const request = indexedDB.open('forkcast', 6);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains('recipes'))
@@ -34,6 +34,35 @@ export function openDatabase(): Promise<IDBDatabase> {
           'personId',
           'personId',
         );
+      if (!db.objectStoreNames.contains('recipeFoodLogEntries'))
+        db.createObjectStore('recipeFoodLogEntries', {
+          keyPath: 'id',
+        }).createIndex('personId', 'personId');
+      if (!db.objectStoreNames.contains('nutritionVersions')) {
+        const versions = db.createObjectStore('nutritionVersions', {
+          keyPath: 'id',
+        });
+        // Earlier recipes have unknown nutrition. Give each an initial retained
+        // version without changing recipes or any personal records.
+        const cursor = request.transaction!.objectStore('recipes').openCursor();
+        cursor.onsuccess = () => {
+          const item = cursor.result;
+          if (!item) return;
+          const id = crypto.randomUUID();
+          versions.add({
+            id,
+            recipeId: item.value.id,
+            perPortion: {
+              calories: null,
+              protein: null,
+              fat: null,
+              carbohydrates: null,
+            },
+          });
+          item.update({ ...item.value, nutritionVersionId: id });
+          item.continue();
+        };
+      }
     };
     request.onsuccess = () => {
       request.result.onversionchange = () => request.result.close();
