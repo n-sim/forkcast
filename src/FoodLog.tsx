@@ -98,13 +98,14 @@ export function FoodLog() {
         </div>
         <button
           className="button primary"
+          aria-label="Add manual entry"
           disabled={!daily || adding}
           onClick={() => {
             setAdding(true);
             setMessage('');
           }}
         >
-          Add manual entry
+          + Add manual entry
         </button>
       </div>
       {error && (
