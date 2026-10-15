@@ -35,7 +35,11 @@ export function CookingView({
       document.removeEventListener('visibilitychange', tick);
     };
   }, []);
-  const quantities = calculateRecipe(session.recipe, session.portions);
+  const quantities = calculateRecipe(
+    session.recipe,
+    session.portions,
+    session.displayUnits,
+  );
   const step = quantities.steps[session.currentStep]!;
   const lastStep = session.currentStep === quantities.steps.length - 1;
 

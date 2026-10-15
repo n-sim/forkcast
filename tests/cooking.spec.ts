@@ -89,6 +89,98 @@ test('cook scaled step amounts and resume saved navigation after closing and reo
   ).toBeVisible();
 });
 
+for (const { preference, firstStep, secondStep } of [
+  {
+    preference: 'metric',
+    firstStep: '340.19 g Lentils',
+    secondStep: '340.19 g Lentils',
+  },
+  {
+    preference: 'us',
+    firstStep: '0.75 lb Lentils',
+    secondStep: '0.75 lb Lentils',
+  },
+  {
+    preference: 'original',
+    firstStep: '12 oz Lentils',
+    secondStep: '0.75 lb Lentils',
+  },
+] as const) {
+  test(`keep selected ${preference} display units through cooking navigation and offline reopening`, async ({
+    page,
+    context,
+  }) => {
+    await createRecipe(page);
+    await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
+    await page.getByLabel('Ingredient 1 quantity').fill('16');
+    await page.getByLabel('Ingredient 1 unit').selectOption('oz');
+    await page
+      .getByLabel('Step 1 allocation 1 quantity', { exact: true })
+      .fill('8');
+    await page
+      .getByLabel('Step 1 allocation 1 unit', { exact: true })
+      .selectOption('oz');
+    await page
+      .getByLabel('Step 2 allocation 1 quantity', { exact: true })
+      .fill('0.5');
+    await page
+      .getByLabel('Step 2 allocation 1 unit', { exact: true })
+      .selectOption('lb');
+    await page
+      .getByRole('button', { name: 'Save recipe', exact: true })
+      .click();
+    await page.getByLabel('Cooking portions', { exact: true }).fill('3');
+    await page
+      .getByLabel('Display units', { exact: true })
+      .selectOption(preference);
+    const recipeSteps = page.getByRole('list', {
+      name: 'Cooking steps',
+      exact: true,
+    });
+    await expect(recipeSteps).toContainText(firstStep);
+    await expect(recipeSteps).toContainText(secondStep);
+    await page
+      .getByRole('button', { name: 'Start cooking', exact: true })
+      .click();
+    const ingredients = page.getByRole('list', {
+      name: 'Step ingredients',
+      exact: true,
+    });
+    await expect(ingredients).toHaveText(firstStep);
+    const sessionUrl = page.url();
+    await page.getByRole('button', { name: 'Next step', exact: true }).click();
+    await expect(ingredients).toHaveText(secondStep);
+    await page.getByRole('button', { name: 'Back step', exact: true }).click();
+    await expect(ingredients).toHaveText(firstStep);
+    await page
+      .getByRole('link', { name: 'Close cooking', exact: true })
+      .click();
+    await page
+      .getByLabel('Display units', { exact: true })
+      .selectOption(preference === 'metric' ? 'us' : 'metric');
+    await page
+      .getByRole('link', { name: 'Resume cooking', exact: true })
+      .click();
+    await expect(ingredients).toHaveText(firstStep);
+    await page.evaluate(async () => {
+      await navigator.serviceWorker.ready;
+    });
+    await page.close();
+    await context.setOffline(true);
+    const reopened = await context.newPage();
+    await reopened.goto(sessionUrl);
+    const resumedIngredients = reopened.getByRole('list', {
+      name: 'Step ingredients',
+      exact: true,
+    });
+    await expect(resumedIngredients).toHaveText(firstStep);
+    await reopened
+      .getByRole('button', { name: 'Next step', exact: true })
+      .click();
+    await expect(resumedIngredients).toHaveText(secondStep);
+  });
+}
+
 test('finish cooking from the last step and keep only unfinished sessions available after reopening', async ({
   page,
 }) => {
