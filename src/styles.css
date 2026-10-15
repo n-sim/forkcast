@@ -476,7 +476,7 @@ small {
 }
 .allocation-checks {
   padding: 18px 20px;
-  margin-bottom: 24px;
+  margin: 24px 0;
   background: #eff1e8;
   border: 1px solid #d5dacd;
   border-radius: 6px;
