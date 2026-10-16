@@ -669,6 +669,15 @@ dd {
   font-family: Georgia, serif;
   font-size: 23px;
 }
+.conflict-alternatives {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 24px;
+  margin-top: 24px;
+}
+.conflict-alternatives .recipe-content {
+  grid-template-columns: 1fr;
+}
 .recipe-content {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);

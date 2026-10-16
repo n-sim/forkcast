@@ -340,7 +340,6 @@ test('retain both competing recipe edits as unresolved, including a stale editor
   page,
   browser,
   backend,
-  request,
 }) => {
   await createRecipe(page);
   const recipeUrl = page.url();
@@ -384,34 +383,22 @@ test('retain both competing recipe edits as unresolved, including a stale editor
         exact: true,
       }),
     ).toContainText('Both revisions are retained');
-    // This slice has no conflict-choice UI yet; the public HTTP contract proves
-    // both retained contents rather than inspecting SQLite or IndexedDB.
-    const login = await request.post(`${backend.url}/api/login`, {
-      data: { username: 'noah', password: 'a long local password' },
-    });
-    const account = await login.json();
-    const headers = { Authorization: `Bearer ${account.token}` };
     await backend.restart();
-    const response = await request.get(
-      `${backend.url}/api/households/${account.household.id}/recipes`,
-      { headers },
-    );
-    const collection = await response.json();
-    expect(collection.current).toEqual([
-      expect.objectContaining({ unresolved: 1 }),
-    ]);
-    expect(
-      collection.revisions.map(
-        (revision: { recipe: { steps: { instruction: string }[] } }) =>
-          revision.recipe.steps[0]!.instruction,
-      ),
-    ).toEqual(
-      expect.arrayContaining(['Toss with basil.', 'Bake with tomatoes.']),
-    );
     await page.reload();
     await expect(
       page.getByRole('status', { name: 'Recipe edit conflicts', exact: true }),
     ).toContainText('1 unresolved competing edit');
+    await page
+      .getByRole('link', { name: 'Review recipe conflicts', exact: true })
+      .click();
+    const alternatives = page.getByRole('region', { name: /^Revision \d+$/ });
+    await expect(alternatives).toHaveCount(2);
+    await expect(
+      alternatives.filter({ hasText: 'Toss with basil.' }),
+    ).toBeVisible();
+    await expect(
+      alternatives.filter({ hasText: 'Bake with tomatoes.' }),
+    ).toBeVisible();
   } finally {
     await deviceContext.close();
   }
@@ -478,3 +465,324 @@ async function signIn(page: Page, username: string) {
     page.getByRole('status', { name: 'Backend connection' }),
   ).toContainText(username);
 }
+
+test('choose the current recipe after disconnected edits while retaining nutrition and personal records', async ({
+  page,
+  context,
+  browser,
+  backend,
+}) => {
+  await createRecipe(page);
+  const recipeUrl = page.url();
+  await page
+    .getByLabel('Cover photo', { exact: true })
+    .setInputFiles('tests/fixtures/cover-photo.png');
+  await expect(
+    page.getByRole('status', { name: 'Cover photo status' }),
+  ).toContainText('Cover photo saved');
+  await page.getByRole('link', { name: 'Food log', exact: true }).click();
+  await logRecipe(page, '08:00');
+  await connect(page, backend.url, true);
+  await page.getByLabel('New username', { exact: true }).fill('sam');
+  await page
+    .getByLabel('New password', { exact: true })
+    .fill('a long local password');
+  await page.getByRole('button', { name: 'Create household account' }).click();
+  await expect(page.getByRole('row').filter({ hasText: 'sam' })).toContainText(
+    'Active',
+  );
+  const deviceContext = await browser.newContext();
+  try {
+    const device = await deviceContext.newPage();
+    await connect(device, backend.url, false, 'sam');
+    await device.goto(recipeUrl);
+    await page.goto(recipeUrl);
+    await context.setOffline(true);
+    await deviceContext.setOffline(true);
+    for (const [editor, instruction, calories, quantity] of [
+      [page, 'Toss with basil.', '2400', '600'],
+      [device, 'Bake with tomatoes.', '2800', '700'],
+    ] as const) {
+      await editor
+        .getByRole('link', { name: 'Edit recipe', exact: true })
+        .click();
+      await editor.getByLabel('Step 1 instruction').fill(instruction);
+      await editor
+        .getByLabel('Calories (kcal)', { exact: true })
+        .fill(calories);
+      await editor.getByLabel('Ingredient 1 quantity').fill(quantity);
+      await editor
+        .getByRole('button', { name: 'Save recipe', exact: true })
+        .click();
+      await expect(
+        editor.getByRole('heading', { name: 'Household pasta', exact: true }),
+      ).toBeVisible();
+    }
+    await page
+      .getByLabel('Cover photo', { exact: true })
+      .setInputFiles('tests/fixtures/replacement-photo.png');
+    await expect(
+      page.getByRole('status', { name: 'Cover photo status' }),
+    ).toContainText('Cover photo saved');
+    // The first upload is current; the competing upload must remain available for review.
+    await deviceContext.setOffline(false);
+    await syncNow(device);
+    await device.getByRole('link', { name: 'Food log', exact: true }).click();
+    await logRecipe(device, '12:00');
+    await context.setOffline(false);
+    await syncNow(page);
+    await syncNow(device);
+    await page.goto(recipeUrl);
+    await expect(
+      page.getByText('Bake with tomatoes.', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Toss with basil.', { exact: true }),
+    ).toHaveCount(0);
+    await page.getByLabel('Your rating', { exact: true }).selectOption('4');
+    await page
+      .getByRole('button', { name: 'Save rating', exact: true })
+      .click();
+    await expect(
+      page.getByRole('status', { name: 'Rating status' }),
+    ).toContainText('Your rating saved');
+    await syncNow(page);
+    await page
+      .getByRole('link', { name: 'Review recipe conflicts', exact: true })
+      .click();
+    const alternatives = page.getByRole('region', { name: /^Revision \d+$/ });
+    await expect(alternatives).toHaveCount(2);
+    const basil = alternatives.filter({ hasText: 'Toss with basil.' });
+    const tomatoes = alternatives.filter({ hasText: 'Bake with tomatoes.' });
+    await expect(basil).toContainText('600 g');
+    await expect(
+      basil.getByRole('img', { name: 'Household pasta cover photo' }),
+    ).toHaveJSProperty('naturalWidth', 64);
+    await expect(
+      basil.getByRole('region', { name: 'Nutrition per portion', exact: true }),
+    ).toContainText('600 kcal');
+    await expect(tomatoes).toContainText('700 g');
+    await expect(tomatoes).toContainText('Current recipe');
+    await expect(
+      tomatoes.getByRole('img', { name: 'Household pasta cover photo' }),
+    ).toHaveJSProperty('naturalWidth', 48);
+    await expect(
+      tomatoes.getByRole('region', {
+        name: 'Nutrition per portion',
+        exact: true,
+      }),
+    ).toContainText('700 kcal');
+    // Failed choices keep the alternatives available and can be retried.
+    await backend.stop();
+    await basil
+      .getByRole('button', { name: 'Make current', exact: true })
+      .click();
+    await expect(page.getByRole('alert')).toContainText('Backend unavailable');
+    await expect(alternatives).toHaveCount(2);
+    await backend.restart();
+    await basil
+      .getByRole('button', { name: 'Make current', exact: true })
+      .click();
+    await expect(
+      page.getByText('No unresolved recipe conflicts.', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('status', { name: 'Recipe edit conflicts', exact: true }),
+    ).toHaveCount(0);
+    await syncNow(device);
+    await backend.restart();
+    for (const viewer of [page, device]) {
+      await viewer.goto(recipeUrl);
+      await expect(
+        viewer.getByText('Toss with basil.', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        viewer.getByText('Bake with tomatoes.', { exact: true }),
+      ).toHaveCount(0);
+      await viewer.reload();
+      await expect(
+        viewer.getByRole('img', { name: 'Household pasta cover photo' }),
+      ).toHaveJSProperty('naturalWidth', 64);
+      await expect(
+        viewer.getByRole('region', {
+          name: 'Nutrition per portion',
+          exact: true,
+        }),
+      ).toContainText('600 kcal');
+      await expect(
+        viewer.getByRole('link', {
+          name: 'Review recipe conflicts',
+          exact: true,
+        }),
+      ).toHaveCount(0);
+    }
+    await expect(page.getByLabel('Your rating', { exact: true })).toHaveValue(
+      '4',
+    );
+    await expect(device.getByLabel('Your rating', { exact: true })).toHaveValue(
+      '',
+    );
+    for (const [viewer, calories] of [
+      [page, '500 kcal'],
+      [device, '700 kcal'],
+    ] as const) {
+      await viewer.getByRole('link', { name: 'Food log', exact: true }).click();
+      const entries = viewer
+        .getByRole('list', { name: 'Food-log entries', exact: true })
+        .getByRole('listitem');
+      await expect(entries).toHaveCount(1);
+      await expect(entries).toContainText(calories);
+      await expect(entries).toContainText('Newer recipe nutrition available');
+    }
+    // A normal successor of the chosen recipe must not reopen the resolved conflict.
+    await page.goto(`${recipeUrl}/edit`);
+    await page
+      .getByLabel('Step 1 instruction')
+      .fill('Toss with basil and serve.');
+    await page
+      .getByRole('button', { name: 'Save recipe', exact: true })
+      .click();
+    await syncNow(page);
+    await syncNow(device);
+    await device.goto(recipeUrl);
+    await expect(
+      device.getByText('Toss with basil and serve.', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      device.getByRole('status', {
+        name: 'Recipe edit conflicts',
+        exact: true,
+      }),
+    ).toHaveCount(0);
+  } finally {
+    await context.setOffline(false);
+    await deviceContext.close();
+  }
+});
+
+test('review newer competing edits before choosing and retain later edits to a dismissed alternative', async ({
+  page,
+  context,
+  browser,
+  backend,
+}) => {
+  await createRecipe(page);
+  const recipeUrl = page.url();
+  await connect(page, backend.url, true);
+  const deviceContext = await browser.newContext();
+  let releaseChoice = () => {};
+  try {
+    const device = await deviceContext.newPage();
+    await connect(device, backend.url);
+    await page.goto(`${recipeUrl}/edit`);
+    await device.goto(`${recipeUrl}/edit`);
+    await context.setOffline(true);
+    await deviceContext.setOffline(true);
+    await page.getByLabel('Step 1 instruction').fill('Toss with basil.');
+    await device.getByLabel('Step 1 instruction').fill('Bake with tomatoes.');
+    for (const editor of [page, device]) {
+      await editor
+        .getByRole('button', { name: 'Save recipe', exact: true })
+        .click();
+      await expect(
+        editor.getByRole('heading', { name: 'Household pasta', exact: true }),
+      ).toBeVisible();
+    }
+    await context.setOffline(false);
+    await syncNow(page);
+    await deviceContext.setOffline(false);
+    await syncNow(device);
+    await syncNow(page);
+    await page
+      .getByRole('link', { name: 'Review recipe conflicts', exact: true })
+      .click();
+    const alternatives = page.getByRole('region', { name: /^Revision \d+$/ });
+    await expect(alternatives).toHaveCount(2);
+    // Delay the choice at the network boundary, then deliver another real edit.
+    const choiceGate = new Promise<void>((resolve) => {
+      releaseChoice = resolve;
+    });
+    let choiceArrived = () => {};
+    const choiceRequest = new Promise<void>((resolve) => {
+      choiceArrived = resolve;
+    });
+    await page.route('**/api/households/*/recipes/*/current', async (route) => {
+      choiceArrived();
+      await choiceGate;
+      await route.continue();
+    });
+    await alternatives
+      .filter({ hasText: 'Bake with tomatoes.' })
+      .getByRole('button', { name: 'Make current', exact: true })
+      .click();
+    await choiceRequest;
+    await device.goto(`${recipeUrl}/edit`);
+    await device
+      .getByLabel('Step 1 instruction')
+      .fill('Toss with basil and thyme.');
+    await device
+      .getByRole('button', { name: 'Save recipe', exact: true })
+      .click();
+    await syncNow(device);
+    releaseChoice();
+    await expect(page.getByRole('alert')).toContainText(
+      'competing recipe edits have changed',
+    );
+    await expect(
+      alternatives.filter({ hasText: 'Toss with basil and thyme.' }),
+    ).toBeVisible();
+    await expect(
+      alternatives.filter({ hasText: 'Bake with tomatoes.' }),
+    ).toBeVisible();
+    await expect(alternatives).toHaveCount(2);
+    // A different tab retains an editor based on the alternative about to be dismissed.
+    await page
+      .getByRole('link', { name: 'View current recipe', exact: true })
+      .click();
+    await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
+    await page
+      .getByLabel('Step 1 instruction')
+      .fill('Toss with basil and more thyme.');
+    await device
+      .getByRole('link', { name: 'Review recipe conflicts', exact: true })
+      .click();
+    await device
+      .getByRole('region', { name: /^Revision \d+$/ })
+      .filter({ hasText: 'Bake with tomatoes.' })
+      .getByRole('button', { name: 'Make current', exact: true })
+      .click();
+    await expect(
+      device.getByText('No unresolved recipe conflicts.', { exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole('button', { name: 'Save recipe', exact: true })
+      .click();
+    await syncNow(page);
+    await syncNow(device);
+    await device
+      .getByRole('link', { name: 'Review recipe conflicts', exact: true })
+      .click();
+    const latest = device.getByRole('region', { name: /^Revision \d+$/ });
+    await expect(latest).toHaveCount(2);
+    await expect(
+      latest.filter({ hasText: 'Toss with basil and more thyme.' }),
+    ).toBeVisible();
+    const current = latest.filter({ hasText: 'Bake with tomatoes.' });
+    await expect(current).toContainText('Current recipe');
+    await current
+      .getByRole('button', { name: 'Make current', exact: true })
+      .click();
+    await expect(
+      device.getByText('No unresolved recipe conflicts.', { exact: true }),
+    ).toBeVisible();
+    await syncNow(page);
+    await page.goto(recipeUrl);
+    await expect(
+      page.getByText('Bake with tomatoes.', { exact: true }),
+    ).toBeVisible();
+  } finally {
+    releaseChoice();
+    await context.setOffline(false);
+    await deviceContext.close();
+  }
+});

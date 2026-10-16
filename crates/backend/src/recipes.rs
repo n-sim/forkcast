@@ -22,6 +22,10 @@ pub fn routes() -> Router<Store> {
     Router::new()
         .route("/households/{id}/recipes", get(collection))
         .route(
+            "/households/{id}/recipes/{recipe_id}/current",
+            post(choose_current),
+        )
+        .route(
             "/households/{id}/recipe-revisions",
             post(save_revision).layer(DefaultBodyLimit::max(15 * 1024 * 1024)),
         )
@@ -142,6 +146,20 @@ struct CurrentRecipe {
     recipe_id: String,
     revision_id: String,
     unresolved: i64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    competing_revision_ids: Vec<String>,
+}
+
+fn competing_revisions(db: &Connection, recipe_id: &str) -> Result<Vec<String>, ApiError> {
+    let mut query = db.prepare(
+        "SELECT r.id FROM recipe_revisions r WHERE r.recipe_id = ?
+         AND NOT EXISTS (SELECT 1 FROM recipe_revisions child WHERE child.parent_id = r.id)
+         AND NOT EXISTS (SELECT 1 FROM resolved_recipe_revisions resolved WHERE resolved.revision_id = r.id)
+         ORDER BY r.id",
+    )?;
+    Ok(query
+        .query_map([recipe_id], |row| row.get(0))?
+        .collect::<Result<Vec<_>, _>>()?)
 }
 
 async fn collection(
@@ -156,9 +174,52 @@ async fn collection(
         let mut query = db.prepare("SELECT r.payload FROM recipe_revisions r JOIN shared_recipes s ON s.id = r.recipe_id WHERE s.household_id = ? ORDER BY r.rowid")?;
         let payloads = query.query_map([&id], |row| row.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
         let revisions = payloads.iter().map(|payload| serde_json::from_str(payload).map_err(|_| ApiError::internal())).collect::<Result<Vec<_>, _>>()?;
-        let mut query = db.prepare("SELECT s.id, s.current_revision, (SELECT COUNT(*) FROM recipe_revisions r WHERE r.recipe_id = s.id AND NOT EXISTS (SELECT 1 FROM recipe_revisions child WHERE child.parent_id = r.id)) FROM shared_recipes s WHERE s.household_id = ?")?;
-        let current = query.query_map([id], |row| Ok(CurrentRecipe { recipe_id: row.get(0)?, revision_id: row.get(1)?, unresolved: row.get::<_, i64>(2)?.saturating_sub(1) }))?.collect::<Result<Vec<_>, _>>()?;
+        let mut query = db.prepare("SELECT id, current_revision FROM shared_recipes WHERE household_id = ?")?;
+        let recipes = query.query_map([id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?.collect::<Result<Vec<_>, _>>()?;
+        let current = recipes.into_iter().map(|(recipe_id, revision_id)| {
+            let mut competing_revision_ids = competing_revisions(db, &recipe_id)?;
+            let unresolved = competing_revision_ids.len().saturating_sub(1) as i64;
+            if unresolved == 0 { competing_revision_ids.clear(); }
+            Ok(CurrentRecipe { recipe_id, revision_id, unresolved, competing_revision_ids })
+        }).collect::<Result<Vec<_>, ApiError>>()?;
         Ok(Json(Collection { revisions, current }))
+    }).await
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct CurrentChoice {
+    revision_id: String,
+    expected_revision_ids: Vec<String>,
+}
+
+async fn choose_current(
+    State(store): State<Store>,
+    auth: Authenticated,
+    Path((household, recipe_id)): Path<(String, String)>,
+    Json(mut choice): Json<CurrentChoice>,
+) -> Result<StatusCode, ApiError> {
+    auth.require(Scope::Household(&household))?;
+    store.run(move |db| {
+        let transaction = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        require_recipe(&transaction, &auth, &recipe_id)?;
+        let alternatives = competing_revisions(&transaction, &recipe_id)?;
+        choice.expected_revision_ids.sort();
+        if alternatives.len() < 2 || alternatives != choice.expected_revision_ids
+            || !alternatives.contains(&choice.revision_id) {
+            return Err(ApiError(StatusCode::CONFLICT,
+                "The competing recipe edits have changed. Review the latest alternatives and choose again."));
+        }
+        // Retain the payloads and nutrition identities. Only the reviewed competing
+        // tips are dismissed; a later edit on either branch can conflict again.
+        for revision_id in &alternatives {
+            if revision_id != &choice.revision_id {
+                transaction.execute("INSERT INTO resolved_recipe_revisions (revision_id) VALUES (?)", [revision_id])?;
+            }
+        }
+        transaction.execute("UPDATE shared_recipes SET current_revision = ? WHERE id = ?", params![choice.revision_id, recipe_id])?;
+        transaction.commit()?;
+        Ok(StatusCode::NO_CONTENT)
     }).await
 }
 

@@ -4,6 +4,8 @@ import {
   enableRecipeSync,
   loadSyncState,
   recipeSyncAccount,
+  recipeConflicts,
+  type RecipeConflict,
   subscribeToRecipeChanges,
   type SyncBinding,
 } from './recipe-sync-store';
@@ -13,6 +15,7 @@ export function useRecipeSync(config: BackendConfig | null) {
   const [binding, setBinding] = useState<SyncBinding>();
   const [pending, setPending] = useState(0);
   const [conflicts, setConflicts] = useState(0);
+  const [alternatives, setAlternatives] = useState<RecipeConflict[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const run = useRef<() => void>(() => {});
@@ -41,6 +44,7 @@ export function useRecipeSync(config: BackendConfig | null) {
             state.ratings.length,
         );
         setConflicts(state.conflicts);
+        setAlternatives(recipeConflicts(state));
         if (!state.binding) return;
         if (
           url !== state.binding.url ||
@@ -66,6 +70,7 @@ export function useRecipeSync(config: BackendConfig | null) {
               saved.ratings.length,
           );
           setConflicts(saved.conflicts);
+          setAlternatives(recipeConflicts(saved));
           setError('');
         }
       } catch (error) {
@@ -112,6 +117,7 @@ export function useRecipeSync(config: BackendConfig | null) {
     binding,
     pending,
     conflicts,
+    alternatives,
     busy,
     error,
     sync: () => run.current(),

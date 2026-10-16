@@ -10,6 +10,7 @@ import {
   type CollectionSnapshot,
   type RecipeRevision,
   type RatingChange,
+  type RecipeConflict,
 } from './recipe-sync-store';
 
 interface WireRevision extends Omit<RecipeRevision, 'coverPhoto' | 'pending'> {
@@ -117,4 +118,27 @@ export async function synchronizeRecipes(config: BackendConfig) {
       state.ratings,
     );
   });
+}
+
+export async function chooseCurrentRecipe(
+  config: BackendConfig,
+  conflict: RecipeConflict,
+  revisionId: string,
+) {
+  // Upload any local edits first, so they also participate in the server's check.
+  await synchronizeRecipes(config);
+  await navigator.locks.request('forkcast-recipe-sync', async () => {
+    requireConnection(config);
+    await backendRequest(
+      config,
+      `/households/${encodeURIComponent(config.householdId!)}/recipes/${encodeURIComponent(conflict.recipeId)}/current`,
+      'POST',
+      {
+        revisionId,
+        expectedRevisionIds: conflict.revisions.map((revision) => revision.id),
+      },
+    );
+    requireConnection(config);
+  });
+  await synchronizeRecipes(config);
 }

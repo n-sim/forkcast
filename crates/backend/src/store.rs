@@ -47,6 +47,9 @@ impl Store {
                  payload TEXT NOT NULL
              );
              CREATE INDEX IF NOT EXISTS revision_recipe ON recipe_revisions(recipe_id);
+             CREATE TABLE IF NOT EXISTS resolved_recipe_revisions (
+                 revision_id TEXT PRIMARY KEY REFERENCES recipe_revisions(id)
+             );
              CREATE TABLE IF NOT EXISTS nutrition_versions (
                  id TEXT PRIMARY KEY,
                  recipe_id TEXT NOT NULL REFERENCES shared_recipes(id),

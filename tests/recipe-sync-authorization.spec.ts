@@ -25,6 +25,28 @@ test('recipe synchronization enforces household ownership and keeps ratings priv
   const memberHeaders = { Authorization: `Bearer ${signedIn.token}` };
   const collectionUrl = `${backend.url}/api/households/${admin.household.id}`;
   const ratingsUrl = `${backend.url}/api/accounts/${member.id}/recipe-ratings`;
+  const choice = {
+    revisionId: 'first-revision',
+    expectedRevisionIds: ['first-revision', 'competing-revision'],
+  };
+  expect(
+    (
+      await request.post(`${collectionUrl}/recipes/pasta/current`, {
+        data: choice,
+      })
+    ).status(),
+  ).toBe(401);
+  expect(
+    (
+      await request.post(
+        `${backend.url}/api/households/another-household/recipes/pasta/current`,
+        {
+          headers: memberHeaders,
+          data: choice,
+        },
+      )
+    ).status(),
+  ).toBe(403);
   const revision = {
     id: 'first-revision',
     parentId: null,
