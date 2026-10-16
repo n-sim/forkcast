@@ -10,6 +10,13 @@ import {
   type SyncBinding,
 } from './recipe-sync-store';
 import { synchronizeRecipes } from './recipe-sync';
+import { synchronizePlanning } from './planning-sync';
+import {
+  loadPlanningSyncState,
+  subscribeToPlanningSync,
+  type PlanningImport,
+  type PlanningSyncState,
+} from './planning-sync-store';
 
 export function useRecipeSync(config: BackendConfig | null) {
   const [binding, setBinding] = useState<SyncBinding>();
@@ -18,6 +25,8 @@ export function useRecipeSync(config: BackendConfig | null) {
   const [alternatives, setAlternatives] = useState<RecipeConflict[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [planning, setPlanning] = useState<PlanningSyncState>();
+  const [importReview, setImportReview] = useState<PlanningImport | null>(null);
   const run = useRef<() => void>(() => {});
   const url = config?.url;
   const token = config?.token;
@@ -37,11 +46,14 @@ export function useRecipeSync(config: BackendConfig | null) {
       running = true;
       try {
         const state = await loadSyncState(accountId);
+        const planningState = await loadPlanningSyncState();
         if (!active) return;
         setBinding(state.binding);
+        setPlanning(planningState);
         setPending(
           state.revisions.filter((revision) => revision.pending).length +
-            state.ratings.length,
+            state.ratings.length +
+            (planningState?.pending.length ?? 0),
         );
         setConflicts(state.conflicts);
         setAlternatives(recipeConflicts(state));
@@ -63,11 +75,21 @@ export function useRecipeSync(config: BackendConfig | null) {
         if (!sync) return;
         setBusy(true);
         await synchronizeRecipes({ url, token, accountId, householdId });
+        const review = await synchronizePlanning({
+          url,
+          token,
+          accountId,
+          householdId,
+        });
         const saved = await loadSyncState(accountId);
+        const savedPlanning = await loadPlanningSyncState();
         if (active) {
+          setImportReview(review);
+          setPlanning(savedPlanning);
           setPending(
             saved.revisions.filter((revision) => revision.pending).length +
-              saved.ratings.length,
+              saved.ratings.length +
+              (savedPlanning?.pending.length ?? 0),
           );
           setConflicts(saved.conflicts);
           setAlternatives(recipeConflicts(saved));
@@ -98,6 +120,7 @@ export function useRecipeSync(config: BackendConfig | null) {
       debounce = window.setTimeout(() => void refresh(true), 100);
     };
     const unsubscribe = subscribeToRecipeChanges(changed);
+    const unsubscribePlanning = subscribeToPlanningSync(changed);
     const retry = () => void refresh(true);
     const interval = window.setInterval(retry, 5_000);
     window.addEventListener('online', retry);
@@ -106,6 +129,7 @@ export function useRecipeSync(config: BackendConfig | null) {
     return () => {
       active = false;
       unsubscribe();
+      unsubscribePlanning();
       window.clearInterval(interval);
       window.clearTimeout(debounce);
       window.removeEventListener('online', retry);
@@ -120,6 +144,8 @@ export function useRecipeSync(config: BackendConfig | null) {
     alternatives,
     busy,
     error,
+    planning,
+    importReview,
     sync: () => run.current(),
   };
 }
@@ -156,15 +182,17 @@ export function RecipeSync({
       <h3 id="recipe-sync-heading">Recipe synchronization</h3>
       <p>
         Share your recipe collection, cover photos, and retained nutrition with
-        your household. Your ratings synchronize only with your account. Plans,
-        food logs, and cooking progress stay on this device.
+        your household, including the shared meal plan and shopping list. Your
+        ratings synchronize only with your account. Food logs and cooking
+        progress stay on this device.
       </p>
       {!sync.binding ? (
         <>
           <p>
             Enabling uploads existing recipes and adopts this device’s personal
             ratings into the signed-in account. Local records stay available
-            offline.
+            offline. Existing device plans and shopping lists have an import
+            review before joining shared planning.
           </p>
           <button
             className="button primary"

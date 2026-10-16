@@ -1,22 +1,33 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { formatQuantity, unitLabels, type Unit } from './domain';
 import type { ShoppingItem } from './shopping';
+import type { PlanningEditBase } from './planning-sync-store';
 
 export function ShoppingItemEditor({
   item,
   disabled,
   onSave,
   onRemove,
+  onCheck,
+  editBase,
   children,
 }: {
   item: ShoppingItem;
   disabled: boolean;
-  onSave: (item: ShoppingItem) => Promise<unknown>;
+  onSave: (item: ShoppingItem, editBase?: PlanningEditBase) => Promise<unknown>;
   onRemove: () => Promise<unknown>;
+  onCheck: (checked: boolean) => Promise<unknown>;
+  editBase?: PlanningEditBase;
   children?: ReactNode;
 }) {
   const [quantity, setQuantity] = useState(String(item.quantity));
-  useEffect(() => setQuantity(String(item.quantity)), [item.quantity]);
+  const [checked, setChecked] = useState(item.checked ?? false);
+  const [dirty, setDirty] = useState(false);
+  const original = useRef<PlanningEditBase | undefined>(undefined);
+  useEffect(() => {
+    if (!dirty) setQuantity(String(item.quantity));
+  }, [item.quantity, dirty]);
+  useEffect(() => setChecked(item.checked ?? false), [item.checked]);
   return (
     <article className="shopping-item" aria-label={item.name}>
       <h3>{item.name}</h3>
@@ -27,10 +38,31 @@ export function ShoppingItemEditor({
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          void onSave({ ...item, quantity: Number(quantity) });
+          void onSave(
+            { ...item, quantity: Number(quantity) },
+            original.current,
+          ).then((saved) => {
+            if (saved !== false) setDirty(false);
+          });
         }}
       >
         <fieldset className="shopping-item-controls" disabled={disabled}>
+          <label>
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={(event) => {
+                const next = event.target.checked;
+                setChecked(next);
+                void onCheck(next)
+                  .then((saved) => {
+                    if (saved === false) setChecked(item.checked ?? false);
+                  })
+                  .catch(() => setChecked(item.checked ?? false));
+              }}
+            />
+            Checked off
+          </label>
           <label>
             Quantity
             <input
@@ -38,7 +70,11 @@ export function ShoppingItemEditor({
               step="any"
               min="0"
               value={quantity}
-              onChange={(event) => setQuantity(event.target.value)}
+              onChange={(event) => {
+                if (!dirty) original.current = editBase;
+                setDirty(true);
+                setQuantity(event.target.value);
+              }}
             />
           </label>
           <button className="button secondary" type="submit">

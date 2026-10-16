@@ -1,6 +1,6 @@
 # Forkcast
 
-A local-first recipe collection with personal cooking plans, resumable guided cooking, and a personal food
+A local-first recipe collection with household cooking plans and shopping, resumable guided cooking, and a personal food
 log. Create recipes, plan cooking, and record intake without an account, application backend, or
 AI connection. The interface is English with metric defaults.
 
@@ -69,11 +69,31 @@ times, and current/retained nutrition versions with the household. The first ena
 also adopts this device's standalone ratings into the signed-in account. Ratings
 remain personal: switching accounts displays that account's ratings, and another
 device signed into the same account receives them. Removing a photo or rating also
-synchronizes. Plans, food logs, and cooking sessions keep their existing device-local
-person identity; this slice does not synchronize those records or provide backups.
+synchronizes. The household meal plan and single active shopping list also synchronize,
+with equal editing rights for administrators and members. Food logs and cooking sessions
+retain their existing device-local personal identity.
+
+Devices with existing meal plans or shopping lists receive **Review device planning
+data** before adopting shared planning, including devices already synchronizing
+recipes. Select planned cookings to add; possible duplicates in the household plan are
+highlighted. Keep the household shopping list or replace it with the device's list.
+**Continue with household data** discards the device's local plan and shopping list.
+**Cancel** leaves both sides untouched and keeps the review available to reopen.
+Devices without existing planning data adopt the shared household data directly.
+
+Planned cookings can be added, edited, or removed by any member. Shopping quantities,
+manual items, removals, and check-offs are shared. Independent or identical changes
+combine automatically, including edits to different fields of the same entry. Competing
+changes to one field, or deletion versus editing, retain alternatives for explicit
+resolution through **Review planning conflicts**. Unsaved quantity drafts and open
+planning forms retain their starting version while incoming changes appear.
+Regeneration replaces generated shopping requirements; competing edits to those
+requirements require resolution, while independent manual groceries combine and
+survive. There is one active shopping list and no shopping-list history.
 
 Local reads and saves continue during backend outages and offline reopening. Recipe,
-photo, and rating changes are saved durably before synchronization and survive reloads.
+photo, rating, meal-plan, and shopping-list changes are saved durably before
+synchronization and survive reloads.
 Synchronization retries every five seconds, on focus, and when connectivity returns;
 **Sync now** in Settings retries immediately. Settings shows pending work, connection
 errors, and completion. Signing out pauses synchronization and hides account ratings;
@@ -139,6 +159,14 @@ Recipe validation and nutrition calculations use the same Rust domain crate as t
 browser. SQLite transactions retain shared revisions, nutrition, and personal ratings
 across backend restarts. API responses and photo contents are never added to the
 service-worker cache; synchronized data is read from IndexedDB when offline.
+
+Household planning uses authenticated `GET/POST /api/households/{id}/planning`
+and `POST /api/households/{id}/planning/resolve`. Changes carry immutable mutation
+identities and a known base revision or preceding mutation. Retries are idempotent;
+field merging and validation use the shared Rust domain crate in the browser and
+backend. Resolution checks the reviewed alternatives and rejects stale choices.
+SQLite retains the synchronization bases and unresolved alternatives needed to
+reconcile offline work; these do not expose a shopping-list history.
 
 ## Data and offline use
 

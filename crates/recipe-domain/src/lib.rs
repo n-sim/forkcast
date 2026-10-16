@@ -1,6 +1,7 @@
 pub mod calendar;
 pub mod cooking;
 pub mod food_log;
+pub mod household_planning;
 pub mod nutrition;
 pub mod planning;
 pub mod quantities;
@@ -10,6 +11,21 @@ pub mod shopping;
 
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+pub fn merge_household_planning(
+    base: JsValue,
+    current: JsValue,
+    incoming: JsValue,
+) -> Result<JsValue, JsValue> {
+    let result = household_planning::merge(
+        &serde_wasm_bindgen::from_value(base)?,
+        &serde_wasm_bindgen::from_value(current)?,
+        &serde_wasm_bindgen::from_value(incoming)?,
+    );
+    let serializer = serde_wasm_bindgen::Serializer::json_compatible();
+    Ok(result.serialize(&serializer)?)
+}
 
 #[wasm_bindgen]
 pub fn validate_shopping_item(value: JsValue) -> Result<JsValue, JsValue> {

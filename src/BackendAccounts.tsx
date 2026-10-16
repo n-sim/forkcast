@@ -441,8 +441,9 @@ export function BackendAccounts({
         <p>
           Connecting an account keeps your local records. Enable recipe
           synchronization separately below to share recipes and photos and
-          synchronize your own ratings. Plans, food logs, and cooking sessions
-          remain on this device.
+          synchronize your own ratings, then review existing device planning to
+          share the household meal plan and shopping list. Food logs and cooking
+          sessions remain on this device.
         </p>
         <p>You can keep using standalone mode without an account.</p>
       </section>
@@ -490,8 +491,8 @@ export function BackendAccounts({
                 ).
               </p>
               <p>
-                Recipes and cooking history belong to the household. Plans,
-                shopping lists, food logs, nutrition goals, ratings, AI
+                Recipes, cooking history, the meal plan, and the shopping list
+                belong to the household. Food logs, nutrition goals, ratings, AI
                 settings, and cooking sessions belong to each person.
               </p>
               <button

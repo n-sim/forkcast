@@ -19,6 +19,7 @@ export interface ShoppingItem {
   name: string;
   quantity: number;
   unit: Unit;
+  checked?: boolean;
 }
 
 export interface GeneratedShoppingItem extends ShoppingItem {
@@ -29,7 +30,7 @@ export interface GeneratedShoppingItem extends ShoppingItem {
 export function validateShoppingItem(
   item: Omit<ShoppingItem, 'quantity'> & { quantity: number | null },
 ): ShoppingItem {
-  return validate_shopping_item(item);
+  return { ...item, ...validate_shopping_item(item) };
 }
 
 export interface ShoppingList {

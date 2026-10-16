@@ -1,5 +1,6 @@
 mod accounts;
 mod auth;
+mod planning;
 mod recipes;
 mod store;
 
@@ -178,6 +179,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .route("/api/households/{id}", get(accounts::household))
         .nest("/api", recipes::routes())
+        .nest("/api", planning::routes())
         .layer(DefaultBodyLimit::max(16 * 1024))
         .layer(SetResponseHeaderLayer::overriding(
             header::CACHE_CONTROL,

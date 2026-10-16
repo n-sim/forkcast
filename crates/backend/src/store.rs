@@ -61,6 +61,20 @@ impl Store {
                  value INTEGER CHECK (value BETWEEN 1 AND 5),
                  PRIMARY KEY (account_id, recipe_id)
              );
+             CREATE TABLE IF NOT EXISTS household_planning (
+                 household_id TEXT PRIMARY KEY REFERENCES households(id),
+                 payload TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS planning_versions (
+                 id TEXT PRIMARY KEY,
+                 household_id TEXT NOT NULL REFERENCES households(id),
+                 payload TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS planning_mutations (
+                 id TEXT PRIMARY KEY,
+                 household_id TEXT NOT NULL REFERENCES households(id),
+                 payload TEXT NOT NULL
+             );
              CREATE TABLE IF NOT EXISTS rating_mutations (
                  id TEXT PRIMARY KEY,
                  account_id TEXT NOT NULL REFERENCES accounts(id),
