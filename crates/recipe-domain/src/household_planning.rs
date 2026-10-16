@@ -177,7 +177,12 @@ fn keyed(items: &Value) -> Value {
             .as_array()
             .into_iter()
             .flatten()
-            .filter_map(|item| Some((item.get("id")?.as_str()?.to_owned(), item.clone())))
+            .filter_map(|item| {
+                let id = item.get("id")?.as_str()?.to_owned();
+                let mut item = item.as_object()?.clone();
+                item.entry("checked").or_insert(Value::Bool(false));
+                Some((id, Value::Object(item)))
+            })
             .collect(),
     )
 }
@@ -243,6 +248,7 @@ fn requirement_contents(value: &Value) -> Option<Value> {
 #[serde(rename_all = "camelCase")]
 pub struct GenerationAlias {
     target_id: String,
+    generated_at: Value,
     items: BTreeMap<String, String>,
 }
 
@@ -271,6 +277,7 @@ pub fn equivalent_generation(from: &Value, to: &Value) -> Option<(String, Genera
         source_id.to_owned(),
         GenerationAlias {
             target_id: target_id.to_owned(),
+            generated_at: to["generatedAt"].clone(),
             items,
         },
     ))
@@ -285,6 +292,7 @@ pub fn apply_generation_aliases(data: &mut Value, aliases: &BTreeMap<String, Gen
             break;
         };
         data["shoppingList"]["id"] = Value::String(alias.target_id.clone());
+        data["shoppingList"]["generatedAt"] = alias.generated_at.clone();
         if let Some(items) = data["shoppingList"]["items"].as_array_mut() {
             for item in items {
                 if let Some(id) = item["id"].as_str().and_then(|id| alias.items.get(id)) {
