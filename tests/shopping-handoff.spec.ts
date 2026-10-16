@@ -19,7 +19,7 @@ function pdfText(content: Awaited<ReturnType<PDFPageProxy['getTextContent']>>) {
     .replace(/\s+/g, ' ');
 }
 
-test('use a separate checklist and retain household shopping progress after reopening offline', async ({
+test('open the checklist from shopping review and retain household shopping progress after reopening offline', async ({
   page,
   context,
 }) => {
@@ -30,18 +30,21 @@ test('use a separate checklist and retain household shopping progress after reop
   await expect(page.getByRole('checkbox')).toHaveCount(0);
   await expect(
     page.getByRole('button', { name: 'Export PDF', exact: true }),
-  ).toHaveCount(0);
-  await page
-    .getByRole('link', { name: 'Use reviewed list', exact: true })
-    .click();
-  await expect(
-    page.getByRole('heading', { name: 'Use your shopping list', exact: true }),
   ).toBeVisible();
-  await expect(page.getByLabel('Shopping from', { exact: true })).toHaveCount(
-    0,
-  );
-  await expect(page.getByRole('checkbox')).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Complete shopping', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Shopping list', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel('Shopping from', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Use reviewed list', exact: true }),
+  ).toHaveCount(0);
   await page.getByRole('link', { name: 'Open checklist', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Shopping checklist', exact: true }),
+  ).toBeVisible();
   const pasta = page.getByRole('checkbox', {
     name: 'Pasta, 500 g',
     exact: true,
@@ -109,9 +112,6 @@ test('download the reviewed quantities and manual groceries as a PDF without com
     .click();
   await addManualItem(page, 'Crème fraîche');
   await addManualItem(page, '豆腐 Tofu 🥑');
-  await page
-    .getByRole('link', { name: 'Use reviewed list', exact: true })
-    .click();
   await page.getByRole('link', { name: 'Open checklist', exact: true }).click();
   await page
     .getByRole('checkbox', { name: 'Pasta, 300 g', exact: true })
@@ -122,7 +122,7 @@ test('download the reviewed quantities and manual groceries as a PDF without com
   });
   await expect(status).toContainText('1 of 3 items checked');
   await page
-    .getByRole('link', { name: 'Shopping options', exact: true })
+    .getByRole('link', { name: 'Review shopping list', exact: true })
     .click();
   await page.evaluate(() =>
     navigator.serviceWorker.ready.then(() => undefined),
@@ -196,9 +196,6 @@ test('a long shopping PDF wraps names and retains every grocery across pages', a
       `Grocery ${index + 1}: dark chocolate, toasted almonds and dried cranberries for the household’s weekend baking`,
   );
   for (const name of names) await addManualItem(page, name);
-  await page
-    .getByRole('link', { name: 'Use reviewed list', exact: true })
-    .click();
   const downloadEvent = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export PDF', exact: true }).click();
   const download = await downloadEvent;
@@ -240,23 +237,14 @@ test('explicit completion keeps unchecked groceries and a new list starts with f
 }) => {
   await page.goto('/');
   await generate(page);
-  await page
-    .getByRole('link', { name: 'Use reviewed list', exact: true })
-    .click();
   const status = page.getByRole('status', {
     name: 'Shopping progress',
     exact: true,
   });
   await expect(status).toContainText('Shopping in progress');
   await expect(status).toContainText('0 of 0 items checked');
-  await page
-    .getByRole('link', { name: 'Review shopping list', exact: true })
-    .click();
   await addManualItem(page, 'Coffee');
   await addManualItem(page, 'Tea');
-  await page
-    .getByRole('link', { name: 'Use reviewed list', exact: true })
-    .click();
   await page.getByRole('link', { name: 'Open checklist', exact: true }).click();
   const coffee = page.getByRole('checkbox', {
     name: 'Coffee, 1 piece',
@@ -266,20 +254,21 @@ test('explicit completion keeps unchecked groceries and a new list starts with f
   await coffee.check();
   await expect(status).toContainText('1 of 2 items checked');
   await page
+    .getByRole('link', { name: 'Review shopping list', exact: true })
+    .click();
+  await page
     .getByRole('button', { name: 'Complete shopping', exact: true })
     .click();
   await expect(status).toContainText('Shopping complete');
   await page.reload();
   await expect(status).toContainText('Shopping complete');
+  await page.getByRole('link', { name: 'Open checklist', exact: true }).click();
   await expect(coffee).toBeChecked();
   await expect(tea).not.toBeChecked();
   await page
     .getByRole('link', { name: 'Review shopping list', exact: true })
     .click();
   await generate(page);
-  await page
-    .getByRole('link', { name: 'Use reviewed list', exact: true })
-    .click();
   await expect(status).toContainText('Shopping in progress');
   await expect(status).toContainText('0 of 2 items checked');
   await page.getByRole('link', { name: 'Open checklist', exact: true }).click();

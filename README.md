@@ -343,10 +343,11 @@ only when generated items remain. Manual shopping items and their quantities are
 or Escape cancels replacement. The current list survives reloads.
 Reviews and manual groceries work offline and share household ownership with planned
 cookings when synchronization is enabled. This adds no pantry or leftover inventory.
-After review, choose **Use reviewed list** to open separate shopping options:
-**Export PDF** downloads a printable list, or **Open checklist** lets you check
-groceries off in the app. The review view keeps quantity editing separate from
-check-off controls. The PDF includes the cooking period, reviewed quantities,
+After review, the shopping-list page offers **Export PDF**, **Open checklist**,
+and **Complete shopping** directly. **Export PDF** downloads a printable list;
+**Open checklist** opens a separate view for checking groceries off in the app.
+The review view keeps quantity editing separate from check-off controls.
+The PDF includes the cooking period, reviewed quantities,
 separate manual groceries, and captured recipe contributions, with printable
 checkboxes and automatic page breaks. Fonts are bundled, so exporting also works offline.
 

@@ -12,9 +12,6 @@ import type { Page } from '@playwright/test';
 
 async function openChecklist(page: Page) {
   await page.getByRole('link', { name: 'Shopping list', exact: true }).click();
-  await page
-    .getByRole('link', { name: 'Use reviewed list', exact: true })
-    .click();
   await page.getByRole('link', { name: 'Open checklist', exact: true }).click();
 }
 
@@ -85,6 +82,9 @@ test('members combine offline checklist progress and share explicit completion t
     await openChecklist(member);
     await expect(memberStatus).toContainText('Shopping in progress');
     await expect(memberStatus).toContainText('0 of 2 items checked');
+    await member
+      .getByRole('link', { name: 'Review shopping list', exact: true })
+      .click();
     await member
       .getByRole('button', { name: 'Complete shopping', exact: true })
       .click();
