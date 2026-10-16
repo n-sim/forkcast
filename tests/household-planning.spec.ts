@@ -10,6 +10,93 @@ import {
   addManualItem,
 } from './household-planning-fixture';
 
+test('recipe ingredient edits synchronize a source-change notice without replacing reviewed shopping quantities', async ({
+  page,
+  browser,
+  backend,
+}) => {
+  await connect(page, backend.url, true);
+  await createRecipe(page);
+  const recipeUrl = page.url();
+  await plan(page);
+  await generate(page);
+  const pasta = page.getByRole('article', { name: 'Pasta', exact: true });
+  await pasta.getByLabel('Quantity', { exact: true }).fill('300');
+  await pasta
+    .getByRole('button', { name: 'Save quantity', exact: true })
+    .click();
+  await expect(pasta).toContainText('300 g');
+  await addManualItem(page, 'Coffee');
+  await syncNow(page);
+  const otherContext = await browser.newContext();
+  try {
+    const other = await otherContext.newPage();
+    await connect(other, backend.url);
+    await page
+      .getByRole('link', { name: 'Shopping list', exact: true })
+      .click();
+    const status = page.getByRole('status', {
+      name: 'Shopping source status',
+      exact: true,
+    });
+    await expect(status).toContainText('unchanged within this cooking period');
+    await other.goto(recipeUrl + '/edit');
+    await other
+      .getByLabel('Ingredient 1 quantity', { exact: true })
+      .fill('750');
+    await other
+      .getByRole('button', { name: 'Save recipe', exact: true })
+      .click();
+    await expect(
+      other.getByRole('heading', { name: 'Household pasta', exact: true }),
+    ).toBeVisible();
+    await syncNow(other);
+    await expect(status).toContainText(
+      'The meal plan changed within this cooking period.',
+      { timeout: 15_000 },
+    );
+    await expect(pasta).toContainText('300 g');
+    const manual = page.getByRole('region', {
+      name: 'Manual shopping items',
+      exact: true,
+    });
+    await expect(manual).toContainText('Coffee');
+    await page.reload();
+    await expect(status).toContainText(
+      'The meal plan changed within this cooking period.',
+    );
+    await expect(pasta).toContainText('300 g');
+    await page
+      .getByRole('button', {
+        name: 'Regenerate from updated plan',
+        exact: true,
+      })
+      .click();
+    await page
+      .getByRole('button', { name: 'Replace shopping list', exact: true })
+      .click();
+    await expect(status).toContainText('unchanged within this cooking period');
+    await expect(pasta).toContainText('750 g');
+    await expect(manual).toContainText('Coffee');
+    await syncNow(page);
+    await syncNow(other);
+    await other
+      .getByRole('link', { name: 'Shopping list', exact: true })
+      .click();
+    await expect(
+      other.getByRole('article', { name: 'Pasta', exact: true }),
+    ).toContainText('750 g');
+    await expect(
+      other.getByRole('status', {
+        name: 'Shopping source status',
+        exact: true,
+      }),
+    ).toContainText('unchanged within this cooking period');
+  } finally {
+    await otherContext.close();
+  }
+});
+
 test('a later queued shopping edit does not restore portions from the device’s earlier merged view', async ({
   page,
   context,

@@ -37,13 +37,15 @@ pub fn validate_shopping_item(value: JsValue) -> Result<JsValue, JsValue> {
 #[wasm_bindgen]
 pub fn shopping_source_changed(
     cookings: JsValue,
-    source_cookings: JsValue,
+    recipes: JsValue,
+    source_contributions: JsValue,
     start_date: &str,
     end_date: &str,
 ) -> Result<bool, JsValue> {
     Ok(shopping::shopping_source_changed(
         serde_wasm_bindgen::from_value(cookings)?,
-        serde_wasm_bindgen::from_value(source_cookings)?,
+        serde_wasm_bindgen::from_value(recipes)?,
+        serde_wasm_bindgen::from_value(source_contributions)?,
         start_date,
         end_date,
     ))

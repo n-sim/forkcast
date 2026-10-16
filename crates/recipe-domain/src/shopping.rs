@@ -28,7 +28,7 @@ pub fn validate_shopping_item(mut item: ShoppingItem) -> Result<ShoppingItem, St
     Ok(item)
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipeContribution {
     pub cooking_id: String,
@@ -38,6 +38,20 @@ pub struct RecipeContribution {
     pub cooking_time: Option<String>,
     pub portions: f64,
     pub ingredients: Vec<Ingredient>,
+}
+
+impl RecipeContribution {
+    fn same_source(&self, other: &Self) -> bool {
+        self.recipe_id == other.recipe_id
+            && self.cooking_date == other.cooking_date
+            && self.cooking_time == other.cooking_time
+            && self.portions == other.portions
+            && self.ingredients.len() == other.ingredients.len()
+            && self
+                .ingredients
+                .iter()
+                .all(|ingredient| other.ingredients.contains(ingredient))
+    }
 }
 
 #[derive(Serialize)]
@@ -73,21 +87,26 @@ fn ingredient_key(name: &str) -> String {
 /// Compare the selected source period, independently of reviewed shopping items.
 pub fn shopping_source_changed(
     cookings: Vec<PlannedCooking>,
-    source_cookings: Vec<PlannedCooking>,
+    recipes: Vec<RecipeDraft>,
+    source_contributions: Vec<RecipeContribution>,
     start_date: &str,
     end_date: &str,
 ) -> bool {
-    let in_period = |cookings: Vec<PlannedCooking>| {
-        cookings
-            .into_iter()
-            .filter(|cooking| {
-                cooking.cooking_date.as_str() >= start_date
-                    && cooking.cooking_date.as_str() <= end_date
-            })
-            .map(|cooking| (cooking.id.clone(), cooking))
-            .collect::<std::collections::BTreeMap<_, _>>()
+    let Ok(current) = generate_shopping_requirements(cookings, recipes, start_date, end_date)
+    else {
+        // A source that can no longer be generated needs review; keep the saved list readable.
+        return true;
     };
-    in_period(cookings) != in_period(source_cookings)
+    let sources = source_contributions
+        .into_iter()
+        .map(|contribution| (contribution.cooking_id.clone(), contribution))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    current.contributions.len() != sources.len()
+        || current.contributions.iter().any(|contribution| {
+            sources
+                .get(&contribution.cooking_id)
+                .is_none_or(|source| !contribution.same_source(source))
+        })
 }
 
 /// Capture scaled ingredient totals and their sources, independently of step allocations.

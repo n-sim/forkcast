@@ -93,7 +93,7 @@ pub struct RecipeDraft {
     pub nutrition: crate::nutrition::Nutrition,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize, PartialEq)]
 pub struct Ingredient {
     pub id: String,
     pub name: String,

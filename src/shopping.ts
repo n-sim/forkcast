@@ -49,24 +49,23 @@ export type ShoppingSourceStatus = 'changed' | 'unchanged' | 'unknown';
 
 export function shoppingSourceStatus(
   cookings: PlannedCooking[],
+  recipes: Recipe[],
   list: ShoppingList,
 ): ShoppingSourceStatus {
-  const sourceCookings = list.contributions.map((contribution) => ({
-    id: contribution.cookingId,
-    recipeId: contribution.recipeId,
-    cookingDate: contribution.cookingDate,
+  const sourceContributions = list.contributions.map((contribution) => ({
+    ...contribution,
     // Older lists did not capture cooking times; only compare known source fields.
     cookingTime:
       contribution.cookingTime === undefined
         ? (cookings.find((cooking) => cooking.id === contribution.cookingId)
             ?.cookingTime ?? null)
         : contribution.cookingTime,
-    portions: contribution.portions,
   }));
   if (
     shopping_source_changed(
       cookings,
-      sourceCookings,
+      recipes,
+      sourceContributions,
       list.startDate,
       list.endDate,
     )
