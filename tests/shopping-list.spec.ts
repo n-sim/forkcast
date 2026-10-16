@@ -1,0 +1,435 @@
+import { expect, test, type Page } from '@playwright/test';
+
+type Ingredient = { name: string; quantity: string; unit: string };
+
+async function createRecipe(
+  page: Page,
+  name: string,
+  ingredients: Ingredient[],
+) {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'New recipe', exact: true }).click();
+  await page.getByLabel('Recipe name', { exact: true }).fill(name);
+  await page.getByLabel('Base portions', { exact: true }).fill('2');
+  for (const [index, ingredient] of ingredients.entries()) {
+    if (index)
+      await page
+        .getByRole('button', { name: '+ Add ingredient', exact: true })
+        .click();
+    await page
+      .getByLabel(`Ingredient ${index + 1} name`, { exact: true })
+      .fill(ingredient.name);
+    await page
+      .getByLabel(`Ingredient ${index + 1} quantity`, { exact: true })
+      .fill(ingredient.quantity);
+    await page
+      .getByLabel(`Ingredient ${index + 1} unit`, { exact: true })
+      .selectOption(ingredient.unit);
+  }
+  // Shopping uses ingredient totals, independently of instructions or allocations.
+  await page
+    .getByLabel('Step 1 instruction', { exact: true })
+    .fill('Cook with 999 g of everything.');
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+  return page.url();
+}
+
+async function plan(
+  page: Page,
+  recipe: string,
+  date: string,
+  portions: string,
+) {
+  await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
+  await page.getByRole('button', { name: 'Plan cooking', exact: true }).click();
+  await page
+    .getByLabel('Recipe', { exact: true })
+    .selectOption({ label: recipe });
+  await page.getByLabel('Cooking date', { exact: true }).fill(date);
+  await page.getByLabel('Portions to cook', { exact: true }).fill(portions);
+  await page
+    .getByRole('button', { name: 'Save planned cooking', exact: true })
+    .click();
+  await expect(
+    page.getByRole('region', { name: 'Planned cooking details', exact: true }),
+  ).not.toBeVisible();
+}
+
+async function generate(page: Page, start = '2026-10-13', end = '2026-10-14') {
+  await page.getByRole('link', { name: 'Shopping list', exact: true }).click();
+  await page.getByLabel('Shopping from', { exact: true }).fill(start);
+  await page.getByLabel('Shopping through', { exact: true }).fill(end);
+  await page
+    .getByRole('button', { name: 'Generate shopping list', exact: true })
+    .click();
+  await expect(
+    page.getByRole('region', { name: 'Generated requirements', exact: true }),
+  ).toBeVisible();
+}
+
+test('aggregate scaled totals across an inclusive cooking period and retain recipe sources', async ({
+  page,
+}) => {
+  await createRecipe(page, 'Lentil stew', [
+    { name: 'Lentils', quantity: '250', unit: 'g' },
+    { name: 'Oil', quantity: '2', unit: 'tbsp' },
+    { name: 'Carrot', quantity: '1', unit: 'piece' },
+  ]);
+  await createRecipe(page, 'Lentil salad', [
+    { name: '  lentils  ', quantity: '0.5', unit: 'kg' },
+    { name: 'Oil', quantity: '1', unit: 'tsp' },
+    { name: 'Carrot', quantity: '2', unit: 'piece' },
+  ]);
+  await plan(page, 'Lentil stew', '2026-10-12', '20');
+  await plan(page, 'Lentil stew', '2026-10-13', '4');
+  await plan(page, 'Lentil stew', '2026-10-13', '1');
+  await plan(page, 'Lentil salad', '2026-10-14', '1');
+  await plan(page, 'Lentil salad', '2026-10-15', '20');
+  await generate(page);
+  const items = page.getByRole('region', {
+    name: 'Generated requirements',
+    exact: true,
+  });
+  await expect(items.getByRole('article')).toHaveCount(3);
+  const lentils = items.getByRole('article', { name: 'Lentils', exact: true });
+  await expect(lentils.getByLabel('Quantity', { exact: true })).toHaveValue(
+    '875',
+  );
+  await expect(lentils).toContainText('875 g');
+  await expect(lentils).toContainText('Lentil stew');
+  await expect(lentils).toContainText('Lentil salad');
+  await expect(
+    items.getByRole('article', { name: 'Oil', exact: true }),
+  ).toContainText('76.39 ml');
+  await expect(
+    items.getByRole('article', { name: 'Carrot', exact: true }),
+  ).toContainText('3.50 piece');
+  const sources = page.getByRole('region', {
+    name: 'Recipe contributions',
+    exact: true,
+  });
+  await expect(sources.getByRole('article')).toHaveCount(3);
+  await expect(sources).toContainText('2026-10-13');
+  await expect(sources).toContainText('4 portions');
+  await expect(sources).toContainText('500 g Lentils');
+  await expect(sources).not.toContainText('2026-10-12');
+  await expect(sources).not.toContainText('2026-10-15');
+  await page.reload();
+  await expect(lentils).toContainText('875 g');
+  await expect(sources.getByRole('article')).toHaveCount(3);
+});
+
+test('review generated quantities and independent manual groceries, keeping the saved result after source edits and offline reopening', async ({
+  page,
+  context,
+}) => {
+  const recipeUrl = await createRecipe(page, 'Lentil stew', [
+    { name: 'Lentils', quantity: '250', unit: 'g' },
+    { name: 'Oil', quantity: '2', unit: 'tbsp' },
+  ]);
+  await plan(page, 'Lentil stew', '2026-10-13', '4');
+  await generate(page);
+  const generated = page.getByRole('region', {
+    name: 'Generated requirements',
+    exact: true,
+  });
+  const lentils = generated.getByRole('article', {
+    name: 'Lentils',
+    exact: true,
+  });
+  await lentils.getByLabel('Quantity', { exact: true }).fill('300');
+  await lentils
+    .getByRole('button', { name: 'Save quantity', exact: true })
+    .click();
+  await expect(lentils).toContainText('300 g');
+  await generated
+    .getByRole('article', { name: 'Oil', exact: true })
+    .getByRole('button', { name: 'Remove item', exact: true })
+    .click();
+  await expect(generated.getByRole('article')).toHaveCount(1);
+  await page
+    .getByRole('button', { name: 'Add manual item', exact: true })
+    .click();
+  const form = page.getByRole('region', {
+    name: 'Manual item details',
+    exact: true,
+  });
+  await form.getByLabel('Food item', { exact: true }).fill('Lentils');
+  await form.getByLabel('Quantity', { exact: true }).fill('100');
+  await form.getByLabel('Unit', { exact: true }).selectOption('g');
+  await form
+    .getByRole('button', { name: 'Save manual item', exact: true })
+    .click();
+  const manual = page.getByRole('region', {
+    name: 'Manual shopping items',
+    exact: true,
+  });
+  const extra = manual.getByRole('article', { name: 'Lentils', exact: true });
+  await expect(extra).toContainText('100 g');
+  await expect(lentils).toContainText('300 g');
+  await extra.getByLabel('Quantity', { exact: true }).fill('150.5');
+  await extra
+    .getByRole('button', { name: 'Save quantity', exact: true })
+    .click();
+  await expect(extra).toContainText('150.50 g');
+  const other = await context.newPage();
+  await other.goto(recipeUrl + '/edit');
+  await other.getByLabel('Recipe name', { exact: true }).fill('Renamed stew');
+  await other.getByLabel('Ingredient 1 quantity', { exact: true }).fill('900');
+  await other.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await other.getByRole('link', { name: 'Meal plan', exact: true }).click();
+  await other.getByLabel('Week containing', { exact: true }).fill('2026-10-13');
+  await other
+    .getByRole('button', { name: 'Edit planned cooking', exact: true })
+    .click();
+  await other.getByLabel('Portions to cook', { exact: true }).fill('8');
+  await other
+    .getByRole('button', { name: 'Save planned cooking', exact: true })
+    .click();
+  await other.close();
+  await page.reload();
+  await expect(lentils).toContainText('300 g');
+  await expect(extra).toContainText('150.50 g');
+  await expect(generated.getByRole('article')).toHaveCount(1);
+  const sources = page.getByRole('region', {
+    name: 'Recipe contributions',
+    exact: true,
+  });
+  await expect(sources).toContainText('Lentil stew');
+  await expect(sources).toContainText('500 g Lentils');
+  await expect(sources).toContainText('4 US tbsp Oil');
+  await expect(sources).not.toContainText('Renamed stew');
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+  const url = page.url();
+  await page.close();
+  await context.setOffline(true);
+  const reopened = await context.newPage();
+  await reopened.goto(url);
+  await expect(
+    reopened
+      .getByRole('region', { name: 'Generated requirements', exact: true })
+      .getByRole('article'),
+  ).toContainText('300 g');
+  const reopenedManual = reopened.getByRole('region', {
+    name: 'Manual shopping items',
+    exact: true,
+  });
+  await expect(reopenedManual).toContainText('150.50 g');
+  await reopenedManual
+    .getByRole('button', { name: 'Remove item', exact: true })
+    .click();
+  await expect(reopenedManual.getByRole('article')).toHaveCount(0);
+  await reopened.reload();
+  await expect(reopenedManual.getByRole('article')).toHaveCount(0);
+});
+
+test('keep mass, volume, and piece requirements separate and flag uncertain conversions for review', async ({
+  page,
+}) => {
+  await createRecipe(page, 'Oil measures', [
+    { name: 'Oil', quantity: '100', unit: 'g' },
+    { name: ' oil ', quantity: '20', unit: 'ml' },
+    { name: 'OIL', quantity: '1', unit: 'piece' },
+    { name: 'Olive oil', quantity: '50', unit: 'ml' },
+  ]);
+  await plan(page, 'Oil measures', '2026-10-13', '2');
+  await generate(page, '2026-10-13', '2026-10-13');
+  const items = page.getByRole('region', {
+    name: 'Generated requirements',
+    exact: true,
+  });
+  await expect(items.getByRole('article')).toHaveCount(4);
+  await expect(items).toContainText('100 g');
+  await expect(items).toContainText('20 ml');
+  await expect(items).toContainText('1 piece');
+  await expect(
+    items.getByText('Review conversion:', { exact: false }),
+  ).toHaveCount(3);
+  await expect(
+    items.getByRole('article', { name: 'Olive oil', exact: true }),
+  ).not.toContainText('Review conversion');
+  const mass = items.getByRole('article', { name: 'Oil', exact: true });
+  await mass.getByLabel('Quantity', { exact: true }).fill('70');
+  await mass
+    .getByRole('button', { name: 'Save quantity', exact: true })
+    .click();
+  await expect(mass).toContainText('70 g');
+  await page.reload();
+  await expect(mass).toContainText('70 g');
+  await expect(items.getByRole('article')).toHaveCount(4);
+  await expect(
+    items.getByText('Review conversion:', { exact: false }),
+  ).toHaveCount(3);
+});
+
+test('validate review inputs and keep each saved cooking period independently available', async ({
+  page,
+}) => {
+  await createRecipe(page, 'Lentil stew', [
+    { name: 'Lentils', quantity: '250', unit: 'g' },
+  ]);
+  await plan(page, 'Lentil stew', '2026-10-13', '4');
+  await generate(page);
+  const items = page.getByRole('region', {
+    name: 'Generated requirements',
+    exact: true,
+  });
+  const lentils = items.getByRole('article', { name: 'Lentils', exact: true });
+  for (const quantity of ['0', '-5', '']) {
+    await lentils.getByLabel('Quantity', { exact: true }).fill(quantity);
+    await lentils
+      .getByRole('button', { name: 'Save quantity', exact: true })
+      .click();
+    await expect(page.getByRole('alert')).toContainText(
+      'Shopping quantity must be greater than zero.',
+    );
+    await expect(lentils).toContainText('500 g');
+  }
+  await page.getByLabel('Shopping through', { exact: true }).fill('2026-10-12');
+  await page
+    .getByRole('button', { name: 'Generate shopping list', exact: true })
+    .click();
+  await expect(page.getByRole('alert')).toContainText(
+    'Choose valid shopping dates',
+  );
+  await expect(page.getByRole('alert')).toBeFocused();
+  await expect(lentils).toContainText('500 g');
+  await page
+    .getByRole('button', { name: 'Add manual item', exact: true })
+    .click();
+  const form = page.getByRole('region', {
+    name: 'Manual item details',
+    exact: true,
+  });
+  await form
+    .getByRole('button', { name: 'Save manual item', exact: true })
+    .click();
+  await expect(page.getByRole('alert')).toContainText(
+    'Enter a food item name.',
+  );
+  await form.getByLabel('Food item', { exact: true }).fill('  Milk  ');
+  await form.getByLabel('Quantity', { exact: true }).fill('0');
+  await form
+    .getByRole('button', { name: 'Save manual item', exact: true })
+    .click();
+  await expect(page.getByRole('alert')).toContainText(
+    'Shopping quantity must be greater than zero.',
+  );
+  await form.getByLabel('Quantity', { exact: true }).fill('2');
+  await form.getByLabel('Unit', { exact: true }).selectOption('l');
+  await form
+    .getByRole('button', { name: 'Save manual item', exact: true })
+    .click();
+  const manual = page.getByRole('region', {
+    name: 'Manual shopping items',
+    exact: true,
+  });
+  await expect(
+    manual.getByRole('article', { name: 'Milk', exact: true }),
+  ).toContainText('2 l');
+  const selector = page.getByRole('combobox', { name: /Saved shopping list/ });
+  const originalId = await selector.inputValue();
+  await generate(page, '2026-11-01', '2026-11-01');
+  await expect(items.getByRole('article')).toHaveCount(0);
+  await expect(manual.getByRole('article')).toHaveCount(0);
+  await expect(selector.getByRole('option')).toHaveCount(2);
+  await selector.selectOption(originalId);
+  await expect(lentils).toContainText('500 g');
+  await expect(manual).toContainText('2 l');
+  await page.reload();
+  await expect(selector).toHaveValue(originalId);
+  await expect(lentils).toContainText('500 g');
+  await expect(manual).toContainText('2 l');
+});
+
+test('retain concurrent reviews of different generated items across tabs', async ({
+  page,
+  context,
+}) => {
+  await createRecipe(page, 'Lentil stew', [
+    { name: 'Lentils', quantity: '250', unit: 'g' },
+    { name: 'Oil', quantity: '20', unit: 'ml' },
+  ]);
+  await plan(page, 'Lentil stew', '2026-10-13', '4');
+  await generate(page);
+  const other = await context.newPage();
+  await other.goto('/#/shopping-list');
+  const lentils = page.getByRole('article', { name: 'Lentils', exact: true });
+  const oil = other.getByRole('article', { name: 'Oil', exact: true });
+  await lentils.getByLabel('Quantity', { exact: true }).fill('300');
+  await oil.getByLabel('Quantity', { exact: true }).fill('10');
+  await Promise.all([
+    lentils.getByRole('button', { name: 'Save quantity', exact: true }).click(),
+    oil.getByRole('button', { name: 'Save quantity', exact: true }).click(),
+  ]);
+  for (const tab of [page, other]) {
+    await expect(
+      tab.getByRole('article', { name: 'Lentils', exact: true }),
+    ).toContainText('300 g');
+    await expect(
+      tab.getByRole('article', { name: 'Oil', exact: true }),
+    ).toContainText('10 ml');
+  }
+  await other.close();
+  await page.reload();
+  await expect(lentils).toContainText('300 g');
+  await expect(
+    page.getByRole('article', { name: 'Oil', exact: true }),
+  ).toContainText('10 ml');
+});
+
+test('reject unrepresentable aggregation without replacing an existing reviewed list', async ({
+  page,
+}) => {
+  await generateFromEmptyPlan(page);
+  for (const name of ['Huge stew', 'Huge salad']) {
+    await createRecipe(page, name, [
+      { name: 'Lentils', quantity: '1e308', unit: 'g' },
+    ]);
+    await plan(page, name, '2026-10-13', '2');
+  }
+  await page.getByRole('link', { name: 'Shopping list', exact: true }).click();
+  await page.getByLabel('Shopping from', { exact: true }).fill('2026-10-13');
+  await page.getByLabel('Shopping through', { exact: true }).fill('2026-10-14');
+  await page
+    .getByRole('button', { name: 'Generate shopping list', exact: true })
+    .click();
+  await expect(page.getByRole('alert')).toContainText(
+    'outside the supported calculation range',
+  );
+  await expect(
+    page
+      .getByRole('combobox', { name: 'Saved shopping list', exact: true })
+      .getByRole('option'),
+  ).toHaveCount(1);
+  await expect(
+    page.getByRole('region', { name: 'Manual shopping items', exact: true }),
+  ).toContainText('2 piece');
+  await page.reload();
+  await expect(
+    page.getByRole('region', { name: 'Manual shopping items', exact: true }),
+  ).toContainText('2 piece');
+});
+
+async function generateFromEmptyPlan(page: Page) {
+  await page.goto('/');
+  await generate(page);
+  await page
+    .getByRole('button', { name: 'Add manual item', exact: true })
+    .click();
+  const form = page.getByRole('region', {
+    name: 'Manual item details',
+    exact: true,
+  });
+  await form.getByLabel('Food item', { exact: true }).fill('Apples');
+  await form.getByLabel('Quantity', { exact: true }).fill('2');
+  await form
+    .getByRole('button', { name: 'Save manual item', exact: true })
+    .click();
+  await expect(
+    page.getByRole('region', { name: 'Manual shopping items', exact: true }),
+  ).toContainText('2 piece');
+}

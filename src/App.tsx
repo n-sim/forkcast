@@ -32,6 +32,7 @@ import { SuspendedCookingBar } from './SuspendedCookingBar';
 import { BackendAccounts, useBackendConnection } from './BackendAccounts';
 import { FoodLog } from './FoodLog';
 import { MealPlan } from './MealPlan';
+import { ShoppingListView } from './ShoppingList';
 import { RecipeNutrition } from './RecipeNutrition';
 import { RecipeSync, useRecipeSync } from './RecipeSync';
 import { recipeSyncAccount } from './recipe-sync-store';
@@ -328,6 +329,7 @@ export function App({
   );
   const settingsOpen = route === '#/settings' || route === '#/backend';
   const foodLogOpen = route === '#/food-log';
+  const shoppingOpen = route === '#/shopping-list';
   const conflictsOpen = route === '#/recipe-conflicts';
   const planningView =
     route === '#/meal-plan' ? 'week' : route === '#/today' ? 'today' : null;
@@ -346,12 +348,13 @@ export function App({
       selected ||
       route === '#/recipes/new' ||
       foodLogOpen ||
+      shoppingOpen ||
       planningView)
       ? sessions[0]
       : undefined;
 
   useEffect(() => {
-    document.title = `${selectedSession?.recipe.name ?? selected?.name ?? (settingsOpen ? 'Settings' : conflictsOpen ? 'Review recipe conflicts' : foodLogOpen ? 'Food log' : planningView === 'today' ? 'Today’s cooking' : planningView ? 'Your weekly meal plan' : route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
+    document.title = `${selectedSession?.recipe.name ?? selected?.name ?? (settingsOpen ? 'Settings' : conflictsOpen ? 'Review recipe conflicts' : foodLogOpen ? 'Food log' : shoppingOpen ? 'Shopping list' : planningView === 'today' ? 'Today’s cooking' : planningView ? 'Your weekly meal plan' : route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
   }, [
     route,
     selected,
@@ -359,6 +362,7 @@ export function App({
     settingsOpen,
     conflictsOpen,
     foodLogOpen,
+    shoppingOpen,
     planningView,
   ]);
 
@@ -468,6 +472,13 @@ export function App({
           >
             <span aria-hidden="true">◷</span> Food log
           </a>
+          <a
+            className="nav-link"
+            href="#/shopping-list"
+            aria-current={shoppingOpen ? 'page' : undefined}
+          >
+            <span aria-hidden="true">▧</span> Shopping list
+          </a>
         </nav>
         <div className="sidebar-footer">
           <div className="device-note">
@@ -546,6 +557,8 @@ export function App({
               recipes={recipes}
               view={planningView}
             />
+          ) : shoppingOpen ? (
+            <ShoppingListView />
           ) : foodLogOpen ? (
             <FoodLog recipes={recipes} />
           ) : settingsOpen ? (
