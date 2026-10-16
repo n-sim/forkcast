@@ -112,16 +112,22 @@ function PlannedCookingCard({
           )}
         </>
       )}
-      <button className="button secondary" disabled={editing} onClick={onEdit}>
-        Edit planned cooking
-      </button>
-      <button
-        className="button secondary"
-        disabled={editing}
-        onClick={onRemove}
-      >
-        Remove planned cooking
-      </button>
+      <div className="planned-cooking-actions">
+        <button
+          className="button secondary"
+          disabled={editing}
+          onClick={onEdit}
+        >
+          Edit planned cooking
+        </button>
+        <button
+          className="button secondary"
+          disabled={editing}
+          onClick={onRemove}
+        >
+          Remove planned cooking
+        </button>
+      </div>
     </article>
   );
 }

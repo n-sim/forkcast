@@ -416,7 +416,8 @@ h2 {
   list-style: none;
   padding: 0;
 }
-.food-log-actions {
+.food-log-actions,
+.planned-cooking-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
@@ -457,6 +458,9 @@ h2 {
 }
 .shopping-item-controls label {
   max-width: 200px;
+}
+.shopping-source-status {
+  margin-bottom: 24px;
 }
 .planned-cooking {
   padding-block: 20px;
