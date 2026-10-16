@@ -529,9 +529,7 @@ test('review existing device planning before sharing the meal plan and shopping 
     await expect(pasta.getByLabel('Quantity', { exact: true })).toHaveValue(
       '500',
     );
-    await pasta
-      .getByRole('checkbox', { name: 'Checked off', exact: true })
-      .check();
+    await expect(member.getByRole('checkbox')).toHaveCount(0);
     await pasta.getByLabel('Quantity', { exact: true }).fill('300');
     await pasta
       .getByRole('button', { name: 'Save quantity', exact: true })
@@ -546,11 +544,11 @@ test('review existing device planning before sharing the meal plan and shopping 
         .getByRole('article', { name: 'Pasta', exact: true })
         .getByLabel('Quantity', { exact: true }),
     ).toHaveValue('300');
+    await addManualItem(page, 'Coffee');
     await expect(
-      page
-        .getByRole('article', { name: 'Pasta', exact: true })
-        .getByRole('checkbox', { name: 'Checked off', exact: true }),
-    ).toBeChecked();
+      page.getByRole('article', { name: 'Coffee', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole('checkbox')).toHaveCount(0);
   } finally {
     await context.close();
   }

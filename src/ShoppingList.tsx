@@ -6,7 +6,6 @@ import {
   saveShoppingItem,
   removeShoppingItem,
   subscribeToShoppingChanges,
-  setShoppingItemChecked,
   type EditableShoppingList,
 } from './shopping-store';
 import {
@@ -134,16 +133,6 @@ export function ShoppingListView() {
       editBase: currentList.editBase,
       onSave: (draft: ShoppingItem, base?: PlanningEditBase) =>
         update(() => saveShoppingItem(currentList.id, draft, kind, base)),
-      onCheck: (checked: boolean) =>
-        update(() =>
-          setShoppingItemChecked(
-            currentList.id,
-            item.id,
-            kind,
-            checked,
-            currentList.editBase,
-          ),
-        ),
       onRemove: () =>
         update(() =>
           removeShoppingItem(
