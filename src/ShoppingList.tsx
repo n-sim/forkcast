@@ -238,8 +238,8 @@ export function ShoppingListView() {
           <div
             className={
               list.sourceStatus !== 'unchanged'
-                ? 'nutrition-version-notice'
-                : ''
+                ? 'shopping-source-status nutrition-version-notice'
+                : 'shopping-source-status'
             }
           >
             <p role="status" aria-label="Shopping source status">
