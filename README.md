@@ -162,7 +162,9 @@ service-worker cache; synchronized data is read from IndexedDB when offline.
 
 Household planning uses authenticated `GET/POST /api/households/{id}/planning`
 and `POST /api/households/{id}/planning/resolve`. Changes carry immutable mutation
-identities and a known base revision or preceding mutation. Retries are idempotent;
+identities, a known base revision or preceding mutation, and the contents seen
+when the edit began. These expected contents keep an unrelated queued edit from
+republishing fields previously merged into the device's view. Retries are idempotent;
 field merging and validation use the shared Rust domain crate in the browser and
 backend. Resolution checks the reviewed alternatives and rejects stale choices.
 SQLite retains the synchronization bases and unresolved alternatives needed to

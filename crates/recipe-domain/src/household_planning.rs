@@ -217,6 +217,26 @@ fn denormalize(mut data: Value) -> Value {
     data
 }
 
+fn requirement_contents(value: &Value) -> Option<Value> {
+    let mut contents = value.as_object()?.clone();
+    contents.remove("id");
+    contents.remove("generatedAt");
+    let mut items: Vec<Value> = contents
+        .get("items")?
+        .as_object()?
+        .values()
+        .map(|item| {
+            let mut item = item.as_object().cloned().unwrap_or_default();
+            item.remove("id");
+            item.entry("checked").or_insert(Value::Bool(false));
+            Value::Object(item)
+        })
+        .collect();
+    items.sort_by_cached_key(Value::to_string);
+    contents.insert("items".into(), Value::Array(items));
+    Some(Value::Object(contents))
+}
+
 fn merge_value(
     base: &Value,
     current: &Value,
@@ -229,6 +249,15 @@ fn merge_value(
     }
     if current == base {
         return incoming.clone();
+    }
+    if path.last().is_some_and(|key| key == "requirements")
+        && requirement_contents(current)
+            .zip(requirement_contents(incoming))
+            .is_some_and(|(current, incoming)| current == incoming)
+    {
+        // Concurrent regenerations can have identical requirements but fresh
+        // device-generated identities. Keep one shared generation in that case.
+        return current.clone();
     }
     // Regeneration changes the requirements identity. Its snapshot is replaced
     // as a whole, while manual groceries merge independently outside this node.

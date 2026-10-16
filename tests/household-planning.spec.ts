@@ -10,6 +10,79 @@ import {
   addManualItem,
 } from './household-planning-fixture';
 
+test('a later queued shopping edit does not restore portions from the device’s earlier merged view', async ({
+  page,
+  context,
+  browser,
+  backend,
+}) => {
+  await connect(page, backend.url, true);
+  await createRecipe(page);
+  await plan(page);
+  await generate(page);
+  await syncNow(page);
+  const otherContext = await browser.newContext();
+  try {
+    const other = await otherContext.newPage();
+    await connect(other, backend.url);
+    await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
+    await page
+      .getByLabel('Week containing', { exact: true })
+      .fill('2026-10-12');
+    await page
+      .getByRole('button', { name: 'Edit planned cooking', exact: true })
+      .click();
+    await editCooking(other, '4');
+    await syncNow(other);
+    await expect(
+      page.getByRole('article', { name: 'Household pasta', exact: true }),
+    ).toContainText('4 portions', { timeout: 15_000 });
+    await context.setOffline(true);
+    await page.getByLabel('Cooking date', { exact: true }).fill('2026-10-15');
+    await page
+      .getByRole('button', { name: 'Save planned cooking', exact: true })
+      .click();
+    await expect(
+      page.getByRole('region', {
+        name: 'Planned cooking details',
+        exact: true,
+      }),
+    ).not.toBeVisible();
+    await page
+      .getByRole('link', { name: 'Shopping list', exact: true })
+      .click();
+    await addManualItem(page, 'Coffee');
+    await editCooking(other, '2');
+    await syncNow(other);
+    await context.setOffline(false);
+    await syncNow(page);
+    await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
+    await page
+      .getByLabel('Week containing', { exact: true })
+      .fill('2026-10-12');
+    await expect(
+      page.getByRole('region', {
+        name: 'Thursday, 15 October 2026',
+        exact: true,
+      }),
+    ).toContainText('2 portions');
+    await expect(
+      page.getByRole('link', {
+        name: 'Review planning conflicts',
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await page
+      .getByRole('link', { name: 'Shopping list', exact: true })
+      .click();
+    await expect(
+      page.getByRole('region', { name: 'Manual shopping items', exact: true }),
+    ).toContainText('Coffee');
+  } finally {
+    await otherContext.close();
+  }
+});
+
 test('import highlights possible duplicate cookings, adds selected entries, and can keep the household shopping list', async ({
   page,
   browser,

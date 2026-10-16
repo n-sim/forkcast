@@ -25,10 +25,11 @@ export interface PlanningMutation {
   id: string;
   baseRevision: string | null;
   baseMutationId: string | null;
+  baseData: PlanningData;
   data: PlanningData;
 }
 
-export type PlanningEditBase = Omit<PlanningMutation, 'id'>;
+export type PlanningEditBase = Omit<PlanningMutation, 'id' | 'baseData'>;
 
 export function planningEditBase(
   state: PlanningSyncState | undefined,
@@ -49,7 +50,7 @@ export interface PlanningSyncState {
   pending: PlanningMutation[];
 }
 
-export interface PlanningScope {
+interface PlanningScope {
   index: 'personId' | 'householdId';
   id: string;
 }
@@ -60,13 +61,9 @@ export interface PlanningImport {
 }
 
 const stateKey = 'householdPlanningSync';
-export const planningStores = [
-  'plannedCookings',
-  'shoppingLists',
-  'localSettings',
-];
+const planningStores = ['plannedCookings', 'shoppingLists', 'localSettings'];
 
-export function currentShoppingList(
+function currentShoppingList(
   lists: ShoppingList[],
   selectedId?: string,
 ): ShoppingList | null {
@@ -89,13 +86,6 @@ export async function loadPlanningSyncState(): Promise<
     transaction.oncomplete = () => resolve(request.result);
     transaction.onabort = () => reject(transaction.error);
   });
-}
-
-export async function planningScope(): Promise<PlanningScope> {
-  const state = await loadPlanningSyncState();
-  return state
-    ? { index: 'householdId', id: state.binding.householdId }
-    : { index: 'personId', id: await localPersonId() };
 }
 
 function readData(
@@ -222,6 +212,7 @@ export async function changePlanningData(
               id: crypto.randomUUID(),
               baseRevision: base.baseRevision,
               baseMutationId: base.baseMutationId,
+              baseData: base.data,
               data: incoming,
             });
             settings.put(state, stateKey);
@@ -240,7 +231,7 @@ export async function changePlanningData(
   return result;
 }
 
-export function notifyPlanningData(pending = true) {
+function notifyPlanningData(pending = true) {
   window.dispatchEvent(
     new CustomEvent('forkcast-household-planning', { detail: pending }),
   );
@@ -264,44 +255,6 @@ export function subscribeToPlanningSync(listener: (pending: boolean) => void) {
   return () => {
     window.removeEventListener('forkcast-household-planning', changed);
     channel.close();
-  };
-}
-
-// A local write and its durable outgoing change commit in the same transaction.
-// Queued changes refer to the preceding submitted contents, so successive
-// offline saves do not conflict with the device's own earlier changes.
-export function recordPlanningChange(
-  transaction: IDBTransaction,
-  expectedScope?: PlanningScope,
-) {
-  const settings = transaction.objectStore('localSettings');
-  const request = settings.get(stateKey);
-  request.onsuccess = () => {
-    const state = request.result as PlanningSyncState | undefined;
-    if (
-      expectedScope &&
-      (state
-        ? expectedScope.index !== 'householdId' ||
-          expectedScope.id !== state.binding.householdId
-        : expectedScope.index !== 'personId')
-    ) {
-      transaction.abort();
-      return;
-    }
-    if (!state) return;
-    readData(
-      transaction,
-      { index: 'householdId', id: state.binding.householdId },
-      (data) => {
-        state.pending.push({
-          id: crypto.randomUUID(),
-          baseRevision: state.pending.length ? null : state.snapshot.revision,
-          baseMutationId: state.pending.at(-1)?.id ?? null,
-          data,
-        });
-        settings.put(state, stateKey);
-      },
-    );
   };
 }
 
@@ -371,6 +324,7 @@ export async function adoptPlanning(
             id: crypto.randomUUID(),
             baseRevision: snapshot.revision,
             baseMutationId: null,
+            baseData: snapshot.data,
             data,
           });
         settings.put(state, stateKey);

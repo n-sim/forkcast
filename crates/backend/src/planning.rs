@@ -95,6 +95,7 @@ struct Mutation {
     id: String,
     base_revision: Option<String>,
     base_mutation_id: Option<String>,
+    base_data: Option<Value>,
     data: Value,
 }
 
@@ -150,6 +151,9 @@ async fn save(
         let transaction = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
         if input.id.trim().is_empty() { return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "The planning change needs an identity.")); }
         validate_data(&transaction, &household, &input.data)?;
+        if let Some(base) = &input.base_data {
+            validate_data(&transaction, &household, base)?;
+        }
         let payload = serde_json::to_string(&input).map_err(|_| ApiError::internal())?;
         let previous: Option<(String, String)> = transaction.query_row(
             "SELECT household_id, payload FROM planning_mutations WHERE id = ?", [&input.id],
@@ -178,7 +182,10 @@ async fn save(
                 serde_json::from_str::<Value>(&payload).map_err(|_| ApiError::internal())?["data"].clone()
             }
         }};
-        let merged = household_planning::merge(&base, &current["data"], &input.data);
+        // Compare exactly what the edit saw. A device's merged live contents
+        // can differ from its preceding mutation's submitted contents.
+        let expected = input.base_data.as_ref().unwrap_or(&base);
+        let merged = household_planning::merge(expected, &current["data"], &input.data);
         let mut conflicts: Vec<Conflict> = serde_json::from_value(current["conflicts"].clone()).map_err(|_| ApiError::internal())?;
         household_planning::retain_conflicts(&mut conflicts, merged.conflicts, &current["data"], &merged.data);
         let saved = persist(&transaction, &household, merged.data, conflicts)?;
