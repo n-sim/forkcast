@@ -6,9 +6,34 @@ pub mod planning;
 pub mod quantities;
 pub mod rating;
 pub mod recipe;
+pub mod shopping;
 
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+pub fn validate_shopping_item(value: JsValue) -> Result<JsValue, JsValue> {
+    let item = shopping::validate_shopping_item(serde_wasm_bindgen::from_value(value)?)
+        .map_err(|error| JsValue::from_str(&error))?;
+    Ok(serde_wasm_bindgen::to_value(&item)?)
+}
+
+#[wasm_bindgen]
+pub fn generate_shopping_requirements(
+    cookings: JsValue,
+    recipes: JsValue,
+    start_date: &str,
+    end_date: &str,
+) -> Result<JsValue, JsValue> {
+    let requirements = shopping::generate_shopping_requirements(
+        serde_wasm_bindgen::from_value(cookings)?,
+        serde_wasm_bindgen::from_value(recipes)?,
+        start_date,
+        end_date,
+    )
+    .map_err(|error| JsValue::from_str(&error))?;
+    Ok(serde_wasm_bindgen::to_value(&requirements)?)
+}
 
 #[wasm_bindgen]
 pub fn recipe_nutrition(value: JsValue) -> Result<JsValue, JsValue> {

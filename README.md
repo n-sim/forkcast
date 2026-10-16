@@ -283,6 +283,29 @@ Scheduling creates no food-log entries, consumption times, or portion stock.
 Cards show a per-portion recipe nutrition brief when at least one value is known,
 otherwise **Recipe nutrition not available**. Daily intake totals remain in **Food log**.
 
+Open **Shopping list**, set **Shopping from** and **Shopping through**, and choose
+**Generate shopping list**. Both dates are included. Each planned cooking supplies
+its recipe ingredient totals scaled to its portions, independently of step allocations
+or food-log entries. Ingredient names match ignoring case and repeated whitespace;
+compatible mass, volume, and piece quantities combine using the shared Rust conversions.
+Mass, volume, and pieces remain separate when a density or piece weight is unknown,
+with a **Review conversion** notice. Different ingredient names are not guessed to match.
+
+Use **Save quantity** or **Remove item** to review generated requirements. **Recipe
+contributions** retains each original recipe name, cooking date, portions, and scaled
+ingredients, including sources of items subsequently removed. **Add manual item**
+adds extra food with its own quantity and unit under **Manual shopping items**;
+matching manual and generated groceries stay independent.
+
+Each generated list saves a stable result locally. Recipe and plan edits do not change
+its quantities or captured contributions. Generating again creates another saved list;
+**Saved shopping list** returns to earlier lists and remembers the selection after reload.
+Reviews and manual groceries work offline and belong to the persistent local person,
+independently of backend account connections, as do planned cookings. This adds no
+pantry or leftover inventory. Source-change notices and explicit regeneration are
+subsequent work in [issue #7](https://github.com/n-sim/forkcast/issues/7); checklist,
+PDF, and supermarket handoffs are also later work.
+
 Open a recipe to attach or replace its cover photo (JPEG, PNG, or WebP, up to
 10 MB), or remove it with **Remove cover photo**. Photos save automatically and
 appear in both the recipe view and collection, including offline. Replacing or
@@ -300,7 +323,7 @@ synchronization adopts its ratings into the signed-in account. Existing recipe c
 upgrade in place without discarding recipes.
 Planned cookings, cooking sessions, and food-log entries are separate personal records
 belonging to that local identity; upgrading storage preserves the identity,
-recipes, cover photos, ratings, plans, cooking sessions, and existing food-log entries.
+recipes, cover photos, ratings, plans, shopping lists, cooking sessions, and existing food-log entries.
 
 The production build caches the application and WebAssembly assets using a service
 worker. After the first online visit and cache installation, it can reopen offline.
@@ -308,7 +331,7 @@ The development server does not install an offline cache. Manual recipe and
 food-log actions need no AI provider or external food service.
 
 Browser data belongs to the browser profile and origin. Clearing site data removes
-recipes, photos, ratings, plans, cooking sessions, and the food log; private browsing may discard them when the session ends. Cross-device
+recipes, photos, ratings, plans, shopping lists, cooking sessions, and the food log; private browsing may discard them when the session ends. Cross-device
 synchronization requires the optional backend; backups are subsequent work.
 
 ## Development and verification
@@ -346,7 +369,7 @@ Rust changes need a new WebAssembly build; restart `npm run dev` or build it aga
 ## Layout
 
 - `src/`: React screens, typed WebAssembly boundary, and local recipe storage.
-- `crates/recipe-domain/`: Rust recipe types, normalization, validation, scaling, conversions, and step timers, also
+- `crates/recipe-domain/`: Rust recipe types, normalization, validation, scaling, conversions, shopping aggregation, and step timers, also
   usable by native Rust code. Generated WebAssembly is not committed.
 - `crates/backend/`: optional Rust HTTP service, SQLite accounts, recipe synchronization, authentication, and ownership boundaries.
 - `tests/`: browser workflow specifications, the confirmed main testing seam.
@@ -362,5 +385,7 @@ Recipe nutrition and retained portion logs are implemented in
 [issue #13](https://github.com/n-sim/forkcast/issues/13).
 Household recipes, photos, nutrition, and personal ratings synchronize through
 the optional backend ([issue #23](https://github.com/n-sim/forkcast/issues/23)).
+Shopping generation, recipe contributions, review, and separate manual groceries are
+implemented in [issue #6](https://github.com/n-sim/forkcast/issues/6).
 Cooking history, AI, personal plan/log synchronization, explicit conflict resolution,
 and backups are later work.

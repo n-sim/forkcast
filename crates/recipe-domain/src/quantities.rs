@@ -23,6 +23,14 @@ const US_CUP_ML: f64 = 236.588_236_5;
 const POUND_G: f64 = 453.592_37;
 
 impl Unit {
+    pub(crate) fn canonical_unit(self) -> Self {
+        match self.dimension_and_factor().0 {
+            Dimension::Mass => Self::Gram,
+            Dimension::Volume => Self::Millilitre,
+            Dimension::Count => Self::Piece,
+        }
+    }
+
     fn dimension_and_factor(self) -> (Dimension, f64) {
         match self {
             Self::Milligram => (Dimension::Mass, 0.001),
@@ -40,7 +48,11 @@ impl Unit {
         }
     }
 
-    fn display_unit(self, quantity: f64, preference: DisplayUnits) -> Result<Self, String> {
+    pub(crate) fn display_unit(
+        self,
+        quantity: f64,
+        preference: DisplayUnits,
+    ) -> Result<Self, String> {
         let (dimension, _) = self.dimension_and_factor();
         Ok(match (preference, dimension) {
             (DisplayUnits::Original, _) | (_, Dimension::Count) => self,
@@ -95,7 +107,7 @@ pub fn convert_quantity(quantity: f64, from: Unit, to: Unit) -> Result<f64, Stri
     Ok(converted)
 }
 
-fn scale_quantity(quantity: f64, scale: f64) -> Result<f64, String> {
+pub(crate) fn scale_quantity(quantity: f64, scale: f64) -> Result<f64, String> {
     let scaled = quantity * scale;
     if !scaled.is_finite() || scaled <= 0.0 {
         return Err("This quantity is outside the supported calculation range.".to_owned());
