@@ -45,10 +45,12 @@ export interface ShoppingList {
   manualItems: ShoppingItem[];
 }
 
-export function shoppingSourceChanged(
+export type ShoppingSourceStatus = 'changed' | 'unchanged' | 'unknown';
+
+export function shoppingSourceStatus(
   cookings: PlannedCooking[],
   list: ShoppingList,
-): boolean {
+): ShoppingSourceStatus {
   const sourceCookings = list.contributions.map((contribution) => ({
     id: contribution.cookingId,
     recipeId: contribution.recipeId,
@@ -61,12 +63,20 @@ export function shoppingSourceChanged(
         : contribution.cookingTime,
     portions: contribution.portions,
   }));
-  return shopping_source_changed(
-    cookings,
-    sourceCookings,
-    list.startDate,
-    list.endDate,
-  );
+  if (
+    shopping_source_changed(
+      cookings,
+      sourceCookings,
+      list.startDate,
+      list.endDate,
+    )
+  )
+    return 'changed';
+  return list.contributions.some(
+    (contribution) => contribution.cookingTime === undefined,
+  )
+    ? 'unknown'
+    : 'unchanged';
 }
 
 export function generateShoppingRequirements(
