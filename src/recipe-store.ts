@@ -9,6 +9,14 @@ import {
 import type { CookingSession } from './cooking';
 import { openDatabase, localPersonId } from './local-store';
 import { recipeNutritionChange } from './nutrition';
+import {
+  recordRecipeRevision,
+  revisionStores,
+  notifyRecipeChanges,
+  ratingPersonId,
+  loadSyncState,
+} from './recipe-sync-store';
+export { subscribeToRecipeChanges } from './recipe-sync-store';
 
 export async function loadCookingSessions(): Promise<CookingSession[]> {
   const personId = await localPersonId();
@@ -152,14 +160,21 @@ export async function loadRecipes(): Promise<Recipe[]> {
     request.onsuccess = () => {
       try {
         const recipes = (
-          request.result as (RecipeDraft & { nutritionVersionId?: string })[]
+          request.result as (RecipeDraft & {
+            nutritionVersionId?: string;
+            syncRevisionId?: string;
+          })[]
         ).map((stored) => {
           const { recipe } = validateRecipe(stored);
           if (!recipe)
             throw new Error(
               'A saved recipe could not be read. Your stored data has been kept.',
             );
-          return { ...recipe, nutritionVersionId: stored.nutritionVersionId };
+          return {
+            ...recipe,
+            nutritionVersionId: stored.nutritionVersionId,
+            syncRevisionId: stored.syncRevisionId,
+          };
         });
         resolve(recipes);
       } catch (error) {
@@ -174,10 +189,7 @@ export async function saveRecipe(draft: Recipe): Promise<Recipe> {
   if (!recipe) throw new Error('Check the recipe before saving.');
   const db = await openDatabase();
   const saved = await new Promise<Recipe>((resolve, reject) => {
-    const transaction = db.transaction(
-      ['recipes', 'nutritionVersions'],
-      'readwrite',
-    );
+    const transaction = db.transaction(revisionStores, 'readwrite');
     const recipes = transaction.objectStore('recipes');
     const previous = recipes.get(recipe.id);
     let saved: Recipe;
@@ -194,8 +206,13 @@ export async function saveRecipe(draft: Recipe): Promise<Recipe> {
           transaction
             .objectStore('nutritionVersions')
             .add({ id, recipeId: recipe.id, perPortion: change.perPortion });
-        saved = { ...recipe, nutritionVersionId: id };
+        saved = {
+          ...recipe,
+          nutritionVersionId: id,
+          syncRevisionId: crypto.randomUUID(),
+        };
         recipes.put(saved);
+        recordRecipeRevision(transaction, saved, draft.syncRevisionId ?? null);
       } catch (error) {
         failure = error;
         transaction.abort();
@@ -205,16 +222,8 @@ export async function saveRecipe(draft: Recipe): Promise<Recipe> {
     transaction.onabort = () => reject(failure ?? transaction.error);
     transaction.onerror = () => reject(transaction.error);
   });
-  const channel = new BroadcastChannel('forkcast-recipes');
-  channel.postMessage('changed');
-  channel.close();
+  notifyRecipeChanges();
   return saved;
-}
-
-export function subscribeToRecipeChanges(listener: () => void): () => void {
-  const channel = new BroadcastChannel('forkcast-recipes');
-  channel.onmessage = listener;
-  return () => channel.close();
 }
 
 // Cover photos are household recipe assets, separate from personal records.
@@ -237,25 +246,37 @@ export async function loadRecipeCoverPhotos(): Promise<Record<string, Blob>> {
 }
 
 export async function saveRecipeCoverPhoto(
-  recipeId: string,
+  draft: Recipe,
   image: Blob | null,
 ): Promise<void> {
+  const recipeId = draft.id;
   const db = await openDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction('recipeCoverPhotos', 'readwrite');
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(revisionStores, 'readwrite');
     const store = transaction.objectStore('recipeCoverPhotos');
     if (image) store.put({ recipeId, image });
     else store.delete(recipeId);
+    const previous = transaction.objectStore('recipes').get(recipeId);
+    previous.onsuccess = () => {
+      if (!previous.result) {
+        transaction.abort();
+        return;
+      }
+      const recipe = { ...draft, syncRevisionId: crypto.randomUUID() };
+      transaction.objectStore('recipes').put(recipe);
+      recordRecipeRevision(transaction, recipe, draft.syncRevisionId ?? null);
+    };
     transaction.oncomplete = () => resolve();
     transaction.onabort = () => reject(transaction.error);
     transaction.onerror = () => reject(transaction.error);
   });
+  notifyRecipeChanges();
 }
 
 export async function loadPersonalRecipeRatings(): Promise<
   Record<string, RecipeRating>
 > {
-  const personId = await localPersonId();
+  const personId = await ratingPersonId();
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction('personalRecipeRatings', 'readonly');
@@ -286,17 +307,29 @@ export async function savePersonalRecipeRating(
   recipeId: string,
   value: number | null,
 ): Promise<RecipeRating | null> {
-  const personId = await localPersonId();
+  const personId = await ratingPersonId();
+  if (personId === 'signed-out')
+    throw new Error('Sign in to save your personal rating.');
+  const { binding } = await loadSyncState();
   const rating =
     value === null ? null : validateRecipeRating({ personId, recipeId, value });
   const db = await openDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction('personalRecipeRatings', 'readwrite');
+  const result = await new Promise<RecipeRating | null>((resolve, reject) => {
+    const transaction = db.transaction(
+      ['personalRecipeRatings', 'ratingChanges'],
+      'readwrite',
+    );
     const store = transaction.objectStore('personalRecipeRatings');
     if (rating) store.put(rating);
     else store.delete([personId, recipeId]);
+    if (binding)
+      transaction
+        .objectStore('ratingChanges')
+        .put({ id: crypto.randomUUID(), personId, recipeId, value });
     transaction.oncomplete = () => resolve(rating);
     transaction.onabort = () => reject(transaction.error);
     transaction.onerror = () => reject(transaction.error);
   });
+  notifyRecipeChanges();
+  return result;
 }

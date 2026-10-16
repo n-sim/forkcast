@@ -62,14 +62,36 @@ storage, never the password. Five failed sign-ins for a username temporarily blo
 further attempts for one minute; this survives backend restarts. API responses are
 marked `no-store` and are not added to the offline cache.
 
-Connecting, signing out, switching accounts, or disconnecting does not upload,
-merge, or replace standalone recipes, photos, ratings, plans, or cooking sessions. They
-continue to use the existing local person identity and IndexedDB, independently
-of the backend account. The account page explains this boundary. Backend outages
-do not prevent local workflows or offline reopening. **Disconnect backend** forgets
-the browser's connection; when a backend is unavailable, an existing server session
-expires normally. Use **Sign out** while connected to revoke it immediately.
-Record synchronization and backups are subsequent work.
+Connecting an account alone leaves standalone records on this device. After signing
+in, choose **Enable recipe synchronization** in Settings to share existing and future
+recipes, cover photos, ingredients, step allocations, base yield, difficulty, labels,
+times, and current/retained nutrition versions with the household. The first enable
+also adopts this device's standalone ratings into the signed-in account. Ratings
+remain personal: switching accounts displays that account's ratings, and another
+device signed into the same account receives them. Removing a photo or rating also
+synchronizes. Plans, food logs, and cooking sessions keep their existing device-local
+person identity; this slice does not synchronize those records or provide backups.
+
+Local reads and saves continue during backend outages and offline reopening. Recipe,
+photo, and rating changes are saved durably before synchronization and survive reloads.
+Synchronization retries every five seconds, on focus, and when connectivity returns;
+**Sync now** in Settings retries immediately. Settings shows pending work, connection
+errors, and completion. Signing out pauses synchronization and hides account ratings;
+pending personal changes retain their original account owner until that account signs
+in again. **Disconnect backend** forgets the connection and keeps local work. When a
+backend is unavailable, an existing server session expires normally; use **Sign out**
+while connected to revoke it immediately.
+
+Each browser profile links its collection to one backend household. Another backend
+or a replacement household needs a separate browser profile, preventing pending work
+from being uploaded to an unrelated collection. Reconnecting to the original household
+resumes synchronization without importing standalone ratings again.
+
+Competing recipe edits retain both revisions and display an unresolved-edit notice.
+Only a direct successor advances the current shared recipe; another branch never
+silently replaces it. Choosing which revision becomes current belongs to the following
+conflict-resolution slice. Retained nutrition identities are immutable, so old food-log
+entries keep their original quantities and nutrition through synchronization.
 
 For a release binary, run `npm run backend:build`, then run
 `target/release/forkcast-backend` (`.exe` on Windows). Configuration uses environment
@@ -95,9 +117,23 @@ Rust `Authenticated::require` boundary implements both scopes. The initial API p
 them through `GET /api/households/{id}` and `GET /api/accounts/{id}`; the latter permits
 only the account itself. Separate administrator-only `GET/POST /api/accounts` and
 `PATCH /api/accounts/{id}` operations manage safe account metadata and credentials,
-without granting access to another person's records. Subsequent synchronization
-endpoints must apply these same owner checks. Client-supplied roles or household
+without granting access to another person's records. Synchronization
+endpoints apply these same owner checks. Client-supplied roles or household
 identities are not accepted when creating accounts.
+
+The recipe synchronization API exposes household-scoped
+`GET /api/households/{id}/recipes` and
+`POST /api/households/{id}/recipe-revisions`. Revisions carry stable identities,
+their parent, validated recipe contents, the shared cover photo, and retained nutrition
+versions. Retrying an accepted revision is idempotent; reusing an identity with different
+contents is rejected. The current-recipe pointers and retained revisions are read from
+one SQLite snapshot. Account-scoped `GET/POST /api/accounts/{id}/recipe-ratings`
+never returns another person's ratings, including to an administrator. Rating removals
+and retried mutations retain identities so replay cannot resurrect an older rating.
+Recipe validation and nutrition calculations use the same Rust domain crate as the
+browser. SQLite transactions retain shared revisions, nutrition, and personal ratings
+across backend restarts. API responses and photo contents are never added to the
+service-worker cache; synchronized data is read from IndexedDB when offline.
 
 ## Data and offline use
 
@@ -254,8 +290,8 @@ recipe’s shared difficulty, active time, or total time.
 
 Cover photos are stored as household recipe assets keyed by recipe identity.
 Ratings are separate personal records keyed by a persistent local person identity
-and recipe identity. Standalone mode has one local person without login; a later
-synchronization slice can explicitly map that identity to an account. Existing recipe collections
+and recipe identity. Standalone mode has one local person without login; enabling
+synchronization adopts its ratings into the signed-in account. Existing recipe collections
 upgrade in place without discarding recipes.
 Planned cookings, cooking sessions, and food-log entries are separate personal records
 belonging to that local identity; upgrading storage preserves the identity,
@@ -264,11 +300,11 @@ recipes, cover photos, ratings, plans, cooking sessions, and existing food-log e
 The production build caches the application and WebAssembly assets using a service
 worker. After the first online visit and cache installation, it can reopen offline.
 The development server does not install an offline cache. Manual recipe and
-food-log actions do not contact external services.
+food-log actions need no AI provider or external food service.
 
 Browser data belongs to the browser profile and origin. Clearing site data removes
 recipes, photos, ratings, plans, cooking sessions, and the food log; private browsing may discard them when the session ends. Cross-device
-synchronization and backups are subsequent additions to the optional backend.
+synchronization requires the optional backend; backups are subsequent work.
 
 ## Development and verification
 
@@ -286,7 +322,10 @@ with real IndexedDB in isolated browser contexts at desktop and tablet sizes.
 Account workflows start a real Rust backend with a fresh temporary SQLite database
 per test and clean up the process and files afterward. They cover setup, separate
 devices, administration, reload/restart, invalid credentials, and preservation of
-standalone records while disconnected or offline. Focused HTTP tests cover ownership,
+standalone records while disconnected or offline. Synchronization workflows cover
+shared photos and metadata, private ratings across devices and account switches,
+retained food-log nutrition, backend outages, durable pending changes, removals,
+and competing edits retained through backend restarts. Focused HTTP tests cover ownership,
 unauthorized requests, session revocation, setup races, and sign-in throttling. No
 external provider credentials or network-service fixtures are needed.
 To run one workflow:
@@ -304,7 +343,7 @@ Rust changes need a new WebAssembly build; restart `npm run dev` or build it aga
 - `src/`: React screens, typed WebAssembly boundary, and local recipe storage.
 - `crates/recipe-domain/`: Rust recipe types, normalization, validation, scaling, conversions, and step timers, also
   usable by native Rust code. Generated WebAssembly is not committed.
-- `crates/backend/`: optional Rust HTTP service, SQLite accounts, authentication, and ownership boundaries.
+- `crates/backend/`: optional Rust HTTP service, SQLite accounts, recipe synchronization, authentication, and ownership boundaries.
 - `tests/`: browser workflow specifications, the confirmed main testing seam.
 - `docs/adr/` and `GLOSSARY.md`: accepted decisions and domain vocabulary.
 
@@ -316,4 +355,7 @@ with foreground timers ([issue #9](https://github.com/n-sim/forkcast/issues/9)) 
 backend household accounts ([issue #22](https://github.com/n-sim/forkcast/issues/22)).
 Recipe nutrition and retained portion logs are implemented in
 [issue #13](https://github.com/n-sim/forkcast/issues/13).
-Cooking history, AI, record synchronization, and backups are later work.
+Household recipes, photos, nutrition, and personal ratings synchronize through
+the optional backend ([issue #23](https://github.com/n-sim/forkcast/issues/23)).
+Cooking history, AI, personal plan/log synchronization, explicit conflict resolution,
+and backups are later work.

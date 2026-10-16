@@ -1,5 +1,6 @@
 mod accounts;
 mod auth;
+mod recipes;
 mod store;
 
 use auth::{Account, Authenticated, Credentials, Role, SignedIn};
@@ -176,6 +177,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             get(accounts::personal).patch(accounts::change),
         )
         .route("/api/households/{id}", get(accounts::household))
+        .nest("/api", recipes::routes())
         .layer(DefaultBodyLimit::max(16 * 1024))
         .layer(SetResponseHeaderLayer::overriding(
             header::CACHE_CONTROL,
