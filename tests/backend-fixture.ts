@@ -6,7 +6,11 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 export const test = base.extend<{
-  backend: { url: string; restart: () => Promise<void> };
+  backend: {
+    url: string;
+    stop: () => Promise<void>;
+    restart: () => Promise<void>;
+  };
 }>({
   backend: async ({}, use) => {
     const directory = await mkdtemp(join(tmpdir(), 'forkcast-backend-'));
@@ -59,7 +63,7 @@ export const test = base.extend<{
       });
     }
     async function stop() {
-      if (process && process.exitCode === null) {
+      if (process && process.exitCode === null && process.signalCode === null) {
         const exited = once(process, 'exit');
         process.kill();
         await exited;
@@ -71,6 +75,7 @@ export const test = base.extend<{
         get url() {
           return url;
         },
+        stop,
         restart: async () => {
           await stop();
           await start();

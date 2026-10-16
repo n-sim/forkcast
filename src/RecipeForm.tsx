@@ -58,6 +58,7 @@ export function RecipeForm({
   const [error, setError] = useState('');
   const [errors, setErrors] = useState<FieldError[]>([]);
   const errorSummary = useRef<HTMLDivElement>(null);
+  const originalRevisionId = useRef(initialRecipe?.syncRevisionId).current;
   const [saving, setSaving] = useState(false);
   const { recipe: validDraft } = validateRecipe(draft);
   let checks = null;
@@ -111,7 +112,7 @@ export function RecipeForm({
         return;
       }
       setSaving(true);
-      await onSave(recipe);
+      await onSave({ ...recipe, syncRevisionId: originalRevisionId });
     } catch {
       setError(
         'Your recipe could not be saved on this device. Keep this page open and try again.',

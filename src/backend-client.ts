@@ -1,6 +1,8 @@
 export interface BackendConfig {
   url: string;
   token?: string;
+  accountId?: string;
+  householdId?: string;
 }
 
 export interface Account {
@@ -96,6 +98,10 @@ export function loadBackendConfig(): BackendConfig | null {
     return {
       url: backendUrl(config.url),
       token: typeof config.token === 'string' ? config.token : undefined,
+      accountId:
+        typeof config.accountId === 'string' ? config.accountId : undefined,
+      householdId:
+        typeof config.householdId === 'string' ? config.householdId : undefined,
     };
   } catch {
     return null;

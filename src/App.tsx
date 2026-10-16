@@ -18,6 +18,8 @@ import {
   loadCookingSessions,
   subscribeToCookingChanges,
   loadRecipes,
+  loadRecipeCoverPhotos,
+  loadPersonalRecipeRatings,
   subscribeToRecipeChanges,
 } from './recipe-store';
 import { RecipeForm } from './RecipeForm';
@@ -31,6 +33,8 @@ import { BackendAccounts, useBackendConnection } from './BackendAccounts';
 import { FoodLog } from './FoodLog';
 import { MealPlan } from './MealPlan';
 import { RecipeNutrition } from './RecipeNutrition';
+import { RecipeSync, useRecipeSync } from './RecipeSync';
+import { recipeSyncAccount } from './recipe-sync-store';
 
 function subscribeToRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -271,8 +275,17 @@ export function App({
 }) {
   const [recipes, setRecipes] = useState(initialRecipes);
   const connection = useBackendConnection();
+  const sync = useRecipeSync(connection.config);
   const [coverPhotos, setCoverPhotos] = useState(initialCoverPhotos);
   const [ratings, setRatings] = useState(initialRatings);
+  const ratingOwner = recipeSyncAccount(connection.config, sync.binding);
+  const visibleRatings = sync.binding
+    ? Object.fromEntries(
+        Object.entries(ratings).filter(
+          ([, rating]) => rating.personId === ratingOwner,
+        ),
+      )
+    : ratings;
   const [sessions, setSessions] = useState(initialCookingSessions);
   const [cookingConflict, setCookingConflict] = useState<{
     proposed: CookingSession;
@@ -295,9 +308,15 @@ export function App({
   useEffect(
     () =>
       subscribeToRecipeChanges(() => {
-        void loadRecipes()
-          .then((recipes) => {
+        void Promise.all([
+          loadRecipes(),
+          loadRecipeCoverPhotos(),
+          loadPersonalRecipeRatings(),
+        ])
+          .then(([recipes, photos, ratings]) => {
             setRecipes(recipes);
+            setCoverPhotos(photos);
+            setRatings(ratings);
             setRefreshError('');
           })
           .catch(() =>
@@ -308,6 +327,29 @@ export function App({
       }),
     [],
   );
+  useEffect(() => {
+    let active = true;
+    setRatings({});
+    void loadPersonalRecipeRatings()
+      .then((ratings) => {
+        if (active) setRatings(ratings);
+      })
+      .catch(() => {
+        if (active)
+          setRefreshError(
+            'Your personal ratings could not be loaded. Reload to try again.',
+          );
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    connection.config?.url,
+    connection.config?.token,
+    connection.config?.accountId,
+    sync.binding?.url,
+    sync.binding?.householdId,
+  ]);
   const route = useSyncExternalStore(
     subscribeToRoute,
     () => window.location.hash || '#/',
@@ -460,9 +502,11 @@ export function App({
         <div className="sidebar-footer">
           <div className="device-note">
             <span className="status-dot" />
-            On this device
+            {sync.binding ? 'Household collection' : 'On this device'}
             <p>
-              Your recipes stay in your browser.
+              {sync.binding
+                ? 'Recipes synchronize when connected.'
+                : 'Your recipes stay in your browser.'}
               <br />
               No account needed.
             </p>
@@ -508,6 +552,17 @@ export function App({
               {refreshError}
             </p>
           )}
+          {sync.conflicts > 0 && (
+            <p
+              role="status"
+              aria-label="Recipe edit conflicts"
+              className="nutrition-version-notice"
+            >
+              {sync.conflicts} unresolved competing{' '}
+              {sync.conflicts === 1 ? 'edit' : 'edits'}. Both revisions are
+              retained for conflict resolution.
+            </p>
+          )}
           {planningView ? (
             <MealPlan
               key={planningView}
@@ -520,6 +575,11 @@ export function App({
             <article>
               <h1>Settings</h1>
               <BackendAccounts connection={connection} />
+              <RecipeSync
+                config={connection.config}
+                session={connection.session}
+                sync={sync}
+              />
             </article>
           ) : selectedSession ? (
             <CookingView
@@ -544,7 +604,7 @@ export function App({
             />
           ) : selected ? (
             <RecipeDetails
-              key={selected.id}
+              key={`${selected.id}:${sync.binding ? (connection.config?.accountId ?? 'signed-out') : 'local'}`}
               recipe={selected}
               loggedNutritionVersionId={loggedNutritionVersionId}
               onStartCooking={async (portions, displayUnits) => {
@@ -552,7 +612,7 @@ export function App({
                 await beginSession(session);
               }}
               photo={coverPhotos[selected.id]}
-              rating={ratings[selected.id]}
+              rating={visibleRatings[selected.id]}
               onSaveRating={async (value) => {
                 const rating = await savePersonalRecipeRating(
                   selected.id,
@@ -566,7 +626,7 @@ export function App({
                 });
               }}
               onSavePhoto={async (photo) => {
-                await saveRecipeCoverPhoto(selected.id, photo);
+                await saveRecipeCoverPhoto(selected, photo);
                 setCoverPhotos((current) => {
                   const next = { ...current };
                   if (photo) next[selected.id] = photo;
@@ -658,8 +718,10 @@ export function App({
                         {recipe.label && (
                           <p className="recipe-label">{recipe.label}</p>
                         )}
-                        {ratings[recipe.id] && (
-                          <p>Your rating: {ratings[recipe.id]!.value} / 5</p>
+                        {visibleRatings[recipe.id] && (
+                          <p>
+                            Your rating: {visibleRatings[recipe.id]!.value} / 5
+                          </p>
                         )}
                         <p>
                           {recipe.basePortions} portions

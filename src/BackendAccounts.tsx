@@ -295,6 +295,19 @@ export function useBackendConnection() {
           ? await backendRequest<BackendSession>(current, '/session')
           : null;
         if (!canceled) {
+          if (
+            session &&
+            (current.accountId !== session.account.id ||
+              current.householdId !== session.household.id)
+          ) {
+            const next = {
+              ...current,
+              accountId: session.account.id,
+              householdId: session.household.id,
+            };
+            saveBackendConfig(next);
+            setConfig(next);
+          }
           setSetupRequired(status.setupRequired);
           setSession(session);
           setConnectionError('');
@@ -358,7 +371,12 @@ export function useBackendConnection() {
         'POST',
         credentials,
       );
-      remember({ url: config.url, token: signedIn.token });
+      remember({
+        url: config.url,
+        token: signedIn.token,
+        accountId: signedIn.account.id,
+        householdId: signedIn.household.id,
+      });
     },
     async signOut() {
       if (!config) return;
@@ -421,9 +439,10 @@ export function BackendAccounts({
       <section className="panel">
         <h3>Standalone records stay on this device</h3>
         <p>
-          Recipes, photos, personal ratings, and cooking sessions remain in this
-          browser. Connecting an account does not upload, merge, or replace
-          them. Synchronization will be available in a later update.
+          Connecting an account keeps your local records. Enable recipe
+          synchronization separately below to share recipes and photos and
+          synchronize your own ratings. Plans, food logs, and cooking sessions
+          remain on this device.
         </p>
         <p>You can keep using standalone mode without an account.</p>
       </section>

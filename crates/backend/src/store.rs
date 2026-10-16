@@ -34,6 +34,34 @@ impl Store {
                  username TEXT PRIMARY KEY,
                  failures INTEGER NOT NULL,
                  last_attempt INTEGER NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS shared_recipes (
+                 id TEXT PRIMARY KEY,
+                 household_id TEXT NOT NULL REFERENCES households(id),
+                 current_revision TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS recipe_revisions (
+                 id TEXT PRIMARY KEY,
+                 recipe_id TEXT NOT NULL REFERENCES shared_recipes(id),
+                 parent_id TEXT REFERENCES recipe_revisions(id),
+                 payload TEXT NOT NULL
+             );
+             CREATE INDEX IF NOT EXISTS revision_recipe ON recipe_revisions(recipe_id);
+             CREATE TABLE IF NOT EXISTS nutrition_versions (
+                 id TEXT PRIMARY KEY,
+                 recipe_id TEXT NOT NULL REFERENCES shared_recipes(id),
+                 payload TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS recipe_ratings (
+                 account_id TEXT NOT NULL REFERENCES accounts(id),
+                 recipe_id TEXT NOT NULL REFERENCES shared_recipes(id),
+                 value INTEGER CHECK (value BETWEEN 1 AND 5),
+                 PRIMARY KEY (account_id, recipe_id)
+             );
+             CREATE TABLE IF NOT EXISTS rating_mutations (
+                 id TEXT PRIMARY KEY,
+                 account_id TEXT NOT NULL REFERENCES accounts(id),
+                 payload TEXT NOT NULL
              );",
         )?;
         Ok(store)

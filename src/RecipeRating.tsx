@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 
 export function PersonalRecipeRating({
   value,
@@ -11,6 +11,7 @@ export function PersonalRecipeRating({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  useEffect(() => setDraft(value?.toString() ?? ''), [value]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

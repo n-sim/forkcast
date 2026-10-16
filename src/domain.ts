@@ -113,6 +113,7 @@ export interface Recipe extends RecipeDraft {
   basePortions: number;
   ingredients: (IngredientDraft & { quantity: number })[];
   nutritionVersionId?: string;
+  syncRevisionId?: string;
 }
 
 export interface RecipeRating {
