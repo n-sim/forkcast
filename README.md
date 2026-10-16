@@ -291,19 +291,21 @@ compatible mass, volume, and piece quantities combine using the shared Rust conv
 Mass, volume, and pieces remain separate when a density or piece weight is unknown,
 with a **Review conversion** notice. Different ingredient names are not guessed to match.
 
-Use **Save quantity** or **Remove item** to review generated requirements. **Recipe
-contributions** retains each original recipe name, cooking date, portions, and scaled
-ingredients, including sources of items subsequently removed. **Add manual item**
+Use **Save quantity** or **Remove item** to review generated requirements. Each item's
+**From:** note links directly to its source recipes and retains the cooking dates and
+planned portions captured when generated. **Add manual item**
 adds extra food with its own quantity and unit under **Manual shopping items**;
 matching manual and generated groceries stay independent.
 
-Each generated list saves a stable result locally. Recipe and plan edits do not change
-its quantities or captured contributions. Generating again creates another saved list;
-**Saved shopping list** returns to earlier lists and remembers the selection after reload.
+The current shopping list saves a stable result locally. Recipe and plan edits do not
+change its quantities or captured contributions. Generating again asks for confirmation
+before replacing the current generated requirements, resetting their quantity edits and
+removals. Manual shopping items and their quantities are kept. **Keep current list**
+or Escape cancels replacement. The current list survives reloads.
 Reviews and manual groceries work offline and belong to the persistent local person,
 independently of backend account connections, as do planned cookings. This adds no
-pantry or leftover inventory. Source-change notices and explicit regeneration are
-subsequent work in [issue #7](https://github.com/n-sim/forkcast/issues/7); checklist,
+pantry or leftover inventory. Source-change notices are subsequent work in
+[issue #7](https://github.com/n-sim/forkcast/issues/7); checklist,
 PDF, and supermarket handoffs are also later work.
 
 Open a recipe to attach or replace its cover photo (JPEG, PNG, or WebP, up to

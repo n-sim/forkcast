@@ -71,12 +71,12 @@ async function generate(page: Page, start = '2026-10-13', end = '2026-10-14') {
 test('aggregate scaled totals across an inclusive cooking period and retain recipe sources', async ({
   page,
 }) => {
-  await createRecipe(page, 'Lentil stew', [
+  const stewUrl = await createRecipe(page, 'Lentil stew', [
     { name: 'Lentils', quantity: '250', unit: 'g' },
     { name: 'Oil', quantity: '2', unit: 'tbsp' },
     { name: 'Carrot', quantity: '1', unit: 'piece' },
   ]);
-  await createRecipe(page, 'Lentil salad', [
+  const saladUrl = await createRecipe(page, 'Lentil salad', [
     { name: '  lentils  ', quantity: '0.5', unit: 'kg' },
     { name: 'Oil', quantity: '1', unit: 'tsp' },
     { name: 'Carrot', quantity: '2', unit: 'piece' },
@@ -105,19 +105,30 @@ test('aggregate scaled totals across an inclusive cooking period and retain reci
   await expect(
     items.getByRole('article', { name: 'Carrot', exact: true }),
   ).toContainText('3.50 piece');
-  const sources = page.getByRole('region', {
-    name: 'Recipe contributions',
-    exact: true,
-  });
-  await expect(sources.getByRole('article')).toHaveCount(3);
-  await expect(sources).toContainText('2026-10-13');
-  await expect(sources).toContainText('4 portions');
-  await expect(sources).toContainText('500 g Lentils');
-  await expect(sources).not.toContainText('2026-10-12');
-  await expect(sources).not.toContainText('2026-10-15');
+  await expect(
+    lentils.getByRole('link', { name: 'Lentil stew', exact: true }),
+  ).toHaveCount(2);
+  await expect(
+    lentils.getByRole('link', { name: 'Lentil stew', exact: true }).first(),
+  ).toHaveAttribute('href', new URL(stewUrl).hash);
+  await expect(
+    lentils.getByRole('link', { name: 'Lentil salad', exact: true }),
+  ).toHaveAttribute('href', new URL(saladUrl).hash);
+  await expect(lentils).toContainText('2026-10-13, 4 portions');
+  await expect(lentils).not.toContainText('2026-10-12');
+  await expect(lentils).not.toContainText('2026-10-15');
+  await expect(
+    page.getByRole('region', { name: 'Recipe contributions', exact: true }),
+  ).toHaveCount(0);
   await page.reload();
   await expect(lentils).toContainText('875 g');
-  await expect(sources.getByRole('article')).toHaveCount(3);
+  await lentils
+    .getByRole('link', { name: 'Lentil salad', exact: true })
+    .click();
+  await expect(page).toHaveURL(saladUrl);
+  await expect(
+    page.getByRole('heading', { name: 'Lentil salad', exact: true }),
+  ).toBeVisible();
 });
 
 test('review generated quantities and independent manual groceries, keeping the saved result after source edits and offline reopening', async ({
@@ -192,14 +203,11 @@ test('review generated quantities and independent manual groceries, keeping the 
   await expect(lentils).toContainText('300 g');
   await expect(extra).toContainText('150.50 g');
   await expect(generated.getByRole('article')).toHaveCount(1);
-  const sources = page.getByRole('region', {
-    name: 'Recipe contributions',
-    exact: true,
-  });
-  await expect(sources).toContainText('Lentil stew');
-  await expect(sources).toContainText('500 g Lentils');
-  await expect(sources).toContainText('4 US tbsp Oil');
-  await expect(sources).not.toContainText('Renamed stew');
+  await expect(
+    lentils.getByRole('link', { name: 'Lentil stew', exact: true }),
+  ).toHaveAttribute('href', new URL(recipeUrl).hash);
+  await expect(lentils).toContainText('2026-10-13, 4 portions');
+  await expect(lentils).not.toContainText('Renamed stew');
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
   });
@@ -265,7 +273,7 @@ test('keep mass, volume, and piece requirements separate and flag uncertain conv
   ).toHaveCount(3);
 });
 
-test('validate review inputs and keep each saved cooking period independently available', async ({
+test('validate review inputs and confirm replacement of the current list while keeping manual groceries', async ({
   page,
 }) => {
   await createRecipe(page, 'Lentil stew', [
@@ -330,18 +338,65 @@ test('validate review inputs and keep each saved cooking period independently av
   await expect(
     manual.getByRole('article', { name: 'Milk', exact: true }),
   ).toContainText('2 l');
-  const selector = page.getByRole('combobox', { name: /Saved shopping list/ });
-  const originalId = await selector.inputValue();
-  await generate(page, '2026-11-01', '2026-11-01');
-  await expect(items.getByRole('article')).toHaveCount(0);
-  await expect(manual.getByRole('article')).toHaveCount(0);
-  await expect(selector.getByRole('option')).toHaveCount(2);
-  await selector.selectOption(originalId);
+  await expect(
+    page.getByRole('combobox', { name: 'Saved shopping list', exact: true }),
+  ).toHaveCount(0);
+  await lentils.getByLabel('Quantity', { exact: true }).fill('300');
+  await lentils
+    .getByRole('button', { name: 'Save quantity', exact: true })
+    .click();
+  await expect(lentils).toContainText('300 g');
+  await page.getByLabel('Shopping through', { exact: true }).fill('2026-10-14');
+  const dialog = page.getByRole('dialog', {
+    name: 'Replace shopping list?',
+    exact: true,
+  });
+  await page
+    .getByRole('button', { name: 'Generate shopping list', exact: true })
+    .click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText(
+    'Manual shopping items and their quantities will be kept.',
+  );
+  await dialog
+    .getByRole('button', { name: 'Keep current list', exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  await expect(lentils).toContainText('300 g');
+  await page
+    .getByRole('button', { name: 'Generate shopping list', exact: true })
+    .click();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).not.toBeVisible();
+  await page.reload();
+  await expect(lentils).toContainText('300 g');
+  await page.getByLabel('Shopping from', { exact: true }).fill('2026-10-13');
+  await page.getByLabel('Shopping through', { exact: true }).fill('2026-10-14');
+  await page
+    .getByRole('button', { name: 'Generate shopping list', exact: true })
+    .click();
+  await dialog
+    .getByRole('button', { name: 'Replace shopping list', exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
   await expect(lentils).toContainText('500 g');
   await expect(manual).toContainText('2 l');
+  await page.getByLabel('Shopping from', { exact: true }).fill('2026-11-01');
+  await page.getByLabel('Shopping through', { exact: true }).fill('2026-11-01');
+  await page
+    .getByRole('button', { name: 'Generate shopping list', exact: true })
+    .click();
+  await dialog
+    .getByRole('button', { name: 'Replace shopping list', exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  await expect(items.getByRole('article')).toHaveCount(0);
   await page.reload();
-  await expect(selector).toHaveValue(originalId);
-  await expect(lentils).toContainText('500 g');
+  await expect(items.getByRole('article')).toHaveCount(0);
+  await expect(page.getByRole('main')).toContainText(
+    'Cooking period: 2026-11-01 through 2026-11-01',
+  );
   await expect(manual).toContainText('2 l');
 });
 
@@ -397,14 +452,17 @@ test('reject unrepresentable aggregation without replacing an existing reviewed 
   await page
     .getByRole('button', { name: 'Generate shopping list', exact: true })
     .click();
+  await page
+    .getByRole('dialog', { name: 'Replace shopping list?', exact: true })
+    .getByRole('button', { name: 'Replace shopping list', exact: true })
+    .click();
   await expect(page.getByRole('alert')).toContainText(
     'outside the supported calculation range',
   );
-  await expect(
-    page
-      .getByRole('combobox', { name: 'Saved shopping list', exact: true })
-      .getByRole('option'),
-  ).toHaveCount(1);
+  await page
+    .getByRole('dialog', { name: 'Replace shopping list?', exact: true })
+    .getByRole('button', { name: 'Keep current list', exact: true })
+    .click();
   await expect(
     page.getByRole('region', { name: 'Manual shopping items', exact: true }),
   ).toContainText('2 piece');
@@ -412,6 +470,66 @@ test('reject unrepresentable aggregation without replacing an existing reviewed 
   await expect(
     page.getByRole('region', { name: 'Manual shopping items', exact: true }),
   ).toContainText('2 piece');
+});
+
+test('require a fresh confirmation if another tab replaces the shopping list', async ({
+  page,
+  context,
+}) => {
+  await createRecipe(page, 'Lentil stew', [
+    { name: 'Lentils', quantity: '250', unit: 'g' },
+  ]);
+  await plan(page, 'Lentil stew', '2026-10-13', '4');
+  await generate(page);
+  const other = await context.newPage();
+  await other.goto('/#/shopping-list');
+  await expect(
+    other.getByRole('article', { name: 'Lentils', exact: true }),
+  ).toContainText('500 g');
+  await other.getByLabel('Shopping from', { exact: true }).fill('2026-10-13');
+  await other
+    .getByLabel('Shopping through', { exact: true })
+    .fill('2026-10-14');
+  await other
+    .getByRole('button', { name: 'Generate shopping list', exact: true })
+    .click();
+  const otherDialog = other.getByRole('dialog', {
+    name: 'Replace shopping list?',
+    exact: true,
+  });
+  await expect(otherDialog).toBeVisible();
+  await page.getByLabel('Shopping from', { exact: true }).fill('2026-11-01');
+  await page.getByLabel('Shopping through', { exact: true }).fill('2026-11-01');
+  await page
+    .getByRole('button', { name: 'Generate shopping list', exact: true })
+    .click();
+  await page
+    .getByRole('dialog', { name: 'Replace shopping list?', exact: true })
+    .getByRole('button', { name: 'Replace shopping list', exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole('region', { name: 'Generated requirements', exact: true })
+      .getByRole('article'),
+  ).toHaveCount(0);
+  await otherDialog
+    .getByRole('button', { name: 'Replace shopping list', exact: true })
+    .click();
+  await expect(otherDialog.getByRole('alert')).toContainText(
+    'Your shopping list changed in another tab. Review it before replacing it.',
+  );
+  await otherDialog
+    .getByRole('button', { name: 'Keep current list', exact: true })
+    .click();
+  await other.reload();
+  await expect(other.getByRole('main')).toContainText(
+    'Cooking period: 2026-11-01 through 2026-11-01',
+  );
+  await expect(
+    other
+      .getByRole('region', { name: 'Generated requirements', exact: true })
+      .getByRole('article'),
+  ).toHaveCount(0);
 });
 
 async function generateFromEmptyPlan(page: Page) {

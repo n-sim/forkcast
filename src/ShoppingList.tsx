@@ -1,20 +1,23 @@
-import { useEffect, useRef, useState } from 'react';
-import { formatQuantity, unitLabels } from './domain';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { localDateTime } from './food-log';
 import {
   generateShoppingList,
-  loadShoppingLists,
-  selectShoppingList,
+  loadShoppingList,
   saveShoppingItem,
   removeShoppingItem,
   subscribeToShoppingChanges,
 } from './shopping-store';
-import type { ShoppingList } from './shopping';
+import { generateShoppingRequirements, type ShoppingList } from './shopping';
 import { ManualShoppingItemForm, ShoppingItemEditor } from './ShoppingItems';
+import { ShoppingListReplacementDialog } from './ShoppingListReplacementDialog';
 
 export function ShoppingListView() {
-  const [lists, setLists] = useState<ShoppingList[]>([]);
-  const [selectedId, setSelectedId] = useState('');
+  const [list, setList] = useState<ShoppingList | null>(null);
+  const [replacement, setReplacement] = useState<{
+    startDate: string;
+    endDate: string;
+    listId: string;
+  } | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [startDate, setStartDate] = useState(() =>
     localDateTime().slice(0, 10),
@@ -31,18 +34,17 @@ export function ShoppingListView() {
   useEffect(() => {
     let active = true;
     const refresh = () =>
-      loadShoppingLists()
-        .then(({ lists, selectedId }) => {
+      loadShoppingList()
+        .then((list) => {
           if (active) {
-            setLists(lists);
-            setSelectedId((current) => current || selectedId || '');
+            setList(list);
             setLoaded(true);
           }
         })
         .catch(() => {
           if (active)
             setError(
-              'Your shopping lists could not be loaded. Reload to try again. Your stored data has been kept.',
+              'Your shopping list could not be loaded. Reload to try again. Your stored data has been kept.',
             );
         });
     const unsubscribe = subscribeToShoppingChanges(() => void refresh());
@@ -52,15 +54,22 @@ export function ShoppingListView() {
       unsubscribe();
     };
   }, []);
-  const list = lists.find((list) => list.id === selectedId) ?? lists[0];
-
-  async function generate() {
+  async function generate(
+    startDate: string,
+    endDate: string,
+    replacingListId: string | null,
+  ) {
     setSaving(true);
     setError('');
+    setMessage('');
     try {
-      const list = await generateShoppingList(startDate, endDate);
-      setLists((current) => [list, ...current]);
-      setSelectedId(list.id);
+      const list = await generateShoppingList(
+        startDate,
+        endDate,
+        replacingListId,
+      );
+      setList(list);
+      setReplacement(null);
       setAdding(false);
       setMessage('Shopping list generated and saved on this device.');
     } catch (error) {
@@ -70,36 +79,31 @@ export function ShoppingListView() {
     }
   }
 
+  function requestGeneration() {
+    setError('');
+    setMessage('');
+    try {
+      // Validate the period through Rust before asking to replace reviewed work.
+      generateShoppingRequirements([], [], startDate, endDate);
+      if (list) setReplacement({ startDate, endDate, listId: list.id });
+      else void generate(startDate, endDate, null);
+    } catch (error) {
+      setError(String(error));
+    }
+  }
+
   async function update(operation: () => Promise<ShoppingList>) {
     setSaving(true);
     setError('');
     setMessage('');
     try {
       const updated = await operation();
-      setLists((current) =>
-        current.map((list) => (list.id === updated.id ? updated : list)),
-      );
+      setList((current) => (current?.id === updated.id ? updated : current));
       setMessage('Shopping list saved on this device.');
       return true;
     } catch (error) {
       setError(String(error));
       return false;
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function choose(id: string) {
-    setSaving(true);
-    setError('');
-    setMessage('');
-    try {
-      await selectShoppingList(id);
-      setSelectedId(id);
-    } catch {
-      setError(
-        'Your shopping list selection could not be saved. Please try again.',
-      );
     } finally {
       setSaving(false);
     }
@@ -114,7 +118,7 @@ export function ShoppingListView() {
           <p>Choose a cooking period, then review what you need to buy.</p>
         </div>
       </div>
-      {error && (
+      {error && !replacement && (
         <p
           className="error-banner"
           role="alert"
@@ -127,13 +131,31 @@ export function ShoppingListView() {
       <p role="status" aria-label="Shopping list status">
         {message}
       </p>
-      {!loaded && !error && <p role="status">Loading shopping lists…</p>}
+      {!loaded && !error && <p role="status">Loading shopping list…</p>}
+      {replacement && (
+        <ShoppingListReplacementDialog
+          {...replacement}
+          saving={saving}
+          error={error}
+          onKeep={() => {
+            setReplacement(null);
+            setError('');
+          }}
+          onReplace={() =>
+            generate(
+              replacement.startDate,
+              replacement.endDate,
+              replacement.listId,
+            )
+          }
+        />
+      )}
       <form
         className="panel quantity-controls"
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          void generate();
+          requestGeneration();
         }}
       >
         <label>
@@ -163,27 +185,12 @@ export function ShoppingListView() {
           Generate shopping list
         </button>
         <p className="section-note">
-          Saves a new list. Your existing lists keep their reviewed quantities.
+          Generating again replaces the current list after confirmation. Manual
+          groceries are kept.
         </p>
       </form>
       {list && (
         <>
-          <label>
-            Saved shopping list
-            <select
-              aria-label="Saved shopping list"
-              disabled={saving || adding}
-              value={list.id}
-              onChange={(event) => void choose(event.target.value)}
-            >
-              {lists.map((list, index) => (
-                <option key={list.id} value={list.id}>
-                  {list.startDate} – {list.endDate} · List{' '}
-                  {lists.length - index}
-                </option>
-              ))}
-            </select>
-          </label>
           <p>
             Cooking period: {list.startDate} through {list.endDate} (inclusive).
           </p>
@@ -221,11 +228,16 @@ export function ShoppingListView() {
                         (source) => source.cookingId === contribution.cookingId,
                       ),
                     )
-                    .map(
-                      (contribution) =>
-                        `${contribution.recipeName} (${contribution.cookingDate}, ${contribution.portions} portions)`,
-                    )
-                    .join('; ')}
+                    .map((contribution, index) => (
+                      <Fragment key={contribution.cookingId}>
+                        {index > 0 && '; '}
+                        <a href={`#/recipes/${contribution.recipeId}`}>
+                          {contribution.recipeName}
+                        </a>{' '}
+                        ({contribution.cookingDate}, {contribution.portions}{' '}
+                        portions)
+                      </Fragment>
+                    ))}
                 </p>
               </ShoppingItemEditor>
             ))}
@@ -274,32 +286,6 @@ export function ShoppingListView() {
               onCancel={() => setAdding(false)}
             />
           )}
-          <section className="panel" aria-label="Recipe contributions">
-            <h2>Recipe contributions</h2>
-            <p className="section-note">
-              Captured when generated. Reviewing quantities keeps these original
-              requirements available.
-            </p>
-            {!list.contributions.length && (
-              <p>No planned cookings in this period.</p>
-            )}
-            {list.contributions.map((contribution) => (
-              <article className="shopping-item" key={contribution.cookingId}>
-                <h3>{contribution.recipeName}</h3>
-                <p>
-                  {contribution.cookingDate} · {contribution.portions} portions
-                </p>
-                <ul>
-                  {contribution.ingredients.map((ingredient) => (
-                    <li key={ingredient.id}>
-                      {formatQuantity(ingredient.quantity)}{' '}
-                      {unitLabels[ingredient.unit]} {ingredient.name}
-                    </li>
-                  ))}
-                </ul>
-              </article>
-            ))}
-          </section>
         </>
       )}
     </article>
