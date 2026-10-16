@@ -90,23 +90,6 @@ export function saveShoppingItem(
   });
 }
 
-export function setShoppingItemChecked(
-  listId: string,
-  itemId: string,
-  kind: 'generated' | 'manual',
-  checked: boolean,
-  editBase?: PlanningEditBase,
-): Promise<EditableShoppingList> {
-  return changeList(listId, editBase, (list) => {
-    const item = (kind === 'generated' ? list.items : list.manualItems).find(
-      (item) => item.id === itemId,
-    );
-    if (!item)
-      throw new Error('This item has been removed. Review the current list.');
-    item.checked = checked;
-  });
-}
-
 export function removeShoppingItem(
   listId: string,
   itemId: string,

@@ -8,7 +8,6 @@ export function ShoppingItemEditor({
   disabled,
   onSave,
   onRemove,
-  onCheck,
   editBase,
   children,
 }: {
@@ -16,18 +15,15 @@ export function ShoppingItemEditor({
   disabled: boolean;
   onSave: (item: ShoppingItem, editBase?: PlanningEditBase) => Promise<unknown>;
   onRemove: () => Promise<unknown>;
-  onCheck: (checked: boolean) => Promise<unknown>;
   editBase?: PlanningEditBase;
   children?: ReactNode;
 }) {
   const [quantity, setQuantity] = useState(String(item.quantity));
-  const [checked, setChecked] = useState(item.checked ?? false);
   const [dirty, setDirty] = useState(false);
   const original = useRef<PlanningEditBase | undefined>(undefined);
   useEffect(() => {
     if (!dirty) setQuantity(String(item.quantity));
   }, [item.quantity, dirty]);
-  useEffect(() => setChecked(item.checked ?? false), [item.checked]);
   return (
     <article className="shopping-item" aria-label={item.name}>
       <h3>{item.name}</h3>
@@ -47,22 +43,6 @@ export function ShoppingItemEditor({
         }}
       >
         <fieldset className="shopping-item-controls" disabled={disabled}>
-          <label>
-            <input
-              type="checkbox"
-              checked={checked}
-              onChange={(event) => {
-                const next = event.target.checked;
-                setChecked(next);
-                void onCheck(next)
-                  .then((saved) => {
-                    if (saved === false) setChecked(item.checked ?? false);
-                  })
-                  .catch(() => setChecked(item.checked ?? false));
-              }}
-            />
-            Checked off
-          </label>
           <label>
             Quantity
             <input

@@ -82,7 +82,7 @@ highlighted. Keep the household shopping list or replace it with the device's li
 Devices without existing planning data adopt the shared household data directly.
 
 Planned cookings can be added, edited, or removed by any member. Shopping quantities,
-manual items, removals, and check-offs are shared. Independent or identical changes
+manual items, and removals are shared. Independent or identical changes
 combine automatically, including edits to different fields of the same entry. Competing
 changes to one field, or deletion versus editing, retain alternatives for explicit
 resolution through **Review planning conflicts**. Unsaved quantity drafts and open
@@ -332,11 +332,13 @@ change its quantities or captured contributions. Generating again replaces those
 requirements, resetting their quantity edits and removals. It asks for confirmation
 only when generated items remain. Manual shopping items and their quantities are kept. **Keep current list**
 or Escape cancels replacement. The current list survives reloads.
-Reviews and manual groceries work offline and belong to the persistent local person,
-independently of backend account connections, as do planned cookings. This adds no
-pantry or leftover inventory. Source-change notices are subsequent work in
-[issue #7](https://github.com/n-sim/forkcast/issues/7); checklist,
-PDF, and supermarket handoffs are also later work.
+Reviews and manual groceries work offline and share household ownership with planned
+cookings when synchronization is enabled. This adds no pantry or leftover inventory.
+The generation and review view edits the requirements and manual groceries. After
+review, a separate view will offer PDF export or an in-app checklist in
+[issue #8](https://github.com/n-sim/forkcast/issues/8). Source-change notices are
+subsequent work in [issue #7](https://github.com/n-sim/forkcast/issues/7);
+supermarket handoffs are also later work.
 
 Open a recipe to attach or replace its cover photo (JPEG, PNG, or WebP, up to
 10 MB), or remove it with **Remove cover photo**. Photos save automatically and
