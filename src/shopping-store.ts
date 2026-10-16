@@ -18,10 +18,20 @@ export function subscribeToShoppingChanges(listener: () => void): () => void {
   return () => channel.close();
 }
 
-export async function loadShoppingLists(): Promise<{
-  lists: ShoppingList[];
-  selectedId?: string;
-}> {
+function currentShoppingList(
+  lists: ShoppingList[],
+  selectedId?: string,
+): ShoppingList | null {
+  return (
+    lists.find((list) => list.id === selectedId) ??
+    lists.sort(
+      (a, b) => b.generatedAt - a.generatedAt || a.id.localeCompare(b.id),
+    )[0] ??
+    null
+  );
+}
+
+export async function loadShoppingList(): Promise<ShoppingList | null> {
   const personId = await localPersonId();
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
@@ -37,40 +47,10 @@ export async function loadShoppingLists(): Promise<{
       .objectStore('localSettings')
       .get(['shoppingListId', personId]);
     transaction.oncomplete = () =>
-      resolve({
-        lists: (request.result as ShoppingList[]).sort(
-          (a, b) => b.generatedAt - a.generatedAt || a.id.localeCompare(b.id),
-        ),
-        selectedId: selected.result,
-      });
-    transaction.onabort = () => reject(transaction.error);
-    transaction.onerror = () => reject(transaction.error);
-  });
-}
-
-export async function selectShoppingList(id: string): Promise<void> {
-  const personId = await localPersonId();
-  const db = await openDatabase();
-  await new Promise<void>((resolve, reject) => {
-    const transaction = db.transaction(
-      ['shoppingLists', 'localSettings'],
-      'readwrite',
-    );
-    const request = transaction.objectStore('shoppingLists').get(id);
-    request.onsuccess = () => {
-      if (!request.result || request.result.personId !== personId) {
-        transaction.abort();
-        return;
-      }
-      transaction
-        .objectStore('localSettings')
-        .put(id, ['shoppingListId', personId]);
-    };
-    transaction.oncomplete = () => resolve();
-    transaction.onabort = () =>
-      reject(
-        transaction.error ?? new Error('This shopping list is unavailable.'),
+      resolve(
+        currentShoppingList(request.result as ShoppingList[], selected.result),
       );
+    transaction.onabort = () => reject(transaction.error);
     transaction.onerror = () => reject(transaction.error);
   });
 }
@@ -78,6 +58,7 @@ export async function selectShoppingList(id: string): Promise<void> {
 export async function generateShoppingList(
   startDate: string,
   endDate: string,
+  replacingListId: string | null,
 ): Promise<ShoppingList> {
   const personId = await localPersonId();
   const db = await openDatabase();
@@ -91,11 +72,26 @@ export async function generateShoppingList(
       .objectStore('plannedCookings')
       .index('personId')
       .getAll(personId);
+    const storedLists = transaction
+      .objectStore('shoppingLists')
+      .index('personId')
+      .getAll(personId);
+    const selected = transaction
+      .objectStore('localSettings')
+      .get(['shoppingListId', personId]);
     const recipes = transaction.objectStore('recipes').getAll();
     let list: ShoppingList;
     let failure: unknown;
     recipes.onsuccess = () => {
       try {
+        const current = currentShoppingList(
+          storedLists.result,
+          selected.result,
+        );
+        if ((current?.id ?? null) !== replacingListId)
+          throw new Error(
+            'Your shopping list changed in another tab. Review it before replacing it.',
+          );
         list = {
           id: crypto.randomUUID(),
           startDate,
@@ -107,8 +103,12 @@ export async function generateShoppingList(
             startDate,
             endDate,
           ),
-          manualItems: [],
+          manualItems: current?.manualItems ?? [],
         };
+        // Replace only this person's lists, including any saved by the earlier multi-list UI.
+        // Calculation failures abort before any reviewed data is removed.
+        for (const stored of storedLists.result as ShoppingList[])
+          transaction.objectStore('shoppingLists').delete(stored.id);
         transaction.objectStore('shoppingLists').add({ ...list, personId });
         transaction
           .objectStore('localSettings')
