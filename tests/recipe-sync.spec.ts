@@ -28,14 +28,14 @@ async function connect(
     page.getByRole('status', { name: 'Backend connection' }),
   ).toContainText(username);
   await page
-    .getByRole('button', { name: 'Enable recipe synchronization', exact: true })
+    .getByRole('button', { name: 'Enable data synchronization', exact: true })
     .click();
   await synced(page);
 }
 
 async function synced(page: Page) {
   await expect(
-    page.getByRole('status', { name: 'Recipe synchronization', exact: true }),
+    page.getByRole('status', { name: 'Data synchronization', exact: true }),
   ).toContainText('Up to date', { timeout: 15_000 });
 }
 
@@ -293,7 +293,7 @@ test('retain recipe creation, photo edits, and personal ratings through a backen
   );
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(
-    page.getByRole('status', { name: 'Recipe synchronization', exact: true }),
+    page.getByRole('status', { name: 'Data synchronization', exact: true }),
   ).toContainText('Pending synchronization');
   await backend.restart();
   await page.getByRole('button', { name: 'Sync now', exact: true }).click();
