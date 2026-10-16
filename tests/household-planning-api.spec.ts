@@ -37,6 +37,94 @@ function groceries() {
   };
 }
 
+test('identical concurrent regenerations combine while older generated-item edits still require resolution', async ({
+  request,
+  backend,
+}) => {
+  const { url, headers } = await planningHousehold(request, backend.url);
+  const original = {
+    ...groceries(),
+    shoppingList: {
+      ...groceries().shoppingList,
+      items: [
+        {
+          id: 'dry-pasta',
+          name: 'Pasta',
+          quantity: 500,
+          unit: 'g',
+          needsReview: false,
+          sources: [
+            { cookingId: 'pasta-cooking', ingredientId: 'pasta-ingredient' },
+          ],
+        },
+      ],
+      contributions: [
+        {
+          cookingId: 'pasta-cooking',
+          recipeId: 'pasta',
+          recipeName: 'Pasta',
+          cookingDate: '2026-10-13',
+          portions: 2,
+          ingredients: [
+            { id: 'pasta-ingredient', name: 'Pasta', quantity: 500, unit: 'g' },
+          ],
+        },
+      ],
+    },
+  };
+  const base = await (
+    await request.post(url, {
+      headers,
+      data: { id: 'original', baseRevision: null, data: original },
+    })
+  ).json();
+  const first = structuredClone(original);
+  first.shoppingList.id = 'first-regeneration';
+  first.shoppingList.generatedAt = 2;
+  first.shoppingList.items[0]!.id = 'first-pasta';
+  await request.post(url, {
+    headers,
+    data: { id: 'first', baseRevision: base.revision, data: first },
+  });
+  const second = structuredClone(original);
+  second.shoppingList.id = 'second-regeneration';
+  second.shoppingList.generatedAt = 3;
+  second.shoppingList.items[0]!.id = 'second-pasta';
+  second.shoppingList.manualItems.push({
+    id: 'coffee',
+    name: 'Coffee',
+    quantity: 1,
+    unit: 'piece',
+    checked: false,
+  });
+  const combined = await (
+    await request.post(url, {
+      headers,
+      data: { id: 'second', baseRevision: base.revision, data: second },
+    })
+  ).json();
+  expect(combined.conflicts).toEqual([]);
+  expect(combined.data.shoppingList.items).toHaveLength(1);
+  expect(combined.data.shoppingList.items[0].quantity).toBe(500);
+  expect(
+    combined.data.shoppingList.manualItems.map(
+      (item: { name: string }) => item.name,
+    ),
+  ).toEqual(['Coffee', 'Milk']);
+  const olderEdit = structuredClone(original);
+  olderEdit.shoppingList.items[0]!.quantity = 300;
+  const conflicted = await (
+    await request.post(url, {
+      headers,
+      data: { id: 'older-edit', baseRevision: base.revision, data: olderEdit },
+    })
+  ).json();
+  expect(conflicted.conflicts[0].path).toEqual([
+    'shoppingList',
+    'requirements',
+  ]);
+});
+
 test('later edits and removals preserve unresolved alternatives and invalidate an earlier conflict review', async ({
   request,
   backend,

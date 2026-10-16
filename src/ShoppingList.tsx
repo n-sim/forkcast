@@ -9,7 +9,11 @@ import {
   setShoppingItemChecked,
   type EditableShoppingList,
 } from './shopping-store';
-import { generateShoppingRequirements, type ShoppingList } from './shopping';
+import {
+  generateShoppingRequirements,
+  type ShoppingList,
+  type ShoppingItem,
+} from './shopping';
 import { ManualShoppingItemForm, ShoppingItemEditor } from './ShoppingItems';
 import { ShoppingListReplacementDialog } from './ShoppingListReplacementDialog';
 import type { PlanningEditBase } from './planning-sync-store';
@@ -121,6 +125,37 @@ export function ShoppingListView() {
     }
   }
 
+  function itemActions(
+    currentList: EditableShoppingList,
+    item: ShoppingItem,
+    kind: 'generated' | 'manual',
+  ) {
+    return {
+      editBase: currentList.editBase,
+      onSave: (draft: ShoppingItem, base?: PlanningEditBase) =>
+        update(() => saveShoppingItem(currentList.id, draft, kind, base)),
+      onCheck: (checked: boolean) =>
+        update(() =>
+          setShoppingItemChecked(
+            currentList.id,
+            item.id,
+            kind,
+            checked,
+            currentList.editBase,
+          ),
+        ),
+      onRemove: () =>
+        update(() =>
+          removeShoppingItem(
+            currentList.id,
+            item.id,
+            kind,
+            currentList.editBase,
+          ),
+        ),
+    };
+  }
+
   return (
     <article>
       <div className="page-heading">
@@ -217,33 +252,7 @@ export function ShoppingListView() {
                 item={item}
                 disabled={saving}
                 key={`${list.id}:${item.id}`}
-                editBase={list.editBase}
-                onSave={(item, base) =>
-                  update(() =>
-                    saveShoppingItem(list.id, item, 'generated', base),
-                  )
-                }
-                onCheck={(checked) =>
-                  update(() =>
-                    setShoppingItemChecked(
-                      list.id,
-                      item.id,
-                      'generated',
-                      checked,
-                      list.editBase,
-                    ),
-                  )
-                }
-                onRemove={() =>
-                  update(() =>
-                    removeShoppingItem(
-                      list.id,
-                      item.id,
-                      'generated',
-                      list.editBase,
-                    ),
-                  )
-                }
+                {...itemActions(list, item, 'generated')}
               >
                 {item.needsReview && (
                   <p className="nutrition-version-notice">
@@ -285,31 +294,7 @@ export function ShoppingListView() {
                 item={item}
                 disabled={saving}
                 key={`${list.id}:${item.id}`}
-                editBase={list.editBase}
-                onSave={(item, base) =>
-                  update(() => saveShoppingItem(list.id, item, 'manual', base))
-                }
-                onCheck={(checked) =>
-                  update(() =>
-                    setShoppingItemChecked(
-                      list.id,
-                      item.id,
-                      'manual',
-                      checked,
-                      list.editBase,
-                    ),
-                  )
-                }
-                onRemove={() =>
-                  update(() =>
-                    removeShoppingItem(
-                      list.id,
-                      item.id,
-                      'manual',
-                      list.editBase,
-                    ),
-                  )
-                }
+                {...itemActions(list, item, 'manual')}
               />
             ))}
             <button
