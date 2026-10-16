@@ -93,6 +93,7 @@ export async function loadSyncState(personId?: string) {
     revisions: RecipeRevision[];
     ratings: RatingChange[];
     conflicts: number;
+    current: CollectionSnapshot['current'];
   }>((resolve, reject) => {
     const transaction = db.transaction(
       ['localSettings', 'recipeRevisions', 'ratingChanges'],
@@ -104,6 +105,9 @@ export async function loadSyncState(personId?: string) {
     const conflicts = transaction
       .objectStore('localSettings')
       .get('recipeSyncConflicts');
+    const current = transaction
+      .objectStore('localSettings')
+      .get('recipeSyncCurrent');
     const revisions = transaction.objectStore('recipeRevisions').getAll();
     const ratings = transaction
       .objectStore('ratingChanges')
@@ -115,6 +119,7 @@ export async function loadSyncState(personId?: string) {
         revisions: revisions.result,
         ratings: ratings.result,
         conflicts: conflicts.result ?? 0,
+        current: current.result ?? [],
       });
     transaction.onabort = () => reject(transaction.error);
   });
@@ -198,7 +203,35 @@ export async function enableRecipeSync(
 
 export interface CollectionSnapshot {
   revisions: RecipeRevision[];
-  current: { recipeId: string; revisionId: string; unresolved: number }[];
+  current: {
+    recipeId: string;
+    revisionId: string;
+    unresolved: number;
+    competingRevisionIds?: string[];
+  }[];
+}
+
+export interface RecipeConflict {
+  recipeId: string;
+  currentRevisionId: string;
+  revisions: RecipeRevision[];
+}
+
+export function recipeConflicts(
+  state: Pick<CollectionSnapshot, 'current' | 'revisions'>,
+): RecipeConflict[] {
+  const revisions = new Map(
+    state.revisions.map((revision) => [revision.id, revision]),
+  );
+  return state.current
+    .filter((current) => current.unresolved > 0)
+    .map((current) => ({
+      recipeId: current.recipeId,
+      currentRevisionId: current.revisionId,
+      revisions: (current.competingRevisionIds ?? [])
+        .map((id) => revisions.get(id)!)
+        .filter(Boolean),
+    }));
 }
 
 export async function applyRecipeSync(
@@ -294,6 +327,9 @@ export async function applyRecipeSync(
         snapshot.current.reduce((sum, recipe) => sum + recipe.unresolved, 0),
         'recipeSyncConflicts',
       );
+      transaction
+        .objectStore('localSettings')
+        .put(snapshot.current, 'recipeSyncCurrent');
     };
     transaction.oncomplete = () => resolve();
     transaction.onabort = () => reject(transaction.error);

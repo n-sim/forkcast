@@ -89,9 +89,14 @@ resumes synchronization without importing standalone ratings again.
 
 Competing recipe edits retain both revisions and display an unresolved-edit notice.
 Only a direct successor advances the current shared recipe; another branch never
-silently replaces it. Choosing which revision becomes current belongs to the following
-conflict-resolution slice. Retained nutrition identities are immutable, so old food-log
-entries keep their original quantities and nutrition through synchronization.
+silently replaces it. Choose **Review recipe conflicts** in the notice to inspect
+competing contents, photos, and nutrition, then **Make current** on the alternative
+your household wants to use. Choosing requires a connection to the backend. If the
+alternatives change during review, review the latest edits and choose again. The
+choice synchronizes across connected devices. Resolved alternatives leave the review
+view; ordinary recipe views always show current contents, without a history browser.
+Retained nutrition identities are immutable, so old food-log entries keep their
+original quantities and nutrition through synchronization and conflict resolution.
 
 For a release binary, run `npm run backend:build`, then run
 `target/release/forkcast-backend` (`.exe` on Windows). Configuration uses environment

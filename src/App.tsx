@@ -35,6 +35,8 @@ import { MealPlan } from './MealPlan';
 import { RecipeNutrition } from './RecipeNutrition';
 import { RecipeSync, useRecipeSync } from './RecipeSync';
 import { recipeSyncAccount } from './recipe-sync-store';
+import { RecipeConflicts } from './RecipeConflicts';
+import { RecipeMetadata } from './RecipeMetadata';
 
 function subscribeToRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -113,41 +115,7 @@ function RecipeDetails({
             current recipe. The entry keeps its logged values.
           </p>
         )}
-      <dl className="recipe-metadata" aria-label="Recipe details">
-        <div>
-          <dt>Base yield</dt>
-          <dd>
-            {recipe.basePortions}{' '}
-            {recipe.basePortions === 1 ? 'portion' : 'portions'}
-          </dd>
-        </div>
-        <div>
-          <dt>Difficulty</dt>
-          <dd>
-            {recipe.difficulty
-              ? difficultyLabels[recipe.difficulty]
-              : 'Not specified'}
-          </dd>
-        </div>
-        <div>
-          <dt>Active time</dt>
-          <dd>
-            {recipe.activeMinutes === null
-              ? 'Not specified'
-              : `${recipe.activeMinutes} min`}
-          </dd>
-          <small>Dedicated work or attention</small>
-        </div>
-        <div>
-          <dt>Total time</dt>
-          <dd>
-            {recipe.totalMinutes === null
-              ? 'Not specified'
-              : `${recipe.totalMinutes} min`}
-          </dd>
-          <small>Elapsed time until ready to eat</small>
-        </div>
-      </dl>
+      <RecipeMetadata recipe={recipe} />
       <div className="recipe-personalization">
         <RecipePhotoEditor
           recipeName={recipe.name}
@@ -360,6 +328,7 @@ export function App({
   );
   const settingsOpen = route === '#/settings' || route === '#/backend';
   const foodLogOpen = route === '#/food-log';
+  const conflictsOpen = route === '#/recipe-conflicts';
   const planningView =
     route === '#/meal-plan' ? 'week' : route === '#/today' ? 'today' : null;
   const editing = recipeRoute.endsWith('/edit');
@@ -382,12 +351,13 @@ export function App({
       : undefined;
 
   useEffect(() => {
-    document.title = `${selectedSession?.recipe.name ?? selected?.name ?? (settingsOpen ? 'Settings' : foodLogOpen ? 'Food log' : planningView === 'today' ? 'Today’s cooking' : planningView ? 'Your weekly meal plan' : route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
+    document.title = `${selectedSession?.recipe.name ?? selected?.name ?? (settingsOpen ? 'Settings' : conflictsOpen ? 'Review recipe conflicts' : foodLogOpen ? 'Food log' : planningView === 'today' ? 'Today’s cooking' : planningView ? 'Your weekly meal plan' : route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
   }, [
     route,
     selected,
     selectedSession,
     settingsOpen,
+    conflictsOpen,
     foodLogOpen,
     planningView,
   ]);
@@ -560,10 +530,17 @@ export function App({
             >
               {sync.conflicts} unresolved competing{' '}
               {sync.conflicts === 1 ? 'edit' : 'edits'}. Both revisions are
-              retained for conflict resolution.
+              retained for conflict resolution.{' '}
+              <a href="#/recipe-conflicts">Review recipe conflicts</a>
             </p>
           )}
-          {planningView ? (
+          {conflictsOpen ? (
+            <RecipeConflicts
+              conflicts={sync.alternatives}
+              config={ratingOwner ? connection.config : null}
+              onRefresh={sync.sync}
+            />
+          ) : planningView ? (
             <MealPlan
               key={planningView}
               recipes={recipes}
