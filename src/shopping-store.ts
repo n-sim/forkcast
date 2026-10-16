@@ -69,7 +69,10 @@ export async function generateShoppingList(
         startDate,
         endDate,
       ),
-      manualItems: data.shoppingList?.manualItems ?? [],
+      manualItems: (data.shoppingList?.manualItems ?? []).map((item) => ({
+        ...item,
+        checked: false,
+      })),
     };
   }, editBase);
   return (await loadShoppingList())!;
@@ -120,5 +123,30 @@ export function removeShoppingItem(
       list.items = list.items.filter((item) => item.id !== itemId);
     else
       list.manualItems = list.manualItems.filter((item) => item.id !== itemId);
+  });
+}
+
+export function checkShoppingItem(
+  listId: string,
+  itemId: string,
+  checked: boolean,
+  editBase?: PlanningEditBase,
+): Promise<EditableShoppingList> {
+  return changeList(listId, editBase, (list) => {
+    const item = [...list.items, ...list.manualItems].find(
+      (item) => item.id === itemId,
+    );
+    if (!item)
+      throw new Error('This item has been removed. Review the current list.');
+    item.checked = checked;
+  });
+}
+
+export function completeShoppingList(
+  listId: string,
+  editBase?: PlanningEditBase,
+): Promise<EditableShoppingList> {
+  return changeList(listId, editBase, (list) => {
+    list.completed = true;
   });
 }

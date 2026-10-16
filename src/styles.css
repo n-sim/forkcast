@@ -462,6 +462,38 @@ h2 {
 .shopping-source-status {
   margin-bottom: 24px;
 }
+.shopping-check {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  font: inherit;
+  gap: 16px;
+  padding-block: 16px;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.shopping-check input {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+.shopping-check:has(input:checked) span {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.shopping-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.shopping-options p {
+  flex-basis: 100%;
+  margin: 0;
+}
+.shopping-completion {
+  margin-top: 24px;
+}
 .planned-cooking {
   padding-block: 20px;
   border-top: 1px solid var(--line);

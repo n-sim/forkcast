@@ -33,6 +33,7 @@ import { BackendAccounts, useBackendConnection } from './BackendAccounts';
 import { FoodLog } from './FoodLog';
 import { MealPlan } from './MealPlan';
 import { ShoppingListView } from './ShoppingList';
+import { ShoppingHandoffView } from './ShoppingHandoff';
 import { RecipeNutrition } from './RecipeNutrition';
 import { RecipeSync, useRecipeSync } from './RecipeSync';
 import { PlanningImportReview } from './PlanningImportReview';
@@ -331,7 +332,9 @@ export function App({
   );
   const settingsOpen = route === '#/settings' || route === '#/backend';
   const foodLogOpen = route === '#/food-log';
-  const shoppingOpen = route === '#/shopping-list';
+  const shoppingHandoff =
+    route === '#/shopping-list/use' || route === '#/shopping-list/checklist';
+  const shoppingOpen = route === '#/shopping-list' || shoppingHandoff;
   const conflictsOpen = route === '#/recipe-conflicts';
   const planningConflictsOpen = route === '#/planning-conflicts';
   const planningView =
@@ -594,7 +597,13 @@ export function App({
               view={planningView}
             />
           ) : shoppingOpen ? (
-            <ShoppingListView />
+            shoppingHandoff ? (
+              <ShoppingHandoffView
+                checklist={route === '#/shopping-list/checklist'}
+              />
+            ) : (
+              <ShoppingListView />
+            )
           ) : foodLogOpen ? (
             <FoodLog recipes={recipes} />
           ) : settingsOpen ? (

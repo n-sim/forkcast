@@ -1,6 +1,7 @@
 import {
   generate_shopping_requirements,
   shopping_source_changed,
+  shopping_list_complete,
   validate_shopping_item,
 } from '../crates/recipe-domain/pkg/forkcast_recipe_domain';
 import type { Recipe, Unit } from './domain';
@@ -40,9 +41,14 @@ export interface ShoppingList {
   startDate: string;
   endDate: string;
   generatedAt: number;
+  completed?: boolean;
   items: GeneratedShoppingItem[];
   contributions: RecipeContribution[];
   manualItems: ShoppingItem[];
+}
+
+export function shoppingComplete(list: ShoppingList): boolean {
+  return shopping_list_complete(list);
 }
 
 export type ShoppingSourceStatus = 'changed' | 'unchanged' | 'unknown';

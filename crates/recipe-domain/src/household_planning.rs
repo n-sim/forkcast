@@ -48,6 +48,7 @@ pub fn validate(data: &Value) -> Result<(), String> {
             "items",
             "contributions",
             "manualItems",
+            "completed",
         ],
     )?;
     let start = list["startDate"].as_str().ok_or_else(invalid)?;
@@ -57,6 +58,9 @@ pub fn validate(data: &Value) -> Result<(), String> {
         || start > end
         || !list["id"].as_str().is_some_and(|id| !id.trim().is_empty())
         || !list["generatedAt"].as_f64().is_some_and(|time| time >= 0.0)
+        || list
+            .get("completed")
+            .is_some_and(|completed| !completed.is_boolean())
     {
         return Err(invalid());
     }
@@ -195,6 +199,9 @@ fn normalize(data: &Value) -> Value {
     let mut data = data.clone();
     if let Some(list) = data.get("shoppingList").and_then(Value::as_object) {
         let mut requirements = list.clone();
+        requirements
+            .entry("completed")
+            .or_insert(Value::Bool(false));
         let manual = requirements.remove("manualItems").unwrap_or(json!([]));
         requirements.insert("items".into(), keyed(&requirements["items"]));
         data["shoppingList"] = json!({"requirements": requirements, "manualItems": keyed(&manual)});
@@ -219,6 +226,10 @@ fn denormalize(mut data: Value) -> Value {
             .as_object()
             .cloned()
             .unwrap_or_default();
+        // Omit the default explicit-completion flag from older lists' public representation.
+        if requirements.get("completed") == Some(&Value::Bool(false)) {
+            requirements.remove("completed");
+        }
         requirements.insert("items".into(), unkey(&requirements["items"]));
         requirements.insert("manualItems".into(), unkey(&list["manualItems"]));
         data["shoppingList"] = Value::Object(requirements);

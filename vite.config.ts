@@ -9,7 +9,8 @@ export default defineConfig({
       registerType: 'prompt',
       manifest: false,
       workbox: {
-        globPatterns: ['**/*.{js,css,html,wasm,svg}'],
+        clientsClaim: true,
+        globPatterns: ['**/*.{js,css,html,wasm,svg,gz}'],
         navigateFallback: 'index.html',
       },
     }),
