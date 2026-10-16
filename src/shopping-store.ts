@@ -12,6 +12,7 @@ import {
   planningEditBase,
   type PlanningEditBase,
 } from './planning-sync-store';
+import { loadRecipes, subscribeToRecipeChanges } from './recipe-store';
 
 export type EditableShoppingList = ShoppingList & {
   editBase?: PlanningEditBase;
@@ -21,17 +22,25 @@ export type EditableShoppingList = ShoppingList & {
 export function subscribeToShoppingChanges(listener: () => void): () => void {
   const channel = new BroadcastChannel('forkcast-shopping');
   channel.onmessage = listener;
-  return () => channel.close();
+  const unsubscribeRecipes = subscribeToRecipeChanges(listener);
+  return () => {
+    channel.close();
+    unsubscribeRecipes();
+  };
 }
 
 export async function loadShoppingList(): Promise<EditableShoppingList | null> {
-  const { state, data } = await loadPlanningData();
+  const [{ state, data }, recipes] = await Promise.all([
+    loadPlanningData(),
+    loadRecipes(),
+  ]);
   return data.shoppingList
     ? {
         ...data.shoppingList,
         editBase: planningEditBase(state, data),
         sourceStatus: shoppingSourceStatus(
           Object.values(data.cookings),
+          recipes,
           data.shoppingList,
         ),
       }

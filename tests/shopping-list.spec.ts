@@ -309,6 +309,231 @@ test('keep reviews stable after source changes and regenerate offline without lo
   await expect(reopenedManual.getByRole('article')).toHaveCount(0);
 });
 
+test('flag ingredient changes in contributing recipes while keeping the reviewed list stable until regeneration', async ({
+  page,
+  context,
+}) => {
+  const stewUrl = await createRecipe(page, 'Lentil stew', [
+    { name: 'Lentils', quantity: '250', unit: 'g' },
+    { name: 'Oil', quantity: '20', unit: 'ml' },
+  ]);
+  const saladUrl = await createRecipe(page, 'Bean salad', [
+    { name: 'Beans', quantity: '100', unit: 'g' },
+  ]);
+  await plan(page, 'Lentil stew', '2026-10-13', '4');
+  await plan(page, 'Bean salad', '2026-10-15', '2');
+  await generate(page);
+  const status = page.getByRole('status', {
+    name: 'Shopping source status',
+    exact: true,
+  });
+  const generated = page.getByRole('region', {
+    name: 'Generated requirements',
+    exact: true,
+  });
+  const lentils = generated.getByRole('article', {
+    name: 'Lentils',
+    exact: true,
+  });
+  await lentils.getByLabel('Quantity', { exact: true }).fill('300');
+  await lentils
+    .getByRole('button', { name: 'Save quantity', exact: true })
+    .click();
+  await expect(lentils).toContainText('300 g');
+  await generated
+    .getByRole('article', { name: 'Oil', exact: true })
+    .getByRole('button', { name: 'Remove item', exact: true })
+    .click();
+  await expect(generated.getByRole('article')).toHaveCount(1);
+  await page
+    .getByRole('button', { name: 'Add manual item', exact: true })
+    .click();
+  const manualForm = page.getByRole('region', {
+    name: 'Manual item details',
+    exact: true,
+  });
+  await manualForm.getByLabel('Food item', { exact: true }).fill('Milk');
+  await manualForm.getByLabel('Quantity', { exact: true }).fill('2');
+  await manualForm.getByLabel('Unit', { exact: true }).selectOption('l');
+  await manualForm
+    .getByRole('button', { name: 'Save manual item', exact: true })
+    .click();
+  const manual = page.getByRole('region', {
+    name: 'Manual shopping items',
+    exact: true,
+  });
+  await expect(manual).toContainText('2 l');
+  const other = await context.newPage();
+  async function editRecipe(url: string, change: () => Promise<unknown>) {
+    await other.goto(url + '/edit');
+    await change();
+    await other
+      .getByRole('button', { name: 'Save recipe', exact: true })
+      .click();
+    await expect(
+      other.getByRole('link', { name: 'Edit recipe', exact: true }),
+    ).toBeVisible();
+  }
+  // A recipe planned only outside the saved period does not change its source.
+  await editRecipe(saladUrl, () =>
+    other.getByLabel('Ingredient 1 quantity', { exact: true }).fill('900'),
+  );
+  await page.reload();
+  await expect(status).toContainText('unchanged within this cooking period');
+  // Recipe metadata does not alter ingredient requirements.
+  await editRecipe(stewUrl, async () => {
+    await other.getByLabel('Recipe name', { exact: true }).fill('Renamed stew');
+  });
+  await page.reload();
+  await expect(status).toContainText('unchanged within this cooking period');
+  await editRecipe(stewUrl, () =>
+    other.getByLabel('Ingredient 1 quantity', { exact: true }).fill('500'),
+  );
+  await expect(status).toContainText(
+    'The meal plan changed within this cooking period.',
+  );
+  await expect(lentils).toContainText('300 g');
+  await expect(lentils).toContainText('Lentil stew');
+  await expect(generated.getByRole('article')).toHaveCount(1);
+  await expect(manual).toContainText('2 l');
+  await page.reload();
+  await expect(status).toContainText(
+    'The meal plan changed within this cooking period.',
+  );
+  await expect(lentils).toContainText('300 g');
+  await page
+    .getByRole('button', { name: 'Regenerate from updated plan', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Replace shopping list', exact: true })
+    .click();
+  await expect(status).toContainText('unchanged within this cooking period');
+  await expect(generated.getByRole('article')).toHaveCount(2);
+  await expect(lentils).toContainText('1 kg');
+  await expect(lentils).toContainText('Renamed stew');
+  await expect(manual).toContainText('2 l');
+});
+
+const ingredientChanges: {
+  name: string;
+  edit: (page: Page) => Promise<unknown>;
+  expectedItem: string;
+  expectedQuantity: string;
+  itemCount: number;
+}[] = [
+  {
+    name: 'ingredient name',
+    edit: (page) =>
+      page.getByLabel('Ingredient 1 name', { exact: true }).fill('Chickpeas'),
+    expectedItem: 'Chickpeas',
+    expectedQuantity: '500 g',
+    itemCount: 2,
+  },
+  {
+    name: 'ingredient unit',
+    edit: (page) =>
+      page.getByLabel('Ingredient 1 unit', { exact: true }).selectOption('kg'),
+    expectedItem: 'Lentils',
+    expectedQuantity: '500 kg',
+    itemCount: 2,
+  },
+  {
+    name: 'added ingredient',
+    edit: async (page) => {
+      await page
+        .getByRole('button', { name: '+ Add ingredient', exact: true })
+        .click();
+      await page
+        .getByLabel('Ingredient 3 name', { exact: true })
+        .fill('Carrot');
+      await page.getByLabel('Ingredient 3 quantity', { exact: true }).fill('3');
+      await page
+        .getByLabel('Ingredient 3 unit', { exact: true })
+        .selectOption('piece');
+    },
+    expectedItem: 'Carrot',
+    expectedQuantity: '6 piece',
+    itemCount: 3,
+  },
+  {
+    name: 'removed ingredient',
+    edit: (page) =>
+      page
+        .getByRole('button', { name: 'Remove ingredient 2', exact: true })
+        .click(),
+    expectedItem: 'Lentils',
+    expectedQuantity: '500 g',
+    itemCount: 1,
+  },
+  {
+    name: 'recipe base yield',
+    edit: (page) => page.getByLabel('Base portions', { exact: true }).fill('4'),
+    expectedItem: 'Lentils',
+    expectedQuantity: '250 g',
+    itemCount: 2,
+  },
+];
+
+for (const change of ingredientChanges) {
+  test(`flag a changed ${change.name} and regenerate its ingredient requirements`, async ({
+    page,
+  }) => {
+    const recipeUrl = await createRecipe(page, 'Lentil stew', [
+      { name: 'Lentils', quantity: '250', unit: 'g' },
+      { name: 'Oil', quantity: '20', unit: 'ml' },
+    ]);
+    await plan(page, 'Lentil stew', '2026-10-13', '4');
+    await generate(page);
+    const generated = page.getByRole('region', {
+      name: 'Generated requirements',
+      exact: true,
+    });
+    // Detect source edits even after all generated items were removed during review.
+    await generated
+      .getByRole('button', { name: 'Remove item', exact: true })
+      .first()
+      .click();
+    await expect(generated.getByRole('article')).toHaveCount(1);
+    await generated
+      .getByRole('button', { name: 'Remove item', exact: true })
+      .click();
+    await expect(generated.getByRole('article')).toHaveCount(0);
+    await page.goto(recipeUrl + '/edit');
+    await change.edit(page);
+    await page
+      .getByRole('button', { name: 'Save recipe', exact: true })
+      .click();
+    await expect(
+      page.getByRole('heading', { name: 'Lentil stew', exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole('link', { name: 'Shopping list', exact: true })
+      .click();
+    const status = page.getByRole('status', {
+      name: 'Shopping source status',
+      exact: true,
+    });
+    await expect(status).toContainText(
+      'The meal plan changed within this cooking period.',
+    );
+    await expect(generated.getByRole('article')).toHaveCount(0);
+    await page
+      .getByRole('button', {
+        name: 'Regenerate from updated plan',
+        exact: true,
+      })
+      .click();
+    await expect(generated.getByRole('article')).toHaveCount(change.itemCount);
+    await expect(
+      generated.getByRole('article', {
+        name: change.expectedItem,
+        exact: true,
+      }),
+    ).toContainText(change.expectedQuantity);
+    await expect(status).toContainText('unchanged within this cooking period');
+  });
+}
+
 test('track only changes within the saved cooking period, including time, recipe, and moves across its boundaries', async ({
   page,
   context,
