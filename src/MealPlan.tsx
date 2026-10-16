@@ -4,7 +4,9 @@ import { type PlannedCooking, type PlanningRecipe } from './planning';
 import {
   loadPlannedCookings,
   savePlannedCooking,
+  removePlannedCooking,
   subscribeToPlanningChanges,
+  type EditablePlannedCooking,
 } from './planning-store';
 import { PlannedCookingForm } from './PlannedCookingForm';
 import { recipeNutrition } from './nutrition';
@@ -54,11 +56,13 @@ function PlannedCookingCard({
   cooking,
   recipe,
   onEdit,
+  onRemove,
   editing,
 }: {
   cooking: PlannedCooking;
   recipe?: PlanningRecipe;
   onEdit: () => void;
+  onRemove: () => void;
   editing: boolean;
 }) {
   const perPortion = recipe ? recipeNutrition(recipe) : null;
@@ -111,6 +115,13 @@ function PlannedCookingCard({
       <button className="button secondary" disabled={editing} onClick={onEdit}>
         Edit planned cooking
       </button>
+      <button
+        className="button secondary"
+        disabled={editing}
+        onClick={onRemove}
+      >
+        Remove planned cooking
+      </button>
     </article>
   );
 }
@@ -124,10 +135,12 @@ export function MealPlan({
 }) {
   const today = useToday();
   const [week, setWeek] = useState(() => monday(today));
-  const [cookings, setCookings] = useState<PlannedCooking[]>([]);
+  const [cookings, setCookings] = useState<EditablePlannedCooking[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [editingCooking, setEditingCooking] = useState<PlannedCooking>();
+  const [removing, setRemoving] = useState(false);
+  const [editingCooking, setEditingCooking] =
+    useState<EditablePlannedCooking>();
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   useEffect(() => {
@@ -156,17 +169,28 @@ export function MealPlan({
   }, []);
 
   async function save(cooking: PlannedCooking) {
-    await savePlannedCooking(cooking);
-    setCookings((current) => [
-      ...current.filter((item) => item.id !== cooking.id),
-      cooking,
-    ]);
+    await savePlannedCooking(cooking, editingCooking?.editBase);
+    setCookings(await loadPlannedCookings());
     setWeek(monday(cooking.cookingDate));
     setAdding(false);
     setEditingCooking(undefined);
     setMessage(
       `Planned cooking saved on this device for ${dateLabel(cooking.cookingDate)}.`,
     );
+  }
+
+  async function remove(cooking: EditablePlannedCooking) {
+    setRemoving(true);
+    setError('');
+    try {
+      await removePlannedCooking(cooking.id, cooking.editBase);
+      setCookings(await loadPlannedCookings());
+      setMessage('Planned cooking removed.');
+    } catch (error) {
+      setError(String(error));
+    } finally {
+      setRemoving(false);
+    }
   }
 
   const dates =
@@ -179,7 +203,7 @@ export function MealPlan({
     <article>
       <div className="page-heading">
         <div>
-          <p className="eyebrow">Your personal cooking schedule</p>
+          <p className="eyebrow">Your household’s cooking schedule</p>
           <h1>
             {view === 'today' ? 'Today’s cooking' : 'Your weekly meal plan'}
           </h1>
@@ -190,7 +214,7 @@ export function MealPlan({
         </div>
         <button
           className="button primary"
-          disabled={!loaded || !recipes.length || adding}
+          disabled={!loaded || !recipes.length || adding || removing}
           onClick={() => {
             setEditingCooking(undefined);
             setAdding(true);
@@ -298,7 +322,8 @@ export function MealPlan({
                       recipe={recipes.find(
                         (recipe) => recipe.id === cooking.recipeId,
                       )}
-                      editing={adding}
+                      editing={adding || removing}
+                      onRemove={() => void remove(cooking)}
                       onEdit={() => {
                         setEditingCooking(cooking);
                         setAdding(true);

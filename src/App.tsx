@@ -35,6 +35,8 @@ import { MealPlan } from './MealPlan';
 import { ShoppingListView } from './ShoppingList';
 import { RecipeNutrition } from './RecipeNutrition';
 import { RecipeSync, useRecipeSync } from './RecipeSync';
+import { PlanningImportReview } from './PlanningImportReview';
+import { PlanningConflicts } from './PlanningConflicts';
 import { recipeSyncAccount } from './recipe-sync-store';
 import { RecipeConflicts } from './RecipeConflicts';
 import { RecipeMetadata } from './RecipeMetadata';
@@ -331,6 +333,7 @@ export function App({
   const foodLogOpen = route === '#/food-log';
   const shoppingOpen = route === '#/shopping-list';
   const conflictsOpen = route === '#/recipe-conflicts';
+  const planningConflictsOpen = route === '#/planning-conflicts';
   const planningView =
     route === '#/meal-plan' ? 'week' : route === '#/today' ? 'today' : null;
   const editing = recipeRoute.endsWith('/edit');
@@ -354,13 +357,14 @@ export function App({
       : undefined;
 
   useEffect(() => {
-    document.title = `${selectedSession?.recipe.name ?? selected?.name ?? (settingsOpen ? 'Settings' : conflictsOpen ? 'Review recipe conflicts' : foodLogOpen ? 'Food log' : shoppingOpen ? 'Shopping list' : planningView === 'today' ? 'Today’s cooking' : planningView ? 'Your weekly meal plan' : route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
+    document.title = `${selectedSession?.recipe.name ?? selected?.name ?? (settingsOpen ? 'Settings' : planningConflictsOpen ? 'Review planning conflicts' : conflictsOpen ? 'Review recipe conflicts' : foodLogOpen ? 'Food log' : shoppingOpen ? 'Shopping list' : planningView === 'today' ? 'Today’s cooking' : planningView ? 'Your weekly meal plan' : route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
   }, [
     route,
     selected,
     selectedSession,
     settingsOpen,
     conflictsOpen,
+    planningConflictsOpen,
     foodLogOpen,
     shoppingOpen,
     planningView,
@@ -516,6 +520,14 @@ export function App({
           </span>
         </header>
         <main id="main-content" tabIndex={-1}>
+          {sync.importReview && (
+            <PlanningImportReview
+              review={sync.importReview}
+              config={connection.config}
+              recipes={recipes}
+              onRefresh={sync.sync}
+            />
+          )}
           {cookingConflict && (
             <CookingConflictDialog
               sessions={cookingConflict.existing}
@@ -545,7 +557,31 @@ export function App({
               <a href="#/recipe-conflicts">Review recipe conflicts</a>
             </p>
           )}
-          {conflictsOpen ? (
+          {!!sync.planning?.snapshot.conflicts.length && (
+            <p
+              role="status"
+              aria-label="Planning edit conflicts"
+              className="nutrition-version-notice"
+            >
+              {sync.planning.snapshot.conflicts.length} unresolved competing
+              planning changes.{' '}
+              <a href="#/planning-conflicts">Review planning conflicts</a>
+            </p>
+          )}
+          {planningConflictsOpen ? (
+            <PlanningConflicts
+              conflicts={sync.planning?.snapshot.conflicts ?? []}
+              data={
+                sync.planning?.snapshot.data ?? {
+                  cookings: {},
+                  shoppingList: null,
+                }
+              }
+              recipes={recipes}
+              config={ratingOwner ? connection.config : null}
+              onRefresh={sync.sync}
+            />
+          ) : conflictsOpen ? (
             <RecipeConflicts
               conflicts={sync.alternatives}
               config={ratingOwner ? connection.config : null}

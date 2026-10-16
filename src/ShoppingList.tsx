@@ -6,17 +6,21 @@ import {
   saveShoppingItem,
   removeShoppingItem,
   subscribeToShoppingChanges,
+  setShoppingItemChecked,
+  type EditableShoppingList,
 } from './shopping-store';
 import { generateShoppingRequirements, type ShoppingList } from './shopping';
 import { ManualShoppingItemForm, ShoppingItemEditor } from './ShoppingItems';
 import { ShoppingListReplacementDialog } from './ShoppingListReplacementDialog';
+import type { PlanningEditBase } from './planning-sync-store';
 
 export function ShoppingListView() {
-  const [list, setList] = useState<ShoppingList | null>(null);
+  const [list, setList] = useState<EditableShoppingList | null>(null);
   const [replacement, setReplacement] = useState<{
     startDate: string;
     endDate: string;
     listId: string;
+    editBase?: PlanningEditBase;
   } | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [startDate, setStartDate] = useState(() =>
@@ -58,6 +62,7 @@ export function ShoppingListView() {
     startDate: string,
     endDate: string,
     replacingListId: string | null,
+    editBase?: PlanningEditBase,
   ) {
     setSaving(true);
     setError('');
@@ -67,6 +72,7 @@ export function ShoppingListView() {
         startDate,
         endDate,
         replacingListId,
+        editBase,
       );
       setList(list);
       setReplacement(null);
@@ -86,8 +92,13 @@ export function ShoppingListView() {
       // Validate the period through Rust before asking to replace reviewed work.
       generateShoppingRequirements([], [], startDate, endDate);
       if (list?.items.length)
-        setReplacement({ startDate, endDate, listId: list.id });
-      else void generate(startDate, endDate, list?.id ?? null);
+        setReplacement({
+          startDate,
+          endDate,
+          listId: list.id,
+          editBase: list.editBase,
+        });
+      else void generate(startDate, endDate, list?.id ?? null, list?.editBase);
     } catch (error) {
       setError(String(error));
     }
@@ -114,7 +125,7 @@ export function ShoppingListView() {
     <article>
       <div className="page-heading">
         <div>
-          <p className="eyebrow">Your personal groceries</p>
+          <p className="eyebrow">Your household’s groceries</p>
           <h1>Shopping list</h1>
           <p>Choose a cooking period, then review what you need to buy.</p>
         </div>
@@ -147,6 +158,7 @@ export function ShoppingListView() {
               replacement.startDate,
               replacement.endDate,
               replacement.listId,
+              replacement.editBase,
             )
           }
         />
@@ -205,12 +217,31 @@ export function ShoppingListView() {
                 item={item}
                 disabled={saving}
                 key={`${list.id}:${item.id}`}
-                onSave={(item) =>
-                  update(() => saveShoppingItem(list.id, item, 'generated'))
+                editBase={list.editBase}
+                onSave={(item, base) =>
+                  update(() =>
+                    saveShoppingItem(list.id, item, 'generated', base),
+                  )
+                }
+                onCheck={(checked) =>
+                  update(() =>
+                    setShoppingItemChecked(
+                      list.id,
+                      item.id,
+                      'generated',
+                      checked,
+                      list.editBase,
+                    ),
+                  )
                 }
                 onRemove={() =>
                   update(() =>
-                    removeShoppingItem(list.id, item.id, 'generated'),
+                    removeShoppingItem(
+                      list.id,
+                      item.id,
+                      'generated',
+                      list.editBase,
+                    ),
                   )
                 }
               >
@@ -254,11 +285,30 @@ export function ShoppingListView() {
                 item={item}
                 disabled={saving}
                 key={`${list.id}:${item.id}`}
-                onSave={(item) =>
-                  update(() => saveShoppingItem(list.id, item, 'manual'))
+                editBase={list.editBase}
+                onSave={(item, base) =>
+                  update(() => saveShoppingItem(list.id, item, 'manual', base))
+                }
+                onCheck={(checked) =>
+                  update(() =>
+                    setShoppingItemChecked(
+                      list.id,
+                      item.id,
+                      'manual',
+                      checked,
+                      list.editBase,
+                    ),
+                  )
                 }
                 onRemove={() =>
-                  update(() => removeShoppingItem(list.id, item.id, 'manual'))
+                  update(() =>
+                    removeShoppingItem(
+                      list.id,
+                      item.id,
+                      'manual',
+                      list.editBase,
+                    ),
+                  )
                 }
               />
             ))}
