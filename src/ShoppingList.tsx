@@ -2,16 +2,15 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { localDateTime } from './food-log';
 import {
   generateShoppingList,
-  loadShoppingList,
   saveShoppingItem,
   removeShoppingItem,
-  subscribeToShoppingChanges,
   type EditableShoppingList,
 } from './shopping-store';
 import { generateShoppingRequirements, type ShoppingItem } from './shopping';
 import { ManualShoppingItemForm, ShoppingItemEditor } from './ShoppingItems';
 import { ShoppingListReplacementDialog } from './ShoppingListReplacementDialog';
 import type { PlanningEditBase } from './planning-sync-store';
+import { useShoppingList } from './use-shopping-list';
 
 const sourceMessages = {
   changed:
@@ -22,49 +21,24 @@ const sourceMessages = {
 };
 
 export function ShoppingListView() {
-  const [list, setList] = useState<EditableShoppingList | null>(null);
+  const { list, setList, loaded, error, setError } = useShoppingList();
   const [replacement, setReplacement] = useState<{
     startDate: string;
     endDate: string;
     listId: string;
     editBase?: PlanningEditBase;
   } | null>(null);
-  const [loaded, setLoaded] = useState(false);
   const [startDate, setStartDate] = useState(() =>
     localDateTime().slice(0, 10),
   );
   const [endDate, setEndDate] = useState(startDate);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [adding, setAdding] = useState(false);
   const errorSummary = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
     if (error) errorSummary.current?.focus();
   }, [error]);
-  useEffect(() => {
-    let active = true;
-    const refresh = () =>
-      loadShoppingList()
-        .then((list) => {
-          if (active) {
-            setList(list);
-            setLoaded(true);
-          }
-        })
-        .catch(() => {
-          if (active)
-            setError(
-              'Your shopping list could not be loaded. Reload to try again. Your stored data has been kept.',
-            );
-        });
-    const unsubscribe = subscribeToShoppingChanges(() => void refresh());
-    void refresh();
-    return () => {
-      active = false;
-      unsubscribe();
-    };
-  }, []);
   async function generate(
     startDate: string,
     endDate: string,
@@ -336,6 +310,11 @@ export function ShoppingListView() {
               }}
               onCancel={() => setAdding(false)}
             />
+          )}
+          {!adding && (
+            <a className="button primary" href="#/shopping-list/use">
+              Use reviewed list
+            </a>
           )}
         </>
       )}

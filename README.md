@@ -343,10 +343,20 @@ only when generated items remain. Manual shopping items and their quantities are
 or Escape cancels replacement. The current list survives reloads.
 Reviews and manual groceries work offline and share household ownership with planned
 cookings when synchronization is enabled. This adds no pantry or leftover inventory.
-The generation and review view edits the requirements and manual groceries. After
-review, a separate view will offer PDF export or an in-app checklist in
-[issue #8](https://github.com/n-sim/forkcast/issues/8). Supermarket handoffs are also
-later work.
+After review, choose **Use reviewed list** to open separate shopping options:
+**Export PDF** downloads a printable list, or **Open checklist** lets you check
+groceries off in the app. The review view keeps quantity editing separate from
+check-off controls. The PDF includes the cooking period, reviewed quantities,
+separate manual groceries, and captured recipe contributions, with printable
+checkboxes and automatic page breaks. Fonts are bundled, so exporting also works offline.
+
+Checklist progress saves locally and synchronizes across household members when a
+backend is enabled. Checking every generated and manual item completes shopping.
+**Complete shopping** also completes it with unchecked items remaining. Completion
+keeps the reviewed quantities, manual groceries, and recipe contributions available;
+exporting a PDF leaves completion and check marks unchanged. Generating a new list
+starts fresh progress while retaining manual groceries and their quantities.
+Supermarket handoffs remain later work.
 
 Open a recipe to attach or replace its cover photo (JPEG, PNG, or WebP, up to
 10 MB), or remove it with **Remove cover photo**. Photos save automatically and
@@ -431,5 +441,7 @@ Shopping generation, recipe contributions, review, and separate manual groceries
 implemented in [issue #6](https://github.com/n-sim/forkcast/issues/6).
 Source-period change notices and explicit regeneration with manual groceries preserved
 are implemented in [issue #7](https://github.com/n-sim/forkcast/issues/7).
+The separate shopping checklist, shared progress, completion, and PDF downloads are
+implemented in [issue #8](https://github.com/n-sim/forkcast/issues/8).
 Cooking history, AI, personal plan/log synchronization, explicit conflict resolution,
 and backups are later work.

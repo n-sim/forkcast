@@ -28,6 +28,12 @@ pub fn merge_household_planning(
 }
 
 #[wasm_bindgen]
+pub fn shopping_list_complete(value: JsValue) -> Result<bool, JsValue> {
+    let progress: shopping::ShoppingProgress = serde_wasm_bindgen::from_value(value)?;
+    Ok(progress.is_complete())
+}
+
+#[wasm_bindgen]
 pub fn validate_shopping_item(value: JsValue) -> Result<JsValue, JsValue> {
     let item = shopping::validate_shopping_item(serde_wasm_bindgen::from_value(value)?)
         .map_err(|error| JsValue::from_str(&error))?;

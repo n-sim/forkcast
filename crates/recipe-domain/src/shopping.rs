@@ -6,6 +6,28 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
+#[derive(Deserialize)]
+struct ChecklistItem {
+    #[serde(default)]
+    checked: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShoppingProgress {
+    #[serde(default)]
+    completed: bool,
+    items: Vec<ChecklistItem>,
+    manual_items: Vec<ChecklistItem>,
+}
+
+impl ShoppingProgress {
+    pub fn is_complete(&self) -> bool {
+        let mut items = self.items.iter().chain(&self.manual_items).peekable();
+        self.completed || (items.peek().is_some() && items.all(|item| item.checked))
+    }
+}
+
 #[derive(Deserialize, Serialize)]
 pub struct ShoppingItem {
     pub id: String,
