@@ -85,8 +85,9 @@ export function ShoppingListView() {
     try {
       // Validate the period through Rust before asking to replace reviewed work.
       generateShoppingRequirements([], [], startDate, endDate);
-      if (list) setReplacement({ startDate, endDate, listId: list.id });
-      else void generate(startDate, endDate, null);
+      if (list?.items.length)
+        setReplacement({ startDate, endDate, listId: list.id });
+      else void generate(startDate, endDate, list?.id ?? null);
     } catch (error) {
       setError(String(error));
     }
@@ -185,7 +186,7 @@ export function ShoppingListView() {
           Generate shopping list
         </button>
         <p className="section-note">
-          Generating again replaces the current list after confirmation. Manual
+          You’ll confirm before replacing existing generated items. Manual
           groceries are kept.
         </p>
       </form>
