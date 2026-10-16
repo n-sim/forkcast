@@ -35,6 +35,7 @@ pub struct RecipeContribution {
     pub recipe_id: String,
     pub recipe_name: String,
     pub cooking_date: String,
+    pub cooking_time: Option<String>,
     pub portions: f64,
     pub ingredients: Vec<Ingredient>,
 }
@@ -67,6 +68,26 @@ fn ingredient_key(name: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
         .to_lowercase()
+}
+
+/// Compare the selected source period, independently of reviewed shopping items.
+pub fn shopping_source_changed(
+    cookings: Vec<PlannedCooking>,
+    source_cookings: Vec<PlannedCooking>,
+    start_date: &str,
+    end_date: &str,
+) -> bool {
+    let in_period = |cookings: Vec<PlannedCooking>| {
+        cookings
+            .into_iter()
+            .filter(|cooking| {
+                cooking.cooking_date.as_str() >= start_date
+                    && cooking.cooking_date.as_str() <= end_date
+            })
+            .map(|cooking| (cooking.id.clone(), cooking))
+            .collect::<std::collections::BTreeMap<_, _>>()
+    };
+    in_period(cookings) != in_period(source_cookings)
 }
 
 /// Capture scaled ingredient totals and their sources, independently of step allocations.
@@ -155,6 +176,7 @@ pub fn generate_shopping_requirements(
             recipe_id: recipe.id.clone(),
             recipe_name: recipe.name.clone(),
             cooking_date: cooking.cooking_date,
+            cooking_time: cooking.cooking_time,
             portions,
             ingredients,
         });

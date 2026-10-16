@@ -8,11 +8,7 @@ import {
   subscribeToShoppingChanges,
   type EditableShoppingList,
 } from './shopping-store';
-import {
-  generateShoppingRequirements,
-  type ShoppingList,
-  type ShoppingItem,
-} from './shopping';
+import { generateShoppingRequirements, type ShoppingItem } from './shopping';
 import { ManualShoppingItemForm, ShoppingItemEditor } from './ShoppingItems';
 import { ShoppingListReplacementDialog } from './ShoppingListReplacementDialog';
 import type { PlanningEditBase } from './planning-sync-store';
@@ -88,26 +84,26 @@ export function ShoppingListView() {
     }
   }
 
-  function requestGeneration() {
+  function requestGeneration(from = startDate, through = endDate) {
     setError('');
     setMessage('');
     try {
       // Validate the period through Rust before asking to replace reviewed work.
-      generateShoppingRequirements([], [], startDate, endDate);
+      generateShoppingRequirements([], [], from, through);
       if (list?.items.length)
         setReplacement({
-          startDate,
-          endDate,
+          startDate: from,
+          endDate: through,
           listId: list.id,
           editBase: list.editBase,
         });
-      else void generate(startDate, endDate, list?.id ?? null, list?.editBase);
+      else void generate(from, through, list?.id ?? null, list?.editBase);
     } catch (error) {
       setError(String(error));
     }
   }
 
-  async function update(operation: () => Promise<ShoppingList>) {
+  async function update(operation: () => Promise<EditableShoppingList>) {
     setSaving(true);
     setError('');
     setMessage('');
@@ -231,6 +227,22 @@ export function ShoppingListView() {
           <p>
             Cooking period: {list.startDate} through {list.endDate} (inclusive).
           </p>
+          <div className={list.sourceChanged ? 'nutrition-version-notice' : ''}>
+            <p role="status" aria-label="Shopping source status">
+              {list.sourceChanged
+                ? 'The meal plan changed within this cooking period. Your reviewed items and quantities are kept until you regenerate.'
+                : 'The meal plan is unchanged within this cooking period.'}
+            </p>
+            {list.sourceChanged && (
+              <button
+                className="button secondary"
+                disabled={!loaded || saving || adding}
+                onClick={() => requestGeneration(list.startDate, list.endDate)}
+              >
+                Regenerate from updated plan
+              </button>
+            )}
+          </div>
           <section className="panel" aria-label="Generated requirements">
             <h2>Generated requirements</h2>
             {!list.items.length && (
