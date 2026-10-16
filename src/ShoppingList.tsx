@@ -4,13 +4,19 @@ import {
   generateShoppingList,
   saveShoppingItem,
   removeShoppingItem,
+  completeShoppingList,
   type EditableShoppingList,
 } from './shopping-store';
-import { generateShoppingRequirements, type ShoppingItem } from './shopping';
+import {
+  generateShoppingRequirements,
+  shoppingComplete,
+  type ShoppingItem,
+} from './shopping';
 import { ManualShoppingItemForm, ShoppingItemEditor } from './ShoppingItems';
 import { ShoppingListReplacementDialog } from './ShoppingListReplacementDialog';
 import type { PlanningEditBase } from './planning-sync-store';
 import { useShoppingList } from './use-shopping-list';
+import { ShoppingProgress } from './ShoppingProgress';
 
 const sourceMessages = {
   changed:
@@ -33,6 +39,8 @@ export function ShoppingListView() {
   );
   const [endDate, setEndDate] = useState(startDate);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState('');
   const [message, setMessage] = useState('');
   const [adding, setAdding] = useState(false);
   const errorSummary = useRef<HTMLParagraphElement>(null);
@@ -123,6 +131,25 @@ export function ShoppingListView() {
     };
   }
 
+  async function exportPdf() {
+    if (!list) return;
+    setExporting(true);
+    setError('');
+    setExportMessage('Preparing PDF…');
+    try {
+      const { exportShoppingPdf } = await import('./shopping-pdf');
+      await exportShoppingPdf(list);
+      setExportMessage('PDF exported. Your shopping list is still available.');
+    } catch {
+      setError(
+        'The PDF could not be exported. Try again. Your shopping list has been kept.',
+      );
+      setExportMessage('');
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <article>
       <div className="page-heading">
@@ -144,6 +171,9 @@ export function ShoppingListView() {
       )}
       <p role="status" aria-label="Shopping list status">
         {message}
+      </p>
+      <p role="status" aria-label="PDF export status">
+        {exportMessage}
       </p>
       {!loaded && !error && <p role="status">Loading shopping list…</p>}
       {replacement && (
@@ -312,9 +342,36 @@ export function ShoppingListView() {
             />
           )}
           {!adding && (
-            <a className="button primary" href="#/shopping-list/use">
-              Use reviewed list
-            </a>
+            <>
+              <ShoppingProgress list={list} />
+              <div className="shopping-options panel">
+                <p>
+                  Export a PDF to take with you, or open the checklist.
+                  Exporting leaves shopping progress unchanged.
+                </p>
+                <button
+                  className="button secondary"
+                  disabled={saving || exporting}
+                  onClick={() => void exportPdf()}
+                >
+                  Export PDF
+                </button>
+                <a className="button primary" href="#/shopping-list/checklist">
+                  Open checklist
+                </a>
+                <button
+                  className="button secondary"
+                  disabled={saving || shoppingComplete(list)}
+                  onClick={() =>
+                    void update(() =>
+                      completeShoppingList(list.id, list.editBase),
+                    )
+                  }
+                >
+                  Complete shopping
+                </button>
+              </div>
+            </>
           )}
         </>
       )}
