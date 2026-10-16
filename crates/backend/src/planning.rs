@@ -9,11 +9,34 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use forkcast_recipe_domain::household_planning::{self, Conflict};
+use forkcast_recipe_domain::household_planning::{self, Conflict, GenerationAlias};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use uuid::Uuid;
+
+fn generation_aliases(
+    db: &Connection,
+    household: &str,
+) -> Result<BTreeMap<String, GenerationAlias>, ApiError> {
+    let mut query = db.prepare(
+        "SELECT source_id, payload FROM planning_generation_aliases WHERE household_id = ?",
+    )?;
+    let rows = query
+        .query_map([household], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    rows.into_iter()
+        .map(|(source, payload)| {
+            Ok((
+                source,
+                serde_json::from_str(&payload).map_err(|_| ApiError::internal())?,
+            ))
+        })
+        .collect()
+}
 
 pub fn routes() -> Router<Store> {
     Router::new()
@@ -32,9 +55,10 @@ pub fn routes() -> Router<Store> {
 fn persist(
     db: &Connection,
     household: &str,
-    data: Value,
+    mut data: Value,
     conflicts: Vec<Conflict>,
 ) -> Result<Value, ApiError> {
+    household_planning::apply_generation_aliases(&mut data, &generation_aliases(db, household)?);
     validate_data(db, household, &data)?;
     let revision = Uuid::new_v4().to_string();
     let saved = json!({"revision": revision, "data": data, "conflicts": conflicts});
@@ -184,8 +208,19 @@ async fn save(
         }};
         // Compare exactly what the edit saw. A device's merged live contents
         // can differ from its preceding mutation's submitted contents.
-        let expected = input.base_data.as_ref().unwrap_or(&base);
-        let merged = household_planning::merge(expected, &current["data"], &input.data);
+        let mut expected = input.base_data.clone().unwrap_or(base);
+        let mut incoming = input.data.clone();
+        let aliases = generation_aliases(&transaction, &household)?;
+        household_planning::apply_generation_aliases(&mut expected, &aliases);
+        household_planning::apply_generation_aliases(&mut incoming, &aliases);
+        let merged = household_planning::merge(&expected, &current["data"], &incoming);
+        // Only an actual regeneration can join an equivalent generation.
+        // A manual-item edit on an older list must retain its old epoch.
+        if expected["shoppingList"]["id"] != incoming["shoppingList"]["id"]
+            && let Some((source, alias)) = household_planning::equivalent_generation(&incoming, &merged.data) {
+            let payload = serde_json::to_string(&alias).map_err(|_| ApiError::internal())?;
+            transaction.execute("INSERT INTO planning_generation_aliases (household_id, source_id, payload) VALUES (?, ?, ?)", params![household, source, payload])?;
+        }
         let mut conflicts: Vec<Conflict> = serde_json::from_value(current["conflicts"].clone()).map_err(|_| ApiError::internal())?;
         household_planning::retain_conflicts(&mut conflicts, merged.conflicts, &current["data"], &merged.data);
         let saved = persist(&transaction, &household, merged.data, conflicts)?;

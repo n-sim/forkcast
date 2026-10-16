@@ -217,6 +217,13 @@ fn denormalize(mut data: Value) -> Value {
     data
 }
 
+fn item_contents(item: &Value) -> Value {
+    let mut item = item.as_object().cloned().unwrap_or_default();
+    item.remove("id");
+    item.entry("checked").or_insert(Value::Bool(false));
+    Value::Object(item)
+}
+
 fn requirement_contents(value: &Value) -> Option<Value> {
     let mut contents = value.as_object()?.clone();
     contents.remove("id");
@@ -225,16 +232,67 @@ fn requirement_contents(value: &Value) -> Option<Value> {
         .get("items")?
         .as_object()?
         .values()
-        .map(|item| {
-            let mut item = item.as_object().cloned().unwrap_or_default();
-            item.remove("id");
-            item.entry("checked").or_insert(Value::Bool(false));
-            Value::Object(item)
-        })
+        .map(item_contents)
         .collect();
     items.sort_by_cached_key(Value::to_string);
     contents.insert("items".into(), Value::Array(items));
     Some(Value::Object(contents))
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerationAlias {
+    target_id: String,
+    items: BTreeMap<String, String>,
+}
+
+pub fn equivalent_generation(from: &Value, to: &Value) -> Option<(String, GenerationAlias)> {
+    let from = normalize(from);
+    let to = normalize(to);
+    let from = &from["shoppingList"]["requirements"];
+    let to = &to["shoppingList"]["requirements"];
+    let source_id = from["id"].as_str()?;
+    let target_id = to["id"].as_str()?;
+    if source_id == target_id || requirement_contents(from)? != requirement_contents(to)? {
+        return None;
+    }
+    let mut available: Vec<_> = to["items"].as_object()?.values().collect();
+    let mut items = BTreeMap::new();
+    for (id, item) in from["items"].as_object()? {
+        let index = available
+            .iter()
+            .position(|candidate| item_contents(candidate) == item_contents(item))?;
+        items.insert(
+            id.clone(),
+            available.remove(index)["id"].as_str()?.to_owned(),
+        );
+    }
+    Some((
+        source_id.to_owned(),
+        GenerationAlias {
+            target_id: target_id.to_owned(),
+            items,
+        },
+    ))
+}
+
+pub fn apply_generation_aliases(data: &mut Value, aliases: &BTreeMap<String, GenerationAlias>) {
+    for _ in 0..aliases.len() {
+        let Some(alias) = data["shoppingList"]["id"]
+            .as_str()
+            .and_then(|id| aliases.get(id))
+        else {
+            break;
+        };
+        data["shoppingList"]["id"] = Value::String(alias.target_id.clone());
+        if let Some(items) = data["shoppingList"]["items"].as_array_mut() {
+            for item in items {
+                if let Some(id) = item["id"].as_str().and_then(|id| alias.items.get(id)) {
+                    item["id"] = Value::String(id.clone());
+                }
+            }
+        }
+    }
 }
 
 fn merge_value(

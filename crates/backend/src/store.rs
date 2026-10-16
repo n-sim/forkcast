@@ -75,6 +75,12 @@ impl Store {
                  household_id TEXT NOT NULL REFERENCES households(id),
                  payload TEXT NOT NULL
              );
+             CREATE TABLE IF NOT EXISTS planning_generation_aliases (
+                 household_id TEXT NOT NULL REFERENCES households(id),
+                 source_id TEXT NOT NULL,
+                 payload TEXT NOT NULL,
+                 PRIMARY KEY (household_id, source_id)
+             );
              CREATE TABLE IF NOT EXISTS rating_mutations (
                  id TEXT PRIMARY KEY,
                  account_id TEXT NOT NULL REFERENCES accounts(id),
