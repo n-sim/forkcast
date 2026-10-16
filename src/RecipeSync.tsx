@@ -175,11 +175,8 @@ export function RecipeSync({
     }
   }
   return (
-    <section
-      className="panel account-form"
-      aria-labelledby="recipe-sync-heading"
-    >
-      <h3 id="recipe-sync-heading">Recipe synchronization</h3>
+    <section className="panel account-form" aria-labelledby="data-sync-heading">
+      <h3 id="data-sync-heading">Data synchronization</h3>
       <p>
         Share your recipe collection, cover photos, and retained nutrition with
         your household, including the shared meal plan and shopping list. Your
@@ -199,12 +196,12 @@ export function RecipeSync({
             disabled={!session || enabling}
             onClick={() => void enable()}
           >
-            Enable recipe synchronization
+            Enable data synchronization
           </button>
         </>
       ) : (
         <>
-          <p role="status" aria-label="Recipe synchronization">
+          <p role="status" aria-label="Data synchronization">
             {sync.busy
               ? 'Synchronizing…'
               : sync.error

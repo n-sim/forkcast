@@ -25,14 +25,14 @@ export async function connect(
     })
     .click();
   await page
-    .getByRole('button', { name: 'Enable recipe synchronization', exact: true })
+    .getByRole('button', { name: 'Enable data synchronization', exact: true })
     .click();
   await synced(page);
 }
 
 export async function synced(page: Page) {
   await expect(
-    page.getByRole('status', { name: 'Recipe synchronization', exact: true }),
+    page.getByRole('status', { name: 'Data synchronization', exact: true }),
   ).toContainText('Up to date', { timeout: 15_000 });
 }
 

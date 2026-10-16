@@ -63,7 +63,7 @@ further attempts for one minute; this survives backend restarts. API responses a
 marked `no-store` and are not added to the offline cache.
 
 Connecting an account alone leaves standalone records on this device. After signing
-in, choose **Enable recipe synchronization** in Settings to share existing and future
+in, choose **Enable data synchronization** in Settings to share existing and future
 recipes, cover photos, ingredients, step allocations, base yield, difficulty, labels,
 times, and current/retained nutrition versions with the household. The first enable
 also adopts this device's standalone ratings into the signed-in account. Ratings
