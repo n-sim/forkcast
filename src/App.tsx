@@ -144,7 +144,6 @@ function RecipeDetails({
           <small>Elapsed time until ready to eat</small>
         </div>
       </dl>
-      <RecipeNutrition recipe={recipe} />
       <div className="recipe-personalization">
         <RecipePhotoEditor
           recipeName={recipe.name}
@@ -254,6 +253,7 @@ function RecipeDetails({
           </div>
         </>
       )}
+      <RecipeNutrition recipe={recipe} />
     </article>
   );
 }
