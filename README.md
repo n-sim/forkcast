@@ -331,6 +331,8 @@ The current shopping list saves a stable result locally. Recipe and plan edits d
 change its quantities or captured contributions. A source status indicates meal-plan
 changes within the saved cooking period, including additions, removals, recipe changes,
 portions, dates, and cooking times. Changes outside that period do not flag the list.
+Older saved lists without captured cooking times show an unavailable source status
+until explicitly regenerated; their reviewed items and quantities are kept.
 **Regenerate from updated plan** rebuilds the saved period, even if different dates
 are drafted in the generation form. Generating again replaces those
 requirements, resetting their quantity edits and removals. It asks for confirmation

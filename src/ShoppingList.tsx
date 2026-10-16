@@ -13,6 +13,14 @@ import { ManualShoppingItemForm, ShoppingItemEditor } from './ShoppingItems';
 import { ShoppingListReplacementDialog } from './ShoppingListReplacementDialog';
 import type { PlanningEditBase } from './planning-sync-store';
 
+const sourceMessages = {
+  changed:
+    'The meal plan changed within this cooking period. Your reviewed items and quantities are kept until you regenerate.',
+  unchanged: 'The meal plan is unchanged within this cooking period.',
+  unknown:
+    'The source status of this saved list is unavailable. Regenerate to review the current meal plan. Your reviewed items and quantities are kept until you regenerate.',
+};
+
 export function ShoppingListView() {
   const [list, setList] = useState<EditableShoppingList | null>(null);
   const [replacement, setReplacement] = useState<{
@@ -227,19 +235,25 @@ export function ShoppingListView() {
           <p>
             Cooking period: {list.startDate} through {list.endDate} (inclusive).
           </p>
-          <div className={list.sourceChanged ? 'nutrition-version-notice' : ''}>
+          <div
+            className={
+              list.sourceStatus !== 'unchanged'
+                ? 'nutrition-version-notice'
+                : ''
+            }
+          >
             <p role="status" aria-label="Shopping source status">
-              {list.sourceChanged
-                ? 'The meal plan changed within this cooking period. Your reviewed items and quantities are kept until you regenerate.'
-                : 'The meal plan is unchanged within this cooking period.'}
+              {sourceMessages[list.sourceStatus]}
             </p>
-            {list.sourceChanged && (
+            {list.sourceStatus !== 'unchanged' && (
               <button
                 className="button secondary"
                 disabled={!loaded || saving || adding}
                 onClick={() => requestGeneration(list.startDate, list.endDate)}
               >
-                Regenerate from updated plan
+                {list.sourceStatus === 'unknown'
+                  ? 'Regenerate from current plan'
+                  : 'Regenerate from updated plan'}
               </button>
             )}
           </div>

@@ -444,6 +444,104 @@ test('track only changes within the saved cooking period, including time, recipe
   await expect(generated).toContainText('250 g');
 });
 
+test('keep older reviewed lists with unknown source times and establish a source baseline by regenerating', async ({
+  page,
+}) => {
+  await createRecipe(page, 'Lentil stew', [
+    { name: 'Lentils', quantity: '250', unit: 'g' },
+  ]);
+  await plan(page, 'Lentil stew', '2026-10-13', '2');
+  async function setCookingTime(time: string) {
+    await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
+    await page
+      .getByLabel('Week containing', { exact: true })
+      .fill('2026-10-13');
+    await page
+      .getByRole('button', { name: 'Edit planned cooking', exact: true })
+      .click();
+    await page
+      .getByLabel('Cooking time (optional)', { exact: true })
+      .fill(time);
+    await page
+      .getByRole('button', { name: 'Save planned cooking', exact: true })
+      .click();
+    await expect(
+      page.getByRole('region', {
+        name: 'Planned cooking details',
+        exact: true,
+      }),
+    ).not.toBeVisible();
+    await page
+      .getByRole('link', { name: 'Shopping list', exact: true })
+      .click();
+  }
+  await setCookingTime('18:00');
+  await generate(page);
+  const lentils = page.getByRole('article', { name: 'Lentils', exact: true });
+  await lentils.getByLabel('Quantity', { exact: true }).fill('150');
+  await lentils
+    .getByRole('button', { name: 'Save quantity', exact: true })
+    .click();
+  await expect(lentils).toContainText('150 g');
+  // Previous-release persisted contributions are fixture input; verify through the UI.
+  await page.evaluate(async () => {
+    const request = indexedDB.open('forkcast');
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction('shoppingLists', 'readwrite');
+        const store = transaction.objectStore('shoppingLists');
+        const lists = store.getAll();
+        lists.onsuccess = () => {
+          for (const list of lists.result) {
+            for (const contribution of list.contributions)
+              delete contribution.cookingTime;
+            store.put(list);
+          }
+        };
+        transaction.oncomplete = () => resolve();
+        transaction.onabort = () => reject(transaction.error);
+      });
+    } finally {
+      db.close();
+    }
+  });
+  await page.reload();
+  const status = page.getByRole('status', {
+    name: 'Shopping source status',
+    exact: true,
+  });
+  await expect(status).toContainText(
+    'The source status of this saved list is unavailable.',
+  );
+  await expect(lentils).toContainText('150 g');
+  await setCookingTime('19:00');
+  await expect(status).toContainText(
+    'The source status of this saved list is unavailable.',
+  );
+  await expect(lentils).toContainText('150 g');
+  await page
+    .getByRole('button', { name: 'Regenerate from current plan', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Replace shopping list', exact: true })
+    .click();
+  await expect(status).toContainText('unchanged within this cooking period');
+  await expect(lentils).toContainText('250 g');
+  await setCookingTime('20:00');
+  await expect(status).toContainText(
+    'The meal plan changed within this cooking period.',
+  );
+  await page.reload();
+  await expect(status).toContainText(
+    'The meal plan changed within this cooking period.',
+  );
+  await expect(lentils).toContainText('250 g');
+});
+
 test('keep mass, volume, and piece requirements separate and flag uncertain conversions for review', async ({
   page,
 }) => {

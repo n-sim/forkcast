@@ -1,9 +1,10 @@
 import {
   generateShoppingRequirements,
-  shoppingSourceChanged,
+  shoppingSourceStatus,
   validateShoppingItem,
   type ShoppingItem,
   type ShoppingList,
+  type ShoppingSourceStatus,
 } from './shopping';
 import {
   changePlanningData,
@@ -14,7 +15,7 @@ import {
 
 export type EditableShoppingList = ShoppingList & {
   editBase?: PlanningEditBase;
-  sourceChanged: boolean;
+  sourceStatus: ShoppingSourceStatus;
 };
 
 export function subscribeToShoppingChanges(listener: () => void): () => void {
@@ -29,7 +30,7 @@ export async function loadShoppingList(): Promise<EditableShoppingList | null> {
     ? {
         ...data.shoppingList,
         editBase: planningEditBase(state, data),
-        sourceChanged: shoppingSourceChanged(
+        sourceStatus: shoppingSourceStatus(
           Object.values(data.cookings),
           data.shoppingList,
         ),
