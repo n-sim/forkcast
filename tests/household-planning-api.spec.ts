@@ -111,6 +111,43 @@ test('identical concurrent regenerations combine while older generated-item edit
       (item: { name: string }) => item.name,
     ),
   ).toEqual(['Coffee', 'Milk']);
+  const manualOnly = structuredClone(original);
+  manualOnly.shoppingList.manualItems.push({
+    id: 'bread',
+    name: 'Bread',
+    quantity: 1,
+    unit: 'piece',
+    checked: false,
+  });
+  expect(
+    (
+      await request.post(url, {
+        headers,
+        data: {
+          id: 'manual-only-old-generation',
+          baseRevision: base.revision,
+          data: manualOnly,
+        },
+      })
+    ).status(),
+  ).toBe(200);
+  await backend.restart();
+  const continued = structuredClone(second);
+  continued.shoppingList.items[0]!.quantity = 250;
+  const continuedResponse = await request.post(url, {
+    headers,
+    data: {
+      id: 'continued',
+      baseRevision: null,
+      baseMutationId: 'second',
+      baseData: second,
+      data: continued,
+    },
+  });
+  expect(continuedResponse.status()).toBe(200);
+  const continuedSnapshot = await continuedResponse.json();
+  expect(continuedSnapshot.conflicts).toEqual([]);
+  expect(continuedSnapshot.data.shoppingList.items[0].quantity).toBe(250);
   const olderEdit = structuredClone(original);
   olderEdit.shoppingList.items[0]!.quantity = 300;
   const conflicted = await (
