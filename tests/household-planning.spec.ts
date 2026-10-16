@@ -549,6 +549,75 @@ test('review existing device planning before sharing the meal plan and shopping 
       page.getByRole('article', { name: 'Coffee', exact: true }),
     ).toBeVisible();
     await expect(page.getByRole('checkbox')).toHaveCount(0);
+    const manual = page.getByRole('region', {
+      name: 'Manual shopping items',
+      exact: true,
+    });
+    await manual.getByLabel('Quantity', { exact: true }).fill('3');
+    await manual
+      .getByRole('button', { name: 'Save quantity', exact: true })
+      .click();
+    await syncNow(page);
+    await page
+      .getByRole('link', { name: 'Shopping list', exact: true })
+      .click();
+    const sourceStatus = page.getByRole('status', {
+      name: 'Shopping source status',
+      exact: true,
+    });
+    await expect(sourceStatus).toContainText(
+      'unchanged within this cooking period',
+    );
+    await editCooking(member, '4');
+    await syncNow(member);
+    // The open review receives the changed plan without replacing reviewed work.
+    await expect(sourceStatus).toContainText(
+      'The meal plan changed within this cooking period.',
+      {
+        timeout: 15_000,
+      },
+    );
+    const generated = page.getByRole('region', {
+      name: 'Generated requirements',
+      exact: true,
+    });
+    await expect(generated).toContainText('300 g');
+    await expect(generated).toContainText('2026-10-13, 2 portions');
+    await expect(manual).toContainText('3 piece');
+    await member
+      .getByRole('link', { name: 'Shopping list', exact: true })
+      .click();
+    await member
+      .getByRole('button', {
+        name: 'Regenerate from updated plan',
+        exact: true,
+      })
+      .click();
+    await member
+      .getByRole('button', { name: 'Replace shopping list', exact: true })
+      .click();
+    await expect(member.getByRole('dialog')).not.toBeVisible();
+    await syncNow(member);
+    await expect(sourceStatus).toContainText(
+      'unchanged within this cooking period',
+      {
+        timeout: 15_000,
+      },
+    );
+    await expect(generated).toContainText('1 kg');
+    await expect(generated).toContainText('2026-10-13, 4 portions');
+    await expect(manual).toContainText('3 piece');
+    await backend.restart();
+    await syncNow(page);
+    await page
+      .getByRole('link', { name: 'Shopping list', exact: true })
+      .click();
+    await page.reload();
+    await expect(sourceStatus).toContainText(
+      'unchanged within this cooking period',
+    );
+    await expect(generated).toContainText('1 kg');
+    await expect(manual).toContainText('3 piece');
   } finally {
     await context.close();
   }

@@ -35,6 +35,21 @@ pub fn validate_shopping_item(value: JsValue) -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
+pub fn shopping_source_changed(
+    cookings: JsValue,
+    source_cookings: JsValue,
+    start_date: &str,
+    end_date: &str,
+) -> Result<bool, JsValue> {
+    Ok(shopping::shopping_source_changed(
+        serde_wasm_bindgen::from_value(cookings)?,
+        serde_wasm_bindgen::from_value(source_cookings)?,
+        start_date,
+        end_date,
+    ))
+}
+
+#[wasm_bindgen]
 pub fn generate_shopping_requirements(
     cookings: JsValue,
     recipes: JsValue,
@@ -48,7 +63,8 @@ pub fn generate_shopping_requirements(
         end_date,
     )
     .map_err(|error| JsValue::from_str(&error))?;
-    Ok(serde_wasm_bindgen::to_value(&requirements)?)
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true);
+    Ok(requirements.serialize(&serializer)?)
 }
 
 #[wasm_bindgen]

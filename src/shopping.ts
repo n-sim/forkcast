@@ -1,5 +1,6 @@
 import {
   generate_shopping_requirements,
+  shopping_source_changed,
   validate_shopping_item,
 } from '../crates/recipe-domain/pkg/forkcast_recipe_domain';
 import type { Recipe, Unit } from './domain';
@@ -10,6 +11,7 @@ export interface RecipeContribution {
   recipeId: string;
   recipeName: string;
   cookingDate: string;
+  cookingTime?: string | null;
   portions: number;
   ingredients: Recipe['ingredients'];
 }
@@ -41,6 +43,30 @@ export interface ShoppingList {
   items: GeneratedShoppingItem[];
   contributions: RecipeContribution[];
   manualItems: ShoppingItem[];
+}
+
+export function shoppingSourceChanged(
+  cookings: PlannedCooking[],
+  list: ShoppingList,
+): boolean {
+  const sourceCookings = list.contributions.map((contribution) => ({
+    id: contribution.cookingId,
+    recipeId: contribution.recipeId,
+    cookingDate: contribution.cookingDate,
+    // Older lists did not capture cooking times; only compare known source fields.
+    cookingTime:
+      contribution.cookingTime === undefined
+        ? (cookings.find((cooking) => cooking.id === contribution.cookingId)
+            ?.cookingTime ?? null)
+        : contribution.cookingTime,
+    portions: contribution.portions,
+  }));
+  return shopping_source_changed(
+    cookings,
+    sourceCookings,
+    list.startDate,
+    list.endDate,
+  );
 }
 
 export function generateShoppingRequirements(

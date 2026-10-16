@@ -131,7 +131,7 @@ test('aggregate scaled totals across an inclusive cooking period and retain reci
   ).toBeVisible();
 });
 
-test('review generated quantities and independent manual groceries, keeping the saved result after source edits and offline reopening', async ({
+test('keep reviews stable after source changes and regenerate offline without losing manual groceries', async ({
   page,
   context,
 }) => {
@@ -184,6 +184,13 @@ test('review generated quantities and independent manual groceries, keeping the 
     .getByRole('button', { name: 'Save quantity', exact: true })
     .click();
   await expect(extra).toContainText('150.50 g');
+  const sourceStatus = page.getByRole('status', {
+    name: 'Shopping source status',
+    exact: true,
+  });
+  await expect(sourceStatus).toContainText(
+    'unchanged within this cooking period',
+  );
   const other = await context.newPage();
   await other.goto(recipeUrl + '/edit');
   await other.getByLabel('Recipe name', { exact: true }).fill('Renamed stew');
@@ -198,6 +205,11 @@ test('review generated quantities and independent manual groceries, keeping the 
   await other
     .getByRole('button', { name: 'Save planned cooking', exact: true })
     .click();
+  await expect(sourceStatus).toContainText(
+    'The meal plan changed within this cooking period.',
+  );
+  await expect(lentils).toContainText('300 g');
+  await expect(generated.getByRole('article')).toHaveCount(1);
   await other.close();
   await page.reload();
   await expect(lentils).toContainText('300 g');
@@ -226,12 +238,210 @@ test('review generated quantities and independent manual groceries, keeping the 
     exact: true,
   });
   await expect(reopenedManual).toContainText('150.50 g');
+  const reopenedStatus = reopened.getByRole('status', {
+    name: 'Shopping source status',
+    exact: true,
+  });
+  await expect(reopenedStatus).toContainText(
+    'The meal plan changed within this cooking period.',
+  );
+  // Regeneration uses the saved list's period, even with other dates drafted.
+  await reopened
+    .getByLabel('Shopping from', { exact: true })
+    .fill('2026-11-01');
+  await reopened
+    .getByLabel('Shopping through', { exact: true })
+    .fill('2026-11-02');
+  await reopened
+    .getByRole('button', { name: 'Regenerate from updated plan', exact: true })
+    .click();
+  const replacement = reopened.getByRole('dialog', {
+    name: 'Replace shopping list?',
+    exact: true,
+  });
+  await expect(replacement).toContainText('2026-10-13 through 2026-10-14');
+  await replacement
+    .getByRole('button', { name: 'Keep current list', exact: true })
+    .click();
+  await expect(reopenedStatus).toContainText(
+    'The meal plan changed within this cooking period.',
+  );
+  await expect(
+    reopened.getByRole('article', { name: 'Oil', exact: true }),
+  ).toHaveCount(0);
+  await reopened
+    .getByRole('button', { name: 'Regenerate from updated plan', exact: true })
+    .click();
+  await replacement
+    .getByRole('button', { name: 'Replace shopping list', exact: true })
+    .click();
+  const regenerated = reopened.getByRole('region', {
+    name: 'Generated requirements',
+    exact: true,
+  });
+  await expect(regenerated.getByRole('article')).toHaveCount(2);
+  const regeneratedLentils = regenerated.getByRole('article', {
+    name: 'Lentils',
+    exact: true,
+  });
+  await expect(regeneratedLentils).toContainText('3.60 kg');
+  await expect(regeneratedLentils).toContainText('Renamed stew');
+  await expect(regeneratedLentils).toContainText('2026-10-13, 8 portions');
+  await expect(regeneratedLentils).not.toContainText('4 portions');
+  await expect(
+    regenerated.getByRole('article', { name: 'Oil', exact: true }),
+  ).toContainText('118.29 ml');
+  await expect(reopenedManual).toContainText('150.50 g');
+  await expect(reopenedStatus).toContainText(
+    'unchanged within this cooking period',
+  );
+  await reopened.reload();
+  await expect(regeneratedLentils).toContainText('3.60 kg');
+  await expect(reopenedManual).toContainText('150.50 g');
+  await expect(reopenedStatus).toContainText(
+    'unchanged within this cooking period',
+  );
   await reopenedManual
     .getByRole('button', { name: 'Remove item', exact: true })
     .click();
   await expect(reopenedManual.getByRole('article')).toHaveCount(0);
   await reopened.reload();
   await expect(reopenedManual.getByRole('article')).toHaveCount(0);
+});
+
+test('track only changes within the saved cooking period, including time, recipe, and moves across its boundaries', async ({
+  page,
+  context,
+}) => {
+  await createRecipe(page, 'Lentil stew', [
+    { name: 'Lentils', quantity: '250', unit: 'g' },
+  ]);
+  await createRecipe(page, 'Bean salad', [
+    { name: 'Beans', quantity: '100', unit: 'g' },
+  ]);
+  await plan(page, 'Bean salad', '2026-10-12', '2');
+  await plan(page, 'Lentil stew', '2026-10-13', '2');
+  await plan(page, 'Bean salad', '2026-10-15', '2');
+  await generate(page);
+  const status = page.getByRole('status', {
+    name: 'Shopping source status',
+    exact: true,
+  });
+  const generated = page.getByRole('region', {
+    name: 'Generated requirements',
+    exact: true,
+  });
+  const other = await context.newPage();
+  await other.goto('/#/meal-plan');
+  await other.getByLabel('Week containing', { exact: true }).fill('2026-10-13');
+  const monday = 'Monday, 12 October 2026';
+  const tuesday = 'Tuesday, 13 October 2026';
+  const wednesday = 'Wednesday, 14 October 2026';
+  const thursday = 'Thursday, 15 October 2026';
+  async function edit(day: string, changes: () => Promise<unknown>) {
+    await other
+      .getByRole('region', { name: day, exact: true })
+      .getByRole('button', { name: 'Edit planned cooking', exact: true })
+      .click();
+    await changes();
+    await other
+      .getByRole('button', { name: 'Save planned cooking', exact: true })
+      .click();
+    await expect(
+      other.getByRole('region', {
+        name: 'Planned cooking details',
+        exact: true,
+      }),
+    ).not.toBeVisible();
+  }
+  async function remove(day: string) {
+    await other
+      .getByRole('region', { name: day, exact: true })
+      .getByRole('button', { name: 'Remove planned cooking', exact: true })
+      .click();
+    await expect(
+      other
+        .getByRole('region', { name: day, exact: true })
+        .getByRole('article'),
+    ).toHaveCount(0);
+  }
+  await edit(monday, async () => {
+    await other.getByLabel('Portions to cook', { exact: true }).fill('6');
+    await other
+      .getByLabel('Cooking time (optional)', { exact: true })
+      .fill('18:30');
+  });
+  await remove(thursday);
+  await plan(other, 'Bean salad', '2026-10-16', '8');
+  await page.reload();
+  await expect(status).toContainText('unchanged within this cooking period');
+  await expect(generated).toContainText('250 g');
+  // Date drafts must not change which source period is monitored.
+  await page.getByLabel('Shopping from', { exact: true }).fill('2026-11-01');
+  await page.getByLabel('Shopping through', { exact: true }).fill('2026-11-02');
+  await edit(tuesday, () =>
+    other.getByLabel('Cooking time (optional)', { exact: true }).fill('19:00'),
+  );
+  await expect(status).toContainText(
+    'The meal plan changed within this cooking period.',
+  );
+  await edit(tuesday, () =>
+    other.getByLabel('Cooking time (optional)', { exact: true }).fill(''),
+  );
+  await expect(status).toContainText('unchanged within this cooking period');
+  await edit(tuesday, () =>
+    other
+      .getByLabel('Recipe', { exact: true })
+      .selectOption({ label: 'Bean salad' }),
+  );
+  await expect(status).toContainText(
+    'The meal plan changed within this cooking period.',
+  );
+  await edit(tuesday, () =>
+    other
+      .getByLabel('Recipe', { exact: true })
+      .selectOption({ label: 'Lentil stew' }),
+  );
+  await expect(status).toContainText('unchanged within this cooking period');
+  await plan(other, 'Lentil stew', '2026-10-14', '4');
+  await expect(status).toContainText(
+    'The meal plan changed within this cooking period.',
+  );
+  await expect(generated).toContainText('250 g');
+  await remove(wednesday);
+  await expect(status).toContainText('unchanged within this cooking period');
+  await edit(tuesday, () =>
+    other.getByLabel('Cooking date', { exact: true }).fill('2026-10-15'),
+  );
+  await expect(status).toContainText(
+    'The meal plan changed within this cooking period.',
+  );
+  await page
+    .getByRole('button', { name: 'Regenerate from updated plan', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Replace shopping list', exact: true })
+    .click();
+  await expect(generated.getByRole('article')).toHaveCount(0);
+  await expect(status).toContainText('unchanged within this cooking period');
+  await edit(thursday, () =>
+    other.getByLabel('Cooking date', { exact: true }).fill('2026-10-14'),
+  );
+  await expect(status).toContainText(
+    'The meal plan changed within this cooking period.',
+  );
+  await expect(generated.getByRole('article')).toHaveCount(0);
+  await page
+    .getByRole('button', { name: 'Regenerate from updated plan', exact: true })
+    .click();
+  await expect(generated).toContainText('250 g');
+  await expect(generated).toContainText('2026-10-14, 2 portions');
+  await expect(status).toContainText('unchanged within this cooking period');
+  await remove(wednesday);
+  await expect(status).toContainText(
+    'The meal plan changed within this cooking period.',
+  );
+  await expect(generated).toContainText('250 g');
 });
 
 test('keep mass, volume, and piece requirements separate and flag uncertain conversions for review', async ({

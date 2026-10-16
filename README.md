@@ -328,7 +328,11 @@ adds extra food with its own quantity and unit under **Manual shopping items**;
 matching manual and generated groceries stay independent.
 
 The current shopping list saves a stable result locally. Recipe and plan edits do not
-change its quantities or captured contributions. Generating again replaces those
+change its quantities or captured contributions. A source status indicates meal-plan
+changes within the saved cooking period, including additions, removals, recipe changes,
+portions, dates, and cooking times. Changes outside that period do not flag the list.
+**Regenerate from updated plan** rebuilds the saved period, even if different dates
+are drafted in the generation form. Generating again replaces those
 requirements, resetting their quantity edits and removals. It asks for confirmation
 only when generated items remain. Manual shopping items and their quantities are kept. **Keep current list**
 or Escape cancels replacement. The current list survives reloads.
@@ -336,9 +340,8 @@ Reviews and manual groceries work offline and share household ownership with pla
 cookings when synchronization is enabled. This adds no pantry or leftover inventory.
 The generation and review view edits the requirements and manual groceries. After
 review, a separate view will offer PDF export or an in-app checklist in
-[issue #8](https://github.com/n-sim/forkcast/issues/8). Source-change notices are
-subsequent work in [issue #7](https://github.com/n-sim/forkcast/issues/7);
-supermarket handoffs are also later work.
+[issue #8](https://github.com/n-sim/forkcast/issues/8). Supermarket handoffs are also
+later work.
 
 Open a recipe to attach or replace its cover photo (JPEG, PNG, or WebP, up to
 10 MB), or remove it with **Remove cover photo**. Photos save automatically and
@@ -421,5 +424,7 @@ Household recipes, photos, nutrition, and personal ratings synchronize through
 the optional backend ([issue #23](https://github.com/n-sim/forkcast/issues/23)).
 Shopping generation, recipe contributions, review, and separate manual groceries are
 implemented in [issue #6](https://github.com/n-sim/forkcast/issues/6).
+Source-period change notices and explicit regeneration with manual groceries preserved
+are implemented in [issue #7](https://github.com/n-sim/forkcast/issues/7).
 Cooking history, AI, personal plan/log synchronization, explicit conflict resolution,
 and backups are later work.
