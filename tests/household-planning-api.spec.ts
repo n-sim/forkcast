@@ -82,6 +82,7 @@ test('identical concurrent regenerations combine while older generated-item edit
   first.shoppingList.id = 'first-regeneration';
   first.shoppingList.generatedAt = 2;
   first.shoppingList.items[0]!.id = 'first-pasta';
+  Object.assign(first.shoppingList.items[0]!, { checked: false });
   await request.post(url, {
     headers,
     data: { id: 'first', baseRevision: base.revision, data: first },
@@ -148,6 +149,40 @@ test('identical concurrent regenerations combine while older generated-item edit
   const continuedSnapshot = await continuedResponse.json();
   expect(continuedSnapshot.conflicts).toEqual([]);
   expect(continuedSnapshot.data.shoppingList.items[0].quantity).toBe(250);
+  const nextGeneration = structuredClone(continued);
+  nextGeneration.shoppingList.id = 'next-generation';
+  nextGeneration.shoppingList.generatedAt = 4;
+  nextGeneration.shoppingList.items[0]!.id = 'next-pasta';
+  const nextSnapshot = await (
+    await request.post(url, {
+      headers,
+      data: {
+        id: 'next-generation-change',
+        baseRevision: null,
+        baseMutationId: 'continued',
+        baseData: continued,
+        data: nextGeneration,
+      },
+    })
+  ).json();
+  expect(nextSnapshot.conflicts).toEqual([]);
+  expect(nextSnapshot.data.shoppingList.id).toBe('next-generation');
+  const oldAcceptedEdit = structuredClone(continuedSnapshot.data);
+  oldAcceptedEdit.shoppingList.items[0].quantity = 275;
+  const oldAcceptedConflict = await (
+    await request.post(url, {
+      headers,
+      data: {
+        id: 'old-accepted-edit',
+        baseRevision: continuedSnapshot.revision,
+        data: oldAcceptedEdit,
+      },
+    })
+  ).json();
+  expect(oldAcceptedConflict.conflicts[0].path).toEqual([
+    'shoppingList',
+    'requirements',
+  ]);
   const olderEdit = structuredClone(original);
   olderEdit.shoppingList.items[0]!.quantity = 300;
   const conflicted = await (
