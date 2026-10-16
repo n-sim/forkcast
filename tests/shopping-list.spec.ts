@@ -398,6 +398,27 @@ test('validate review inputs and confirm replacement of the current list while k
     'Cooking period: 2026-11-01 through 2026-11-01',
   );
   await expect(manual).toContainText('2 l');
+  // An empty generated section can be replaced directly, even with manual groceries.
+  await page.getByLabel('Shopping from', { exact: true }).fill('2026-10-13');
+  await page.getByLabel('Shopping through', { exact: true }).fill('2026-10-14');
+  await page
+    .getByRole('button', { name: 'Generate shopping list', exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(lentils).toContainText('500 g');
+  await expect(manual).toContainText('2 l');
+  await lentils
+    .getByRole('button', { name: 'Remove item', exact: true })
+    .click();
+  await expect(items.getByRole('article')).toHaveCount(0);
+  await page
+    .getByRole('button', { name: 'Generate shopping list', exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(lentils).toContainText('500 g');
+  await page.reload();
+  await expect(lentils).toContainText('500 g');
+  await expect(manual).toContainText('2 l');
 });
 
 test('retain concurrent reviews of different generated items across tabs', async ({
@@ -452,17 +473,12 @@ test('reject unrepresentable aggregation without replacing an existing reviewed 
   await page
     .getByRole('button', { name: 'Generate shopping list', exact: true })
     .click();
-  await page
-    .getByRole('dialog', { name: 'Replace shopping list?', exact: true })
-    .getByRole('button', { name: 'Replace shopping list', exact: true })
-    .click();
+  await expect(
+    page.getByRole('dialog', { name: 'Replace shopping list?', exact: true }),
+  ).toHaveCount(0);
   await expect(page.getByRole('alert')).toContainText(
     'outside the supported calculation range',
   );
-  await page
-    .getByRole('dialog', { name: 'Replace shopping list?', exact: true })
-    .getByRole('button', { name: 'Keep current list', exact: true })
-    .click();
   await expect(
     page.getByRole('region', { name: 'Manual shopping items', exact: true }),
   ).toContainText('2 piece');

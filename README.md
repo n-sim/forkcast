@@ -298,9 +298,9 @@ adds extra food with its own quantity and unit under **Manual shopping items**;
 matching manual and generated groceries stay independent.
 
 The current shopping list saves a stable result locally. Recipe and plan edits do not
-change its quantities or captured contributions. Generating again asks for confirmation
-before replacing the current generated requirements, resetting their quantity edits and
-removals. Manual shopping items and their quantities are kept. **Keep current list**
+change its quantities or captured contributions. Generating again replaces those
+requirements, resetting their quantity edits and removals. It asks for confirmation
+only when generated items remain. Manual shopping items and their quantities are kept. **Keep current list**
 or Escape cancels replacement. The current list survives reloads.
 Reviews and manual groceries work offline and belong to the persistent local person,
 independently of backend account connections, as do planned cookings. This adds no
