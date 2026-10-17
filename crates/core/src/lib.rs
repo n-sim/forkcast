@@ -35,7 +35,8 @@ pub use error::{Error, ErrorKind, Result};
 pub use food_log::{LogManualFood, LogRecipeFood};
 pub use operation::Operation;
 pub use planning::{
-    PlanningChoice, PlanningMutation, ShoppingItemKind, ShoppingListView, SourceStatus,
+    EditBase, MealPlanView, PlanningChoice, PlanningMutation, ShoppingItemKind, ShoppingListView,
+    SourceStatus,
 };
 pub use preferences::AiPreferences;
 pub use principal::{Principal, Standing};
@@ -151,6 +152,12 @@ impl Core {
             )?;
             Ok(Principal::new(person, household, Standing::Local))
         })
+    }
+
+    /// Every change on this device, for the embedded host that relays them to
+    /// its frontend. The frontend only ever shows what its own principal may see.
+    pub fn subscribe_all(&self) -> Subscription {
+        self.inner.hub.subscribe_all()
     }
 
     /// Changes visible to `principal`, delivered after they commit.

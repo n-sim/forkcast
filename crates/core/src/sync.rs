@@ -129,17 +129,11 @@ pub(crate) fn record(
     Ok(())
 }
 
-/// A planning edit, with what it was based on: the last server revision when
+/// What a new planning edit is based on: the last server revision when
 /// nothing is pending, otherwise the preceding pending mutation.
-pub(crate) fn record_planning(
-    db: &Connection,
-    effects: &mut Effects,
-    principal: &Principal,
-    base: &Value,
-    data: &Value,
-) -> Result<()> {
+pub(crate) fn planning_base(db: &Connection) -> Result<(Option<String>, Option<String>)> {
     if !is_bound(db)? {
-        return Ok(());
+        return Ok((None, None));
     }
     let previous: Option<String> = db
         .query_row(
@@ -148,18 +142,35 @@ pub(crate) fn record_planning(
             |row| row.get(0),
         )
         .optional()?;
+    if previous.is_some() {
+        return Ok((None, previous));
+    }
     let revision: Option<String> = db
         .query_row("SELECT planning_revision FROM sync_state", [], |row| {
             row.get(0)
         })
         .optional()?
         .flatten();
+    Ok((revision, None))
+}
+
+/// Queues a planning edit for delivery, with exactly the base the person saw.
+pub(crate) fn record_planning(
+    db: &Connection,
+    effects: &mut Effects,
+    principal: &Principal,
+    base: &crate::planning::EditBase,
+    data: &Value,
+) -> Result<()> {
+    if !is_bound(db)? {
+        return Ok(());
+    }
     let id = Uuid::new_v4().to_string();
     let mutation = json!({
         "id": id,
-        "baseRevision": if previous.is_some() { Value::Null } else { json!(revision) },
-        "baseMutationId": previous,
-        "baseData": base,
+        "baseRevision": base.base_revision,
+        "baseMutationId": base.base_mutation_id,
+        "baseData": base.data,
         "data": data,
     });
     record(db, effects, principal, "planning", &id, &mutation)

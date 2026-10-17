@@ -204,19 +204,19 @@ fn planning_shopping_cooking_and_food_log_work_end_to_end() {
     let mut unknown = cooking("c0", "2030-05-06", 2.0);
     unknown.recipe_id = "missing".into();
     assert_eq!(
-        core.plan_cooking(&me, unknown).err().unwrap().kind,
+        core.plan_cooking(&me, unknown, None).err().unwrap().kind,
         ErrorKind::Invalid
     );
-    core.plan_cooking(&me, cooking("c1", "2030-05-06", 8.0))
+    core.plan_cooking(&me, cooking("c1", "2030-05-06", 8.0), None)
         .unwrap();
-    core.plan_cooking(&me, cooking("c2", "2030-05-07", 4.0))
+    core.plan_cooking(&me, cooking("c2", "2030-05-07", 4.0), None)
         .unwrap();
-    assert_eq!(core.meal_plan(&me).unwrap().len(), 2);
+    assert_eq!(core.meal_plan(&me).unwrap().cookings.len(), 2);
 
     // Shopping totals come from the shared domain calculation: 12 portions
     // of a 4-portion recipe needs 3x the 600 g pumpkin, shown as 1.8 kg.
     let list = core
-        .generate_shopping_list(&me, "2030-05-06", "2030-05-07", None)
+        .generate_shopping_list(&me, "2030-05-06", "2030-05-07", None, None)
         .unwrap();
     let items = list.list["items"].as_array().unwrap();
     let pumpkin = items
@@ -231,13 +231,13 @@ fn planning_shopping_cooking_and_food_log_work_end_to_end() {
 
     // A list changed elsewhere is never replaced unseen.
     assert_eq!(
-        core.generate_shopping_list(&me, "2030-05-06", "2030-05-07", None)
+        core.generate_shopping_list(&me, "2030-05-06", "2030-05-07", None, None)
             .err()
             .unwrap()
             .kind,
         ErrorKind::Conflict
     );
-    core.check_shopping_item(&me, &list_id, &item_id, true)
+    core.check_shopping_item(&me, &list_id, &item_id, true, None)
         .unwrap();
     core.save_shopping_item(
         &me,
@@ -247,23 +247,24 @@ fn planning_shopping_cooking_and_food_log_work_end_to_end() {
             json!({"id": "m1", "name": "Coffee", "quantity": 1.0, "unit": "piece"}),
         )
         .unwrap(),
+        None,
     )
     .unwrap();
     // Changing the plan marks the reviewed list's sources as changed.
-    core.plan_cooking(&me, cooking("c2", "2030-05-07", 6.0))
+    core.plan_cooking(&me, cooking("c2", "2030-05-07", 6.0), None)
         .unwrap();
     let view = core.shopping_list(&me).unwrap().unwrap();
     assert_eq!(view.source_status, SourceStatus::Changed);
     let regenerated = core
-        .generate_shopping_list(&me, "2030-05-06", "2030-05-07", Some(&list_id))
+        .generate_shopping_list(&me, "2030-05-06", "2030-05-07", Some(&list_id), None)
         .unwrap();
     assert_eq!(regenerated.list["manualItems"][0]["name"], "Coffee");
     assert_eq!(regenerated.list["manualItems"][0]["checked"], false);
     let new_id = regenerated.list["id"].as_str().unwrap().to_owned();
-    let done = core.complete_shopping_list(&me, &new_id).unwrap();
+    let done = core.complete_shopping_list(&me, &new_id, None).unwrap();
     assert_eq!(done.list["completed"], true);
     assert_eq!(
-        core.check_shopping_item(&me, &list_id, &item_id, true)
+        core.check_shopping_item(&me, &list_id, &item_id, true, None)
             .err()
             .unwrap()
             .kind,
@@ -402,9 +403,9 @@ fn household_records_are_shared_and_personal_records_are_not() {
     assert_eq!(admin.household_id(), member.household_id());
     save(&core, &admin, risotto());
     assert_eq!(core.recipes(&member).unwrap().len(), 1);
-    core.plan_cooking(&member, cooking("c1", "2030-05-06", 2.0))
+    core.plan_cooking(&member, cooking("c1", "2030-05-06", 2.0), None)
         .unwrap();
-    assert_eq!(core.meal_plan(&admin).unwrap().len(), 1);
+    assert_eq!(core.meal_plan(&admin).unwrap().cookings.len(), 1);
 
     // Ratings, cooking sessions, food logs, and AI preferences stay personal.
     core.rate_recipe(&admin, "veggie-pumpkin-risotto", Some(5))

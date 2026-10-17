@@ -69,7 +69,7 @@ fn joining_publishes_only_what_was_chosen_and_the_member_receives_it() {
     member.join_as(&server, "sam", "another long passphrase");
     assert_eq!(member.recipe_names(), ["Soup"]);
     let plan = member.op(json!({"operation": "mealPlan"}));
-    assert_eq!(plan[0]["id"], "monday");
+    assert_eq!(plan["cookings"][0]["id"], "monday");
     // The admin's private rating never became a household record.
     assert!(
         member
@@ -138,7 +138,7 @@ fn joining_with_household_data_explicitly_replaces_the_device_plan_and_keeps_rec
     // The household plan replaced the device's; the device's recipe is held back,
     // not deleted and not published.
     assert_eq!(device.recipe_names(), ["Soup"]);
-    let plan = device.op(json!({"operation": "mealPlan"}));
+    let plan = device.op(json!({"operation": "mealPlan"}))["cookings"].clone();
     assert_eq!(plan.as_array().unwrap().len(), 1);
     assert_eq!(plan[0]["id"], "monday");
     assert_eq!(admin.sync().pending, 0);
@@ -206,7 +206,7 @@ fn offline_edits_survive_a_restart_and_deliver_once_the_server_returns() {
     assert!(status.last_error.is_none());
     member.sync();
     assert_eq!(member.recipe_names(), ["Soup", "Tea"]);
-    let plan = member.op(json!({"operation": "mealPlan"}));
+    let plan = member.op(json!({"operation": "mealPlan"}))["cookings"].clone();
     assert_eq!(plan.as_array().unwrap().len(), 2);
     // The rating is the admin's alone.
     assert!(
@@ -271,7 +271,7 @@ fn planning_edits_combine_when_independent_and_conflict_when_not() {
     admin.sync();
     member.sync();
     admin.sync();
-    let plan = admin.op(json!({"operation": "mealPlan"}));
+    let plan = admin.op(json!({"operation": "mealPlan"}))["cookings"].clone();
     assert_eq!(plan.as_array().unwrap().len(), 2);
     let monday = plan
         .as_array()
@@ -449,8 +449,7 @@ fn local_changes_commit_with_their_pending_work_or_not_at_all() {
         "id": "x", "recipeId": "missing", "cookingDate": "2030-05-06", "portions": 2.0, "cookingTime": null}}));
     assert_eq!(rejected.err().unwrap().kind, ErrorKind::Invalid);
     assert!(
-        device
-            .op(json!({"operation": "mealPlan"}))
+        device.op(json!({"operation": "mealPlan"}))["cookings"]
             .as_array()
             .unwrap()
             .is_empty()
@@ -520,4 +519,40 @@ fn release_skew_fails_visibly_and_keeps_pending_work() {
         .err()
         .unwrap();
     assert_eq!(error.kind, ErrorKind::ProtocolMismatch);
+}
+
+#[test]
+fn an_edit_from_a_stale_view_becomes_an_explicit_conflict() {
+    let server = Server::start();
+    let (admin, member) = household(&server);
+    let list = admin.op(json!({
+        "operation": "generateShoppingList",
+        "startDate": "2030-05-06", "endDate": "2030-05-12", "replacingListId": null
+    }));
+    let list_id = list["list"]["id"].clone();
+    admin.sync();
+    member.sync();
+
+    // The member opens the list and starts editing a quantity...
+    let seen = member.op(json!({"operation": "shoppingList"}));
+    let item = seen["list"]["items"][0].clone();
+    let base = seen["editBase"].clone();
+    // ...while the admin saves a different quantity for the same item.
+    let mut admin_item = item.clone();
+    admin_item["quantity"] = json!(7.0);
+    admin.op(json!({"operation": "saveShoppingItem", "listId": list_id, "kind": "generated", "item": admin_item}));
+    admin.sync();
+    // The member saves from the view they started from: nothing is overwritten.
+    let mut member_item = item.clone();
+    member_item["quantity"] = json!(9.0);
+    member.op(
+        json!({"operation": "saveShoppingItem", "listId": list_id, "kind": "generated",
+        "item": member_item, "editBase": base}),
+    );
+    member.sync();
+    admin.sync();
+    assert_eq!(admin.status().conflicts.planning, 1);
+    let snapshot = admin.op(json!({"operation": "planningSnapshot"}));
+    let values = snapshot["conflicts"][0]["values"].as_array().unwrap();
+    assert_eq!(values.len(), 2, "both quantities are retained for review");
 }
