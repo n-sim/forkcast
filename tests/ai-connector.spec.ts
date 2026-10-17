@@ -1,11 +1,62 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test, expect } from './ai-fixture';
+import type { APIRequestContext } from '@playwright/test';
 
 const headers = {
   Origin: 'http://127.0.0.1:4173',
   'X-Forkcast-Companion': '1',
 };
+
+async function authorization(request: APIRequestContext, companionUrl: string) {
+  const result = await request.post(`${companionUrl}/api/authorization`, {
+    headers,
+  });
+  return new URL(
+    ((await result.json()) as { authorizationUrl: string }).authorizationUrl,
+  );
+}
+
+test('the provider accepts a UUIDv4 host identity that survives companion restarts', async ({
+  request,
+  companion,
+}) => {
+  const first = await authorization(request, companion.url);
+  const consent = await request.get(first.href);
+  expect(consent.status(), await consent.text()).toBe(200);
+  expect(first.searchParams.get('ext_agent_host_id')).toMatch(
+    /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
+  await companion.restart();
+  const afterRestart = await authorization(request, companion.url);
+  expect(afterRestart.searchParams.get('ext_agent_host_id')).toBe(
+    first.searchParams.get('ext_agent_host_id'),
+  );
+});
+
+test.describe('upgrading an initial companion installation', () => {
+  test.use({ legacyHost: true });
+
+  test('repair the saved host identity once and preserve the account registration', async ({
+    request,
+    companion,
+  }) => {
+    const migrated = await authorization(request, companion.url);
+    const consent = await request.get(migrated.href);
+    expect(consent.status(), await consent.text()).toBe(200);
+    expect(migrated.searchParams.get('client_id')).toBe('oaiapp_fixture');
+    const status = await request.get(`${companion.url}/api/status`, {
+      headers,
+    });
+    expect(await status.json()).toMatchObject({ email: 'cook@example.test' });
+    await companion.restart();
+    const persisted = await authorization(request, companion.url);
+    expect(persisted.searchParams.get('ext_agent_host_id')).toBe(
+      migrated.searchParams.get('ext_agent_host_id'),
+    );
+    expect(persisted.searchParams.get('client_id')).toBe('oaiapp_fixture');
+  });
+});
 
 test('native authorization enforces origin, host, one-time callback state, registration identity, and credential secrecy', async ({
   request,

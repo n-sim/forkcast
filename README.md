@@ -50,7 +50,7 @@ requests them. The companion runs on the same device as that browser.
 The native listener is started before sign-in and receives the callback at
 `http://127.0.0.1:8788/auth/callback`. It follows OpenAI's
 [registration and sign-in flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in):
-dynamic client registration, a stable host identity, fresh state/nonce and S256
+dynamic client registration, a stable `urn:uuid:<UUIDv4>` host identity, fresh state/nonce and S256
 PKCE, exact callback matching during code exchange, and signed ID-token checks
 against OpenAI's JWKS, issuer, issued-client audience, expiry, and nonce. ChatGPT
 plan permission must be granted before the account is shown as connected.
@@ -69,7 +69,10 @@ the sign-in window leaves a pending attempt that can be restarted and expires
 after ten minutes. An expired session offers reconnection. **Sign out of ChatGPT**
 clears local tokens and attempts remote session revocation; a warning explains
 when revocation could not be confirmed. Reconnecting reuses the issued registration
-and host identity. Manual workflows remain available when AI is unconfigured or
+and host identity. Initial companion versions saved an unsupported `forkcast:`
+host ID; restarting the updated companion automatically replaces it with a
+persisted UUID URI while retaining the saved account registration and credentials.
+Manual workflows remain available when AI is unconfigured or
 the companion is stopped. Recipes, plans, food logs, and cooking progress stay in
 the frontend's existing local store; installing this companion adds no backups or
 cross-device synchronization. This increment supplies connection setup and state;

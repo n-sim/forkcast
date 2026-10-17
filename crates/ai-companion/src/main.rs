@@ -18,6 +18,7 @@ use std::{
 };
 use tokio::sync::Mutex;
 use tower_http::{cors::CorsLayer, set_header::SetResponseHeaderLayer};
+use uuid::Uuid;
 use vault::{Record, Vault};
 
 struct Runtime {
@@ -262,8 +263,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("Credential storage belongs to a different authorization issuer.".into());
     }
     record.issuer = Some(issuer.clone());
-    if record.host_id.is_empty() {
-        record.host_id = format!("forkcast:{}", oauth::random());
+    // The initial companion saved an unsupported custom host-ID scheme.
+    // Repair only those legacy IDs, retaining the account and its credentials.
+    if record.host_id.is_empty() || record.host_id.starts_with("forkcast:") {
+        record.host_id = Uuid::new_v4().urn().to_string();
     }
     vault
         .save(&record)

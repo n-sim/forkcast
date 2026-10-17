@@ -1,8 +1,8 @@
 import { test as base, expect } from '@playwright/test';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import { once } from 'node:events';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -22,6 +22,7 @@ type Mode =
   | 'revocation';
 
 export const test = base.extend<{
+  legacyHost: boolean;
   companion: {
     url: string;
     directory: string;
@@ -31,7 +32,8 @@ export const test = base.extend<{
     restart: () => Promise<void>;
   };
 }>({
-  companion: async ({}, use) => {
+  legacyHost: [false, { option: true }],
+  companion: async ({ legacyHost }, use) => {
     const directory = await mkdtemp(join(tmpdir(), 'forkcast-ai-'));
     const { privateKey, publicKey } = generateKeyPairSync('rsa', {
       modulusLength: 2048,
@@ -52,6 +54,25 @@ export const test = base.extend<{
         response.end(JSON.stringify({ keys: [jwk] }));
       } else if (url.pathname === '/api/accounts/authorize') {
         const params = url.searchParams;
+        // Forkcast uses the documented UUIDv4 host-ID alternative.
+        if (
+          !/^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+            params.get('ext_agent_host_id') ?? '',
+          )
+        ) {
+          response.statusCode = 400;
+          response.end(
+            JSON.stringify({
+              error: {
+                message: 'Invalid authorize request',
+                type: 'invalid_request_error',
+                param: 'ext_agent_host_id',
+                code: 'invalid_authorize_request',
+              },
+            }),
+          );
+          return;
+        }
         const code = randomUUID();
         attempts.set(code, new URLSearchParams(params));
         const callback = new URL(params.get('redirect_uri')!);
@@ -143,6 +164,44 @@ export const test = base.extend<{
     if (!address || typeof address === 'string')
       throw new Error('No provider port');
     issuer = `http://127.0.0.1:${address.port}`;
+    async function seedLegacyRecord() {
+      // An initial-release credential record, not a current-runtime rewrite.
+      const record = JSON.stringify({
+        issuer,
+        host_id: 'forkcast:legacy-installation',
+        client_id: 'oaiapp_fixture',
+        subject: 'fixture-person',
+        email: 'cook@example.test',
+        tokens: null,
+      });
+      const path = join(directory, 'credentials');
+      if (process.platform === 'win32') {
+        execFileSync(
+          'powershell.exe',
+          [
+            '-NoProfile',
+            '-NonInteractive',
+            '-Command',
+            `
+          Add-Type -AssemblyName System.Security
+          $recordBytes = [System.Text.Encoding]::UTF8.GetBytes($env:FORKCAST_TEST_LEGACY_RECORD)
+          $protectedBytes = [System.Security.Cryptography.ProtectedData]::Protect($recordBytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+          [System.IO.File]::WriteAllBytes($env:FORKCAST_TEST_LEGACY_PATH, $protectedBytes)
+        `,
+          ],
+          {
+            env: {
+              ...process.env,
+              FORKCAST_TEST_LEGACY_RECORD: record,
+              FORKCAST_TEST_LEGACY_PATH: path,
+            },
+            windowsHide: true,
+          },
+        );
+      } else {
+        await writeFile(path, record, { mode: 0o600 });
+      }
+    }
     let child: ChildProcess | undefined;
     let url = '';
     async function start() {
@@ -201,6 +260,7 @@ export const test = base.extend<{
       }
     }
     try {
+      if (legacyHost) await seedLegacyRecord();
       await start();
       await use({
         get url() {
