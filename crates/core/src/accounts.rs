@@ -118,6 +118,8 @@ pub struct AccountChange {
 #[serde(rename_all = "camelCase")]
 pub struct ServerStatus {
     pub setup_required: bool,
+    /// The synchronization protocol version this server speaks.
+    pub protocol: u32,
 }
 
 /// A verified bearer session. `token_hash` identifies it for sign-out.
@@ -214,6 +216,7 @@ impl Core {
                     [],
                     |row| row.get::<_, bool>(0),
                 )?,
+                protocol: crate::PROTOCOL_VERSION,
             })
         })
     }

@@ -43,6 +43,8 @@ pub struct Change {
 #[derive(Default)]
 pub(crate) struct Effects {
     pub(crate) changes: Vec<Change>,
+    /// Pending synchronization work was queued; wake the sync worker.
+    pub(crate) queued: bool,
 }
 
 impl Effects {
@@ -52,6 +54,14 @@ impl Effects {
 
     pub(crate) fn person(&mut self, principal: &Principal, topic: Topic) {
         self.push(Scope::Person(principal.person_id().to_owned()), topic);
+    }
+
+    pub(crate) fn household_id(&mut self, id: &str, topic: Topic) {
+        self.push(Scope::Household(id.to_owned()), topic);
+    }
+
+    pub(crate) fn person_id(&mut self, id: &str, topic: Topic) {
+        self.push(Scope::Person(id.to_owned()), topic);
     }
 
     fn push(&mut self, scope: Scope, topic: Topic) {

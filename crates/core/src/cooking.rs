@@ -111,6 +111,7 @@ fn store(db: &Connection, session: &Value) -> Result<()> {
 impl Core {
     /// The person's unfinished cooking sessions.
     pub fn cooking_sessions(&self, principal: &Principal) -> Result<Vec<Value>> {
+        principal.require_personal()?;
         self.read(|db| unfinished(db, principal))
     }
 
@@ -120,6 +121,7 @@ impl Core {
         principal: &Principal,
         input: StartCooking,
     ) -> Result<BeginCooking> {
+        principal.require_personal()?;
         let units: DisplayUnits = match &input.display_units {
             Some(units) => serde_json::from_value(Value::String(units.clone()))
                 .map_err(|_| Error::invalid("Choose metric, US, or original units."))?,
@@ -186,6 +188,7 @@ impl Core {
         step: usize,
         timers: Value,
     ) -> Result<Value> {
+        principal.require_personal()?;
         self.write(|db, effects| {
             let mut session = find_unfinished(db, principal, session_id)?;
             let steps: Vec<&str> = session["recipe"]["steps"]
@@ -223,6 +226,7 @@ impl Core {
         session_id: &str,
         outcome: CookingOutcome,
     ) -> Result<()> {
+        principal.require_personal()?;
         self.write(|db, effects| {
             let mut session = find_unfinished(db, principal, session_id)?;
             let action = match outcome {

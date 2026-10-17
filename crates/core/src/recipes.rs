@@ -192,7 +192,7 @@ pub struct Rating {
     pub value: Option<u8>,
 }
 
-fn competing_revisions(db: &Connection, recipe_id: &str) -> Result<Vec<String>> {
+pub(crate) fn competing_revisions(db: &Connection, recipe_id: &str) -> Result<Vec<String>> {
     let mut query = db.prepare(
         "SELECT r.id FROM recipe_revisions r WHERE r.recipe_id = ?
          AND NOT EXISTS (SELECT 1 FROM recipe_revisions child WHERE child.parent_id = r.id)
@@ -231,7 +231,7 @@ pub(crate) fn current_recipe_views(db: &Connection, household: &str) -> Result<V
     let mut query = db.prepare(
         "SELECT s.id, s.current_revision, r.payload FROM shared_recipes s
          JOIN recipe_revisions r ON r.id = s.current_revision
-         WHERE s.household_id = ? ORDER BY s.rowid",
+         WHERE s.household_id = ? AND s.held_back = 0 ORDER BY s.rowid",
     )?;
     let rows = query
         .query_map([household], |row| {
@@ -347,6 +347,33 @@ fn insert_revision(
     Ok(true)
 }
 
+/// Stores a revision received from the household server.
+pub(crate) fn ingest_remote_revision(
+    db: &Connection,
+    principal: &Principal,
+    revision: &Revision,
+    effects: &mut Effects,
+) -> Result<()> {
+    let mut revision = Revision {
+        id: revision.id.clone(),
+        parent_id: revision.parent_id.clone(),
+        recipe: revision.recipe.clone(),
+        nutrition_versions: revision
+            .nutrition_versions
+            .iter()
+            .map(|version| NutritionVersion {
+                id: version.id.clone(),
+                recipe_id: version.recipe_id.clone(),
+                per_portion: version.per_portion.clone(),
+            })
+            .collect(),
+        cover_photo: revision.cover_photo.clone(),
+    };
+    let recipe_id = revision.validate()?;
+    let payload = serde_json::to_string(&revision).map_err(|_| invalid())?;
+    insert_revision(db, principal, &revision, &recipe_id, &payload, effects).map(|_| ())
+}
+
 enum PhotoChoice {
     Keep,
     Set(Option<Photo>),
@@ -403,7 +430,14 @@ fn append_revision(
     let recipe_id = revision.validate()?;
     let payload = serde_json::to_string(&revision).map_err(|_| invalid())?;
     insert_revision(db, principal, &revision, &recipe_id, &payload, effects)?;
-    sync::record(db, principal, "recipeRevision", &revision.id, &revision)?;
+    sync::record(
+        db,
+        effects,
+        principal,
+        "recipeRevision",
+        &revision.id,
+        &revision,
+    )?;
     let current =
         current_recipe(db, principal.household_id(), &recipe_id)?.ok_or_else(Error::internal)?;
     Ok(SavedRecipe {
@@ -435,7 +469,7 @@ impl Core {
     pub fn recipe_collection(&self, principal: &Principal) -> Result<Collection> {
         self.read(|db| {
             let mut query = db.prepare(
-                "SELECT r.payload FROM recipe_revisions r JOIN shared_recipes s ON s.id = r.recipe_id WHERE s.household_id = ? ORDER BY r.rowid",
+                "SELECT r.payload FROM recipe_revisions r JOIN shared_recipes s ON s.id = r.recipe_id WHERE s.household_id = ? AND s.held_back = 0 ORDER BY r.rowid",
             )?;
             let payloads = query
                 .query_map([principal.household_id()], |row| row.get::<_, String>(0))?
@@ -445,7 +479,7 @@ impl Core {
                 .map(|payload| Ok(serde_json::from_str(payload)?))
                 .collect::<Result<Vec<Value>>>()?;
             let mut query =
-                db.prepare("SELECT id, current_revision FROM shared_recipes WHERE household_id = ?")?;
+                db.prepare("SELECT id, current_revision FROM shared_recipes WHERE household_id = ? AND held_back = 0")?;
             let recipes = query
                 .query_map([principal.household_id()], |row| {
                     Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -607,6 +641,7 @@ impl Core {
 
     /// Every rating row of the person, including cleared ones.
     pub fn ratings(&self, principal: &Principal) -> Result<Vec<Rating>> {
+        principal.require_personal()?;
         self.read(|db| {
             let mut query =
                 db.prepare("SELECT recipe_id, value FROM recipe_ratings WHERE person_id = ?")?;
@@ -628,6 +663,7 @@ impl Core {
         recipe_id: &str,
         value: Option<u8>,
     ) -> Result<()> {
+        principal.require_personal()?;
         if let Some(value) = value {
             rating::validate_recipe_rating(RecipeRating {
                 person_id: principal.person_id().to_owned(),
@@ -647,7 +683,7 @@ impl Core {
                 recipe_id: recipe_id.to_owned(),
                 value,
             };
-            sync::record(db, principal, "rating", &change.id, &change)?;
+            sync::record(db, effects, principal, "rating", &change.id, &change)?;
             effects.person(principal, Topic::Ratings);
             Ok(())
         })

@@ -3,13 +3,13 @@
 //! `POST /api/operations` calls, so both transports share one implementation.
 
 use crate::{
-    CookingOutcome, Core, CurrentChoice, JoinServer, LogManualFood, LogRecipeFood, Photo,
-    PlanningChoice, Principal, SetCoverPhoto, ShoppingItemKind, StartCooking,
+    AccountChange, CookingOutcome, Core, Credentials, CurrentChoice, JoinSelection, LogManualFood,
+    LogRecipeFood, Photo, PlanningChoice, Principal, SetCoverPhoto, ShoppingItemKind, StartCooking,
     error::{Error, Result},
 };
 use forkcast_recipe_domain::{planning::PlannedCooking, shopping::ShoppingItem};
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 #[derive(Deserialize)]
 #[serde(
@@ -108,13 +108,42 @@ pub enum Operation {
     SetRecipePrompt {
         prompt: String,
     },
-    SyncState,
-    JoinServer {
-        #[serde(flatten)]
-        server: JoinServer,
+    SyncStatus,
+    SyncNow,
+    ConnectServer {
+        server_url: String,
     },
-    AcknowledgeSync {
-        ids: Vec<String>,
+    AuthenticateServer {
+        #[serde(default)]
+        setup: bool,
+        username: String,
+        password: String,
+        household_name: Option<String>,
+    },
+    ReviewJoin,
+    CompleteJoin {
+        #[serde(flatten)]
+        selection: JoinSelection,
+    },
+    CancelJoin,
+    SignIn {
+        username: String,
+        password: String,
+    },
+    SignOut,
+    Disconnect,
+    Accounts,
+    CreateAccount {
+        username: String,
+        password: String,
+    },
+    ChangeAccount {
+        id: String,
+        active: Option<bool>,
+        password: Option<String>,
+    },
+    ImportLegacy {
+        transfer: Value,
     },
 }
 
@@ -156,14 +185,22 @@ impl Core {
                 revision_id,
                 expected_revision_ids,
             } => {
-                self.choose_current_recipe(
-                    principal,
-                    &recipe_id,
-                    CurrentChoice {
-                        revision_id,
-                        expected_revision_ids,
-                    },
-                )?;
+                if self.is_embedded()? && self.sync_status()?.bound {
+                    self.choose_current_recipe_synced(
+                        &recipe_id,
+                        &revision_id,
+                        &expected_revision_ids,
+                    )?;
+                } else {
+                    self.choose_current_recipe(
+                        principal,
+                        &recipe_id,
+                        CurrentChoice {
+                            revision_id,
+                            expected_revision_ids,
+                        },
+                    )?;
+                }
                 Ok(Value::Null)
             }
             Ratings => json(self.ratings(principal)?),
@@ -178,7 +215,17 @@ impl Core {
                 Ok(Value::Null)
             }
             PlanningSnapshot => self.planning_snapshot(principal),
-            ResolvePlanningConflict { choice } => self.resolve_planning_conflict(principal, choice),
+            ResolvePlanningConflict { choice } => {
+                if self.is_embedded()? && self.sync_status()?.bound {
+                    self.resolve_planning_conflict_synced(&json!({
+                        "conflict": choice.conflict,
+                        "value": choice.value,
+                    }))?;
+                    self.planning_snapshot(principal)
+                } else {
+                    self.resolve_planning_conflict(principal, choice)
+                }
+            }
             ShoppingList => json(self.shopping_list(principal)?),
             GenerateShoppingList {
                 start_date,
@@ -238,9 +285,62 @@ impl Core {
             }
             AiPreferences => json(self.ai_preferences(principal)?),
             SetRecipePrompt { prompt } => json(self.set_recipe_prompt(principal, &prompt)?),
-            SyncState => json(self.sync_state(principal)?),
-            JoinServer { server } => json(self.join_server(principal, server)?),
-            AcknowledgeSync { ids } => json(self.acknowledge_sync(principal, &ids)?),
+            SyncStatus => json(self.sync_status()?),
+            SyncNow => json(self.sync_now()?),
+            ConnectServer { server_url } => json(self.connect_server(&server_url)?),
+            AuthenticateServer {
+                setup,
+                username,
+                password,
+                household_name,
+            } => json(self.authenticate_server(
+                setup,
+                &username,
+                &password,
+                household_name.as_deref(),
+            )?),
+            ReviewJoin => json(self.review_join()?),
+            CompleteJoin { selection } => json(self.complete_join(selection)?),
+            CancelJoin => {
+                self.cancel_join()?;
+                Ok(Value::Null)
+            }
+            SignIn { username, password } => json(self.profile_sign_in(&username, &password)?),
+            SignOut => json(self.profile_sign_out(false)?),
+            Disconnect => json(self.profile_sign_out(true)?),
+            Accounts => {
+                if self.is_embedded()? {
+                    self.remote_accounts()
+                } else {
+                    json(self.accounts(principal)?)
+                }
+            }
+            CreateAccount { username, password } => {
+                if self.is_embedded()? {
+                    self.remote_create_account(&username, &password)
+                } else {
+                    json(self.create_account(principal, Credentials { username, password })?)
+                }
+            }
+            ChangeAccount {
+                id,
+                active,
+                password,
+            } => {
+                if self.is_embedded()? {
+                    let mut change = serde_json::Map::new();
+                    if let Some(active) = active {
+                        change.insert("active".into(), active.into());
+                    }
+                    if let Some(password) = password {
+                        change.insert("password".into(), password.into());
+                    }
+                    self.remote_change_account(&id, &Value::Object(change))
+                } else {
+                    json(self.change_account(principal, &id, AccountChange { active, password })?)
+                }
+            }
+            ImportLegacy { transfer } => json(self.import_legacy(transfer)?),
         }
     }
 }

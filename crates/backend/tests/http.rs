@@ -34,7 +34,7 @@ impl Server {
         let _ = std::fs::remove_file(&path);
         let core = Core::open(Config::new(&path)).unwrap();
         Self {
-            app: router(core, vec![]),
+            app: router(core, vec![], None),
             path,
         }
     }

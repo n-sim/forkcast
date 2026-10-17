@@ -7,6 +7,9 @@ pub enum Standing {
     /// Manages household accounts; has no access to others' personal records.
     Administrator,
     Member,
+    /// A joined profile whose account signed out. Household records stay
+    /// usable and attributed to the last account; personal records are hidden.
+    SignedOut,
 }
 
 /// Who an operation acts for. Hosts obtain one from [`crate::Core::standalone`]
@@ -56,6 +59,21 @@ impl Principal {
         } else {
             Err(outside())
         }
+    }
+
+    /// Personal records belong to a signed-in (or standalone) person.
+    pub fn require_personal(&self) -> Result<()> {
+        if self.standing == Standing::SignedOut {
+            Err(Error::forbidden(
+                "Sign in to use your personal records on this device.",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn is_server_account(&self) -> bool {
+        matches!(self.standing, Standing::Administrator | Standing::Member)
     }
 
     pub fn require_administrator(&self) -> Result<()> {

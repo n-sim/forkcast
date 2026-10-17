@@ -18,7 +18,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Forkcast backend listening on http://{}",
         listener.local_addr()?
     );
-    axum::serve(listener, router(core, origins))
+    let frontend = std::env::var_os("FORKCAST_STATIC_DIR").map(std::path::PathBuf::from);
+    if let Some(directory) = frontend
+        .as_ref()
+        .filter(|directory| !directory.join("index.html").is_file())
+    {
+        return Err(format!(
+            "FORKCAST_STATIC_DIR must contain a built frontend (index.html): {}",
+            directory.display()
+        )
+        .into());
+    }
+    axum::serve(listener, router(core, origins, frontend))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })

@@ -73,7 +73,7 @@ fn validate_data(db: &Connection, household: &str, data: &Value) -> Result<()> {
         .values()
     {
         if !db.query_row(
-            "SELECT EXISTS(SELECT 1 FROM shared_recipes WHERE id = ? AND household_id = ?)",
+            "SELECT EXISTS(SELECT 1 FROM shared_recipes WHERE id = ? AND household_id = ? AND held_back = 0)",
             params![cooking["recipeId"].as_str(), household],
             |row| row.get::<_, bool>(0),
         )? {
@@ -81,6 +81,10 @@ fn validate_data(db: &Connection, household: &str, data: &Value) -> Result<()> {
         }
     }
     Ok(())
+}
+
+pub(crate) fn local_snapshot(db: &Connection, household: &str) -> Result<Value> {
+    snapshot(db, household)
 }
 
 fn snapshot(db: &Connection, household: &str) -> Result<Value> {
@@ -232,13 +236,7 @@ fn edit(
     change(&mut data, db)?;
     let conflicts: Vec<Conflict> = serde_json::from_value(current["conflicts"].clone())?;
     let saved = persist(db, household, data.clone(), conflicts)?;
-    sync::record(
-        db,
-        principal,
-        "planning",
-        &Uuid::new_v4().to_string(),
-        &json!({"baseData": base, "data": data}),
-    )?;
+    sync::record_planning(db, effects, principal, &base, &data)?;
     effects.household(principal, Topic::Planning);
     Ok(saved)
 }

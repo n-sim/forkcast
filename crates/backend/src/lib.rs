@@ -4,8 +4,9 @@
 
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, FromRequestParts, Path, State},
+    extract::{DefaultBodyLimit, FromRequestParts, Path, Request, State},
     http::{HeaderValue, Method, StatusCode, header, request::Parts},
+    middleware::{self, Next},
     response::{
         IntoResponse, Response,
         sse::{Event, Sse},
@@ -14,13 +15,18 @@ use axum::{
 };
 use forkcast_core::{
     AccountChange, Authenticated, Core, Credentials, CurrentChoice, Error, ErrorKind, Operation,
-    PlanningChoice, PlanningMutation, Principal, RatingChange, Revision, SetupServer,
+    PROTOCOL_VERSION, PlanningChoice, PlanningMutation, Principal, RatingChange, Revision,
+    SetupServer,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::{convert::Infallible, time::Duration};
+use std::{convert::Infallible, path::PathBuf, time::Duration};
 use tokio_stream::wrappers::ReceiverStream;
-use tower_http::{cors::CorsLayer, set_header::SetResponseHeaderLayer};
+use tower_http::{
+    cors::CorsLayer,
+    services::{ServeDir, ServeFile},
+    set_header::SetResponseHeaderLayer,
+};
 
 pub struct ApiError(Error);
 
@@ -39,6 +45,8 @@ impl IntoResponse for ApiError {
             ErrorKind::Conflict => StatusCode::CONFLICT,
             ErrorKind::Invalid => StatusCode::UNPROCESSABLE_ENTITY,
             ErrorKind::RateLimited => StatusCode::TOO_MANY_REQUESTS,
+            ErrorKind::ProtocolMismatch => StatusCode::UPGRADE_REQUIRED,
+            ErrorKind::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
             ErrorKind::Unsupported | ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         };
         let mut body = json!({"message": self.0.message});
@@ -335,11 +343,40 @@ async fn changes(
     Sse::new(ReceiverStream::new(receiver))
 }
 
+/// Refuses clients that declare a different synchronization protocol, before
+/// they can send anything the server would misread. Browser clients served
+/// by this server and tools that declare nothing are always compatible.
+async fn require_protocol(request: Request, next: Next) -> Response {
+    let declared = request
+        .headers()
+        .get(PROTOCOL_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let mut response = match declared {
+        Some(version) if version != PROTOCOL_VERSION.to_string() => ApiError(Error::new(
+            ErrorKind::ProtocolMismatch,
+            format!(
+                "This server speaks synchronization protocol {PROTOCOL_VERSION}, but the app sent {version}. Update the app or the server. Your changes stay on this device."
+            ),
+        ))
+        .into_response(),
+        _ => next.run(request).await,
+    };
+    response.headers_mut().insert(
+        PROTOCOL_HEADER,
+        HeaderValue::from_str(&PROTOCOL_VERSION.to_string()).expect("numeric header"),
+    );
+    response
+}
+
+const PROTOCOL_HEADER: &str = "x-forkcast-protocol";
+
 /// The complete HTTP surface. `origins` are the frontend origins allowed to
-/// call it from a browser.
-pub fn router(core: Core, origins: Vec<HeaderValue>) -> Router {
+/// call it from a browser; `frontend`, when set, is a built frontend served
+/// by this same server.
+pub fn router(core: Core, origins: Vec<HeaderValue>, frontend: Option<PathBuf>) -> Router {
     const MEBIBYTE: usize = 1024 * 1024;
-    Router::new()
+    let mut app = Router::new()
         .route("/api/status", get(status))
         .route("/api/setup", post(setup))
         .route("/api/login", post(login))
@@ -377,7 +414,14 @@ pub fn router(core: Core, origins: Vec<HeaderValue>) -> Router {
             "/api/operations",
             post(operation).layer(DefaultBodyLimit::max(16 * MEBIBYTE)),
         )
-        .route("/api/changes", get(changes))
+        .route("/api/changes", get(changes));
+    if let Some(directory) = frontend {
+        app = app.fallback_service(
+            ServeDir::new(&directory)
+                .not_found_service(ServeFile::new(directory.join("index.html"))),
+        );
+    }
+    app.layer(middleware::from_fn(require_protocol))
         .layer(DefaultBodyLimit::max(16 * 1024))
         .layer(SetResponseHeaderLayer::overriding(
             header::CACHE_CONTROL,
