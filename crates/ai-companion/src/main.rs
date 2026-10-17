@@ -1,3 +1,4 @@
+mod execution;
 mod oauth;
 mod vault;
 
@@ -309,12 +310,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/status", get(status))
         .route("/api/authorization", post(authorize))
         .route("/api/connection", axum::routing::delete(sign_out))
+        .route("/api/models", get(execution::models))
+        .route("/api/execute", post(execution::execute))
         .route("/auth/callback", get(callback))
         .layer(
             CorsLayer::new()
                 .allow_origin(origins)
                 .allow_methods([Method::GET, Method::POST, Method::DELETE])
-                .allow_headers([header::HeaderName::from_static("x-forkcast-companion")]),
+                .allow_headers([
+                    header::HeaderName::from_static("x-forkcast-companion"),
+                    header::CONTENT_TYPE,
+                ]),
         )
         .layer(middleware::from_fn_with_state(app.clone(), guard))
         .layer(SetResponseHeaderLayer::overriding(

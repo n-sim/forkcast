@@ -8,6 +8,42 @@ const headers = {
   'X-Forkcast-Companion': '1',
 };
 
+test('execution and model access require an allowed origin, companion header, and connected ChatGPT session', async ({
+  request,
+  companion,
+}) => {
+  for (const path of ['/models', '/execute']) {
+    const send = (requestHeaders: Record<string, string>) =>
+      path === '/models'
+        ? request.get(`${companion.url}/api${path}`, {
+            headers: requestHeaders,
+          })
+        : request.post(`${companion.url}/api${path}`, {
+            headers: requestHeaders,
+            data: {
+              model: 'fixture-recipe',
+              instructions: 'Return a recipe.',
+              input: 'Soup',
+            },
+          });
+    const invalidHeaders: Record<string, string>[] = [
+      {},
+      { Origin: headers.Origin },
+      { ...headers, Origin: 'https://untrusted.example' },
+      { ...headers, Host: 'untrusted.example' },
+    ];
+    for (const requestHeaders of invalidHeaders) {
+      expect((await send(requestHeaders)).status()).toBe(403);
+    }
+    const disconnected = await send(headers);
+    expect(disconnected.status()).toBe(401);
+    expect(disconnected.headers()['cache-control']).toBe('no-store');
+    expect(await disconnected.text()).not.toMatch(
+      /SECRET_|access_token|refresh_token/,
+    );
+  }
+});
+
 async function authorization(request: APIRequestContext, companionUrl: string) {
   const result = await request.post(`${companionUrl}/api/authorization`, {
     headers,

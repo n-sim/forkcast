@@ -1,0 +1,550 @@
+import {
+  test as aiTest,
+  expect,
+  generatedRecipe,
+  type InferenceRequest,
+} from './ai-fixture';
+import type { Page } from '@playwright/test';
+import { mergeTests } from '@playwright/test';
+import { test as backendTest } from './backend-fixture';
+
+const test = mergeTests(aiTest, backendTest);
+
+async function connectChatGpt(page: Page, url: string) {
+  await page.goto('/#/settings');
+  await page.getByLabel('Companion URL').fill(url);
+  await page
+    .getByRole('button', { name: 'Connect companion', exact: true })
+    .click();
+  const popupPromise = page.waitForEvent('popup');
+  await page
+    .getByRole('button', { name: 'Continue with ChatGPT', exact: true })
+    .click();
+  const popup = await popupPromise;
+  await popup.getByRole('link', { name: 'Authorize Forkcast' }).click();
+  await expect(
+    popup.getByRole('heading', { name: 'ChatGPT connected' }),
+  ).toBeVisible();
+  await popup.close();
+}
+
+async function connectBackend(
+  page: Page,
+  url: string,
+  username: string,
+  setup = false,
+) {
+  await page.goto('/#/settings');
+  await page.getByLabel('Backend URL').fill(url);
+  await page
+    .getByRole('button', { name: 'Connect backend', exact: true })
+    .click();
+  if (setup) await page.getByLabel('Household name').fill('Our kitchen');
+  await signIn(page, username, setup);
+}
+
+async function signIn(page: Page, username: string, setup = false) {
+  await page.getByLabel('Username', { exact: true }).fill(username);
+  await page
+    .getByLabel('Password', { exact: true })
+    .fill('a long local password');
+  await page
+    .getByRole('button', {
+      name: setup ? 'Create administrator' : 'Sign in',
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByRole('status', { name: 'Backend connection' }),
+  ).toContainText(username);
+}
+
+test('generate a recipe, save it automatically, and edit and reopen it through the collection', async ({
+  page,
+  companion,
+}) => {
+  await connectChatGpt(page, companion.url);
+  await page
+    .getByRole('link', { name: 'Recipe collection', exact: true })
+    .click();
+  await page
+    .getByRole('link', { name: 'Generate recipe', exact: true })
+    .click();
+  await page.getByLabel('Describe your dish').fill('A simple tomato soup');
+  await page
+    .getByRole('button', { name: 'Generate recipe', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Tomato soup', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('list', { name: 'Ingredients', exact: true }),
+  ).toContainText('400 g Tomatoes');
+  await expect(page.getByRole('list', { name: 'Cooking steps' })).toContainText(
+    '400 g Tomatoes',
+  );
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'Tomato soup', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
+  await page.getByLabel('Recipe name').fill('Roasted tomato soup');
+  await page.getByLabel('Ingredient 1 quantity').fill('600');
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await page
+    .getByRole('link', { name: 'Recipe collection', exact: true })
+    .click();
+  await expect(
+    page.getByText('1 recipe', { exact: false }).first(),
+  ).toBeVisible();
+  await page.getByRole('link', { name: /Roasted tomato soup/ }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Roasted tomato soup', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Ingredients', exact: true }),
+  ).toContainText('600');
+});
+
+const invalidRecipes: [string, unknown][] = [
+  ['missing name', { ...generatedRecipe, name: '' }],
+  ['no ingredients', { ...generatedRecipe, ingredients: [] }],
+  [
+    'zero quantity',
+    {
+      ...generatedRecipe,
+      ingredients: [{ ...generatedRecipe.ingredients[0], quantity: 0 }],
+    },
+  ],
+  [
+    'non-numeric quantity',
+    {
+      ...generatedRecipe,
+      ingredients: [{ ...generatedRecipe.ingredients[0], quantity: '400' }],
+    },
+  ],
+  [
+    'unknown unit',
+    {
+      ...generatedRecipe,
+      ingredients: [{ ...generatedRecipe.ingredients[0], unit: 'pinch' }],
+    },
+  ],
+  ['invalid base yield', { ...generatedRecipe, basePortions: 0 }],
+  ['no instructions', { ...generatedRecipe, steps: [] }],
+  [
+    'blank instruction',
+    {
+      ...generatedRecipe,
+      steps: [{ ...generatedRecipe.steps[0], instruction: ' ' }],
+    },
+  ],
+  [
+    'unknown ingredient allocation',
+    {
+      ...generatedRecipe,
+      steps: [
+        {
+          ...generatedRecipe.steps[0],
+          allocations: [{ ingredientId: 'missing', quantity: 400, unit: 'g' }],
+        },
+      ],
+    },
+  ],
+  [
+    'incompatible allocation units',
+    {
+      ...generatedRecipe,
+      steps: [
+        {
+          ...generatedRecipe.steps[0],
+          allocations: [
+            { ingredientId: 'tomatoes', quantity: 400, unit: 'ml' },
+          ],
+        },
+      ],
+    },
+  ],
+  [
+    'overallocated ingredient',
+    {
+      ...generatedRecipe,
+      steps: [
+        {
+          ...generatedRecipe.steps[0],
+          allocations: [{ ingredientId: 'tomatoes', quantity: 500, unit: 'g' }],
+        },
+      ],
+    },
+  ],
+  [
+    'unallocated ingredient',
+    {
+      ...generatedRecipe,
+      steps: [{ ...generatedRecipe.steps[0], allocations: [] }],
+    },
+  ],
+  [
+    'duplicate identities',
+    {
+      ...generatedRecipe,
+      steps: [{ ...generatedRecipe.steps[0], id: 'tomatoes' }],
+    },
+  ],
+  ['invalid response shape', null],
+];
+
+for (const [label, reply] of invalidRecipes) {
+  test(`reject a generated recipe with ${label} without adding it to the collection`, async ({
+    page,
+    companion,
+  }) => {
+    companion.reply(reply);
+    await connectChatGpt(page, companion.url);
+    await page.goto('/#/recipes/generate');
+    await page.getByLabel('Describe your dish').fill('Tomato soup');
+    await page
+      .getByRole('button', { name: 'Generate recipe', exact: true })
+      .click();
+    await expect(page.getByRole('alert')).toContainText('invalid recipe');
+    await expect(page.getByRole('alert')).toContainText('No recipe was saved');
+    await expect(page.getByLabel('Describe your dish')).toHaveValue(
+      'Tomato soup',
+    );
+    await page.getByRole('link', { name: 'Back to collection' }).click();
+    await page.reload();
+    await expect(
+      page.getByText('0 recipes', { exact: false }).first(),
+    ).toBeVisible();
+  });
+}
+
+for (const failure of [
+  'http',
+  'limited',
+  'failed',
+  'incomplete',
+  'interrupted',
+  'refusal',
+  'malformed',
+] as const) {
+  test(`keep ${failure} generation failures visible and allow a successful retry`, async ({
+    page,
+    companion,
+  }) => {
+    await connectChatGpt(page, companion.url);
+    companion.fail(failure);
+    await page.goto('/#/recipes/generate');
+    await page.getByLabel('Describe your dish').fill('Tomato soup');
+    await page
+      .getByLabel('Instructions for this request')
+      .fill('Keep it simple.');
+    await page
+      .getByRole('button', { name: 'Generate recipe', exact: true })
+      .click();
+    await expect(page.getByRole('alert')).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Generate recipe', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByLabel('Instructions for this request')).toHaveValue(
+      'Keep it simple.',
+    );
+    await expect(page.getByRole('alert')).not.toContainText(
+      'DO_NOT_EXPOSE_PROVIDER_ERRORS',
+    );
+    companion.fail(null);
+    await page
+      .getByRole('button', { name: 'Generate recipe', exact: true })
+      .click();
+    await expect(
+      page.getByRole('heading', { name: 'Tomato soup', exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole('link', { name: 'Recipe collection', exact: true })
+      .click();
+    await expect(
+      page.getByText('1 recipe', { exact: false }).first(),
+    ).toBeVisible();
+  });
+}
+
+test('new generations cannot overwrite existing recipes using provider identities', async ({
+  page,
+  companion,
+}) => {
+  await connectChatGpt(page, companion.url);
+  for (const name of ['Tomato soup', 'Crème brûlée 🍲']) {
+    companion.reply({ ...generatedRecipe, name });
+    await page.goto('/#/recipes/generate');
+    await page.getByLabel('Describe your dish').fill(name);
+    await page
+      .getByRole('button', { name: 'Generate recipe', exact: true })
+      .click();
+    await expect(
+      page.getByRole('heading', { name, exact: true }),
+    ).toBeVisible();
+  }
+  await page
+    .getByRole('link', { name: 'Recipe collection', exact: true })
+    .click();
+  await page.reload();
+  await expect(page.getByRole('link', { name: /Tomato soup/ })).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: /Crème brûlée 🍲/ }),
+  ).toBeVisible();
+});
+
+test('generation is unavailable without a companion while manual recipe creation remains available', async ({
+  page,
+}) => {
+  await page.goto('/#/recipes/generate');
+  await expect(
+    page.getByRole('button', { name: 'Generate recipe', exact: true }),
+  ).toBeDisabled();
+  await page.getByRole('link', { name: 'create a recipe manually' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'New recipe', exact: true }),
+  ).toBeVisible();
+});
+
+test('keep a stopped companion failure visible and retry after restarting it', async ({
+  page,
+  companion,
+}) => {
+  await connectChatGpt(page, companion.url);
+  await page.goto('/#/recipes/generate');
+  await page.getByLabel('Describe your dish').fill('Tomato soup');
+  await expect(
+    page.getByRole('button', { name: 'Generate recipe', exact: true }),
+  ).toBeEnabled();
+  await companion.stop();
+  await page
+    .getByRole('button', { name: 'Generate recipe', exact: true })
+    .click();
+  await expect(page.getByRole('alert')).toContainText('Companion unavailable');
+  await companion.restart();
+  await page
+    .getByRole('button', { name: 'Generate recipe', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Tomato soup', exact: true }),
+  ).toBeVisible();
+});
+
+test('leaving an in-progress generation keeps manual creation usable without saving a late AI result', async ({
+  page,
+  companion,
+}) => {
+  await connectChatGpt(page, companion.url);
+  companion.pause();
+  await page.goto('/#/recipes/generate');
+  await page.getByLabel('Describe your dish').fill('Tomato soup');
+  const started = page.waitForRequest((request) =>
+    request.url().endsWith('/api/execute'),
+  );
+  await page
+    .getByRole('button', { name: 'Generate recipe', exact: true })
+    .click();
+  const request = await started;
+  await expect(
+    page.getByRole('button', { name: 'Generating…', exact: true }),
+  ).toBeDisabled();
+  const finished = Promise.race([
+    page.waitForEvent('requestfinished', {
+      predicate: (event) => event === request,
+    }),
+    page.waitForEvent('requestfailed', {
+      predicate: (event) => event === request,
+    }),
+  ]);
+  await page.getByRole('link', { name: 'Back to collection' }).click();
+  companion.resume();
+  await finished;
+  await page.getByRole('button', { name: 'New recipe', exact: true }).click();
+  await page.getByLabel('Recipe name').fill('Manual soup');
+  await page.getByLabel('Ingredient 1 name').fill('Tomatoes');
+  await page.getByLabel('Ingredient 1 quantity').fill('400');
+  await page.getByLabel('Step 1 instruction').fill('Simmer.');
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Manual soup', exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole('link', { name: 'Recipe collection', exact: true })
+    .click();
+  await expect(page.getByRole('link', { name: /Tomato soup/ })).toHaveCount(0);
+});
+
+test('a rejected provider session offers reconnection before generating again', async ({
+  page,
+  companion,
+}) => {
+  await connectChatGpt(page, companion.url);
+  await page.goto('/#/recipes/generate');
+  await page.getByLabel('Describe your dish').fill('Tomato soup');
+  companion.fail('unauthorized');
+  await page
+    .getByRole('button', { name: 'Generate recipe', exact: true })
+    .click();
+  await expect(page.getByRole('alert')).toContainText('needs reconnection');
+  await page.getByRole('link', { name: 'ChatGPT settings' }).click();
+  const ai = page.getByRole('region', { name: 'ChatGPT connection' });
+  await expect(ai.getByRole('status')).toContainText(
+    'ChatGPT needs reconnection',
+  );
+  companion.fail(null);
+  const popupPromise = page.waitForEvent('popup');
+  await ai
+    .getByRole('button', { name: 'Continue with ChatGPT', exact: true })
+    .click();
+  const popup = await popupPromise;
+  await popup.getByRole('link', { name: 'Authorize Forkcast' }).click();
+  await expect(
+    popup.getByRole('heading', { name: 'ChatGPT connected' }),
+  ).toBeVisible();
+  await popup.close();
+  await page.goto('/#/recipes/generate');
+  await page.getByLabel('Describe your dish').fill('Tomato soup');
+  await page
+    .getByRole('button', { name: 'Generate recipe', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Tomato soup', exact: true }),
+  ).toBeVisible();
+  expect(
+    JSON.stringify(await page.context().storageState({ indexedDB: true })),
+  ).not.toMatch(/SECRET_ACCESS_TOKEN|SECRET_REFRESH_TOKEN|id_token/);
+});
+
+test('share generated recipes through the household backend while personal prompts remain local and isolated by account', async ({
+  page,
+  browser,
+  companion,
+  backend,
+}) => {
+  await connectChatGpt(page, companion.url);
+  await connectBackend(page, backend.url, 'noah', true);
+  await page.getByLabel('New username', { exact: true }).fill('sam');
+  await page
+    .getByLabel('New password', { exact: true })
+    .fill('a long local password');
+  await page.getByRole('button', { name: 'Create household account' }).click();
+  await expect(page.getByRole('row').filter({ hasText: 'sam' })).toBeVisible();
+  const prompts = page.getByRole('region', { name: 'Personal AI prompts' });
+  await prompts
+    .getByLabel('Recipe generation system prompt')
+    .fill('Avoid dairy.');
+  await prompts.getByRole('button', { name: 'Save prompt defaults' }).click();
+  await page
+    .getByRole('button', { name: 'Enable data synchronization', exact: true })
+    .click();
+  await expect(
+    page.getByRole('status', { name: 'Data synchronization', exact: true }),
+  ).toContainText('Up to date');
+  await page.goto('/#/recipes/generate');
+  await page.getByLabel('Describe your dish').fill('Tomato soup');
+  await page
+    .getByRole('button', { name: 'Generate recipe', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Tomato soup', exact: true }),
+  ).toBeVisible();
+  await page.goto('/#/settings');
+  await page.getByRole('button', { name: 'Sync now', exact: true }).click();
+  await expect(
+    page.getByRole('status', { name: 'Data synchronization', exact: true }),
+  ).toContainText('Up to date');
+
+  const other = await browser.newContext();
+  try {
+    const second = await other.newPage();
+    await connectBackend(second, backend.url, 'noah');
+    await expect(
+      second.getByLabel('Recipe generation system prompt'),
+    ).not.toHaveValue('Avoid dairy.');
+    await second
+      .getByRole('button', { name: 'Enable data synchronization', exact: true })
+      .click();
+    await expect(
+      second.getByRole('status', { name: 'Data synchronization', exact: true }),
+    ).toContainText('Up to date');
+    await second.goto('/');
+    await second.getByRole('link', { name: /Tomato soup/ }).click();
+    await expect(
+      second.getByRole('list', { name: 'Cooking steps' }),
+    ).toContainText('400 g Tomatoes');
+  } finally {
+    await other.close();
+  }
+
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(
+    prompts.getByLabel('Recipe generation system prompt'),
+  ).toBeDisabled();
+  await signIn(page, 'sam');
+  await expect(
+    prompts.getByLabel('Recipe generation system prompt'),
+  ).not.toHaveValue('Avoid dairy.');
+  await prompts.getByLabel('Recipe generation system prompt').fill('Use rice.');
+  await prompts.getByRole('button', { name: 'Save prompt defaults' }).click();
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await signIn(page, 'noah');
+  await expect(
+    prompts.getByLabel('Recipe generation system prompt'),
+  ).toHaveValue('Avoid dairy.');
+});
+
+test('save and revise personal prompt defaults locally and apply request-specific instructions without retaining them as defaults', async ({
+  page,
+  companion,
+}) => {
+  companion.reply((request: InferenceRequest) => ({
+    ...generatedRecipe,
+    name:
+      request.instructions.includes('Avoid dairy.') &&
+      request.input[0]?.content.includes('Use chickpeas.')
+        ? 'Dairy-free chickpea soup'
+        : 'Preferences were not applied',
+  }));
+  await connectChatGpt(page, companion.url);
+  const prompts = page.getByRole('region', { name: 'Personal AI prompts' });
+  await prompts
+    .getByLabel('Recipe generation system prompt')
+    .fill('Avoid dairy.');
+  await prompts.getByRole('button', { name: 'Save prompt defaults' }).click();
+  await expect(prompts.getByRole('status')).toContainText(
+    'Saved on this device',
+  );
+  await page.reload();
+  await expect(
+    prompts.getByLabel('Recipe generation system prompt'),
+  ).toHaveValue('Avoid dairy.');
+  await page.goto('/#/recipes/generate');
+  await page.getByLabel('Describe your dish').fill('A soup');
+  await page.getByLabel('Instructions for this request').fill('Use chickpeas.');
+  await page
+    .getByRole('button', { name: 'Generate recipe', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', {
+      name: 'Dairy-free chickpea soup',
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.goto('/#/recipes/generate');
+  await expect(page.getByLabel('Instructions for this request')).toHaveValue(
+    '',
+  );
+  await page.goto('/#/settings');
+  await expect(
+    prompts.getByLabel('Recipe generation system prompt'),
+  ).toHaveValue('Avoid dairy.');
+  await prompts
+    .getByLabel('Recipe generation system prompt')
+    .fill('Prefer seasonal vegetables.');
+  await prompts.getByRole('button', { name: 'Save prompt defaults' }).click();
+  await page.reload();
+  await expect(
+    prompts.getByLabel('Recipe generation system prompt'),
+  ).toHaveValue('Prefer seasonal vegetables.');
+});

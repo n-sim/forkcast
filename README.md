@@ -75,8 +75,25 @@ persisted UUID URI while retaining the saved account registration and credential
 Manual workflows remain available when AI is unconfigured or
 the companion is stopped. Recipes, plans, food logs, and cooking progress stay in
 the frontend's existing local store; installing this companion adds no backups or
-cross-device synchronization. This increment supplies connection setup and state;
-AI generation and backend AI execution are separate work.
+cross-device synchronization. Backend AI execution is separate work; recipe
+generation currently uses the connected companion, including when recipe sync is enabled.
+
+Choose **Generate recipe** in the recipe collection, describe your dish, select an
+available ChatGPT model, and optionally add **Instructions for this request**.
+**Settings → Personal AI prompts** stores editable recipe-generation system-prompt
+defaults on this device, separately for standalone use and each backend account.
+Defaults are applied to future requests; request-specific instructions are not
+retained as defaults. Prompt synchronization and server-side execution come later.
+
+Generation uses the documented [ChatGPT subscription inference flow](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference):
+the native runtime lists models with its protected access token, calls the public
+Responses API with `store: false` and `stream: true`, and waits for completed inference.
+The browser then validates the result with the shared Rust/WebAssembly recipe and
+quantity contracts, including complete ingredient allocations, before saving it
+through normal local recipe storage. A successful recipe opens automatically and
+can be edited or synchronized like a manually created recipe. Invalid recipes,
+refusals, interrupted streams, provider errors, and failed saves remain visible;
+they do not claim that a recipe was created.
 
 Companion environment settings:
 
@@ -90,7 +107,7 @@ Only allowed frontend origins with the companion request header can use its API.
 Host checks also reject DNS rebinding. Callbacks require the one-time pending
 state. Responses are `no-store`, callback pages do not load external resources,
 and they send no referrer. Release builds always use OpenAI's issuer. Debug builds
-alone accept `FORKCAST_AI_TEST_ISSUER` for an HTTP `127.0.0.1` authorization fixture
+alone accept `FORKCAST_AI_TEST_ISSUER` for an HTTP `127.0.0.1` authorization/inference fixture
 with an explicitly isolated credential directory; stored credentials cannot be
 reused with another issuer.
 
@@ -476,8 +493,10 @@ and competing edits retained through backend restarts. Focused HTTP tests cover 
 unauthorized requests, session revocation, setup races, and sign-in throttling. No
 external provider credentials are needed. Companion workflows use the real native
 process and protected runtime persistence with a deterministic local OAuth/JWKS
-provider fixture. Narrow connector checks cover callback validation and credential
-secrecy; live ChatGPT sign-in is a manual check.
+provider fixture, plus streamed inference fixtures for generation, prompt application,
+validation, failures, and retry. Narrow connector checks cover callback validation,
+execution access controls, and credential secrecy; live ChatGPT sign-in and generation
+are manual checks.
 To run one workflow:
 
 ```sh
@@ -494,7 +513,7 @@ Rust changes need a new WebAssembly build; restart `npm run dev` or build it aga
 - `crates/recipe-domain/`: Rust recipe types, normalization, validation, scaling, conversions, shopping aggregation, and step timers, also
   usable by native Rust code. Generated WebAssembly is not committed.
 - `crates/backend/`: optional Rust HTTP service, SQLite accounts, recipe synchronization, authentication, and ownership boundaries.
-- `crates/ai-companion/`: optional native ChatGPT authorization, protected credentials, and connection state; independent of synchronization.
+- `crates/ai-companion/`: optional native ChatGPT authorization, protected credentials, model discovery, and reusable AI execution; independent of synchronization.
 - `tests/`: browser workflow specifications, the confirmed main testing seam.
 - `docs/adr/` and `GLOSSARY.md`: accepted decisions and domain vocabulary.
 
@@ -515,5 +534,6 @@ are implemented in [issue #7](https://github.com/n-sim/forkcast/issues/7).
 The separate shopping checklist, shared progress, completion, and PDF downloads are
 implemented in [issue #8](https://github.com/n-sim/forkcast/issues/8).
 Standalone ChatGPT connection setup is implemented in [issue #16](https://github.com/n-sim/forkcast/issues/16).
-Cooking history, AI generation, personal plan/log synchronization, explicit conflict resolution,
+Editable AI recipe generation with personal prompt defaults is implemented in [issue #17](https://github.com/n-sim/forkcast/issues/17).
+Cooking history, other AI workflows, personal plan/log synchronization, explicit conflict resolution,
 and backups are later work.
