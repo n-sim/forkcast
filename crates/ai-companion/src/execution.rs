@@ -154,6 +154,7 @@ pub async fn execute(
     let mut response = check_response(&app, &token, response).await?;
     let mut pending = Vec::new();
     let mut data = String::new();
+    let mut streamed_text = String::new();
     let mut received = 0;
     while let Some(chunk) = response.chunk().await.map_err(|_| failed())? {
         received += chunk.len();
@@ -170,6 +171,15 @@ pub async fn execute(
                 let event: Value = serde_json::from_str(&data).map_err(|_| failed())?;
                 data.clear();
                 match event["type"].as_str() {
+                    Some("response.output_text.delta") => {
+                        streamed_text.push_str(event["delta"].as_str().ok_or_else(failed)?);
+                    }
+                    Some("response.refusal.delta" | "response.refusal.done") => {
+                        return Err(ExecutionError(
+                            StatusCode::BAD_GATEWAY,
+                            "ChatGPT declined this request. Adjust your instructions and try again.",
+                        ));
+                    }
                     Some("response.completed") => {
                         if event["response"]["status"] != "completed" {
                             return Err(failed());
@@ -191,8 +201,17 @@ pub async fn execute(
                                 }
                             }
                         }
+                        // Subscription inference may leave output empty in the
+                        // terminal snapshot. Retain deltas, but accept them only
+                        // after the provider confirms successful completion.
+                        if text.is_empty() {
+                            text = std::mem::take(&mut streamed_text);
+                        }
                         if text.trim().is_empty() {
-                            return Err(failed());
+                            return Err(ExecutionError(
+                                StatusCode::BAD_GATEWAY,
+                                "ChatGPT completed the request without any text. Try again or select another model.",
+                            ));
                         }
                         return Ok(Json(json!({ "text": text })));
                     }

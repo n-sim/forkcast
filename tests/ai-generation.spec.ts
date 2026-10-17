@@ -106,6 +106,42 @@ test('generate a recipe, save it automatically, and edit and reopen it through t
   ).toContainText('600');
 });
 
+test('accept streamed recipe text only after completion when the terminal response does not repeat its output', async ({
+  page,
+  companion,
+}) => {
+  await connectChatGpt(page, companion.url);
+  companion.pause();
+  companion.reply({
+    ...generatedRecipe,
+    name: 'Pumpkin risotto',
+    basePortions: 4,
+  });
+  await page.goto('/#/recipes/generate');
+  await page.getByLabel('Describe your dish').fill('Kürbisrisotto');
+  await page.getByLabel('Instructions for this request').fill('4 portionen');
+  await page
+    .getByRole('button', { name: 'Generate recipe', exact: true })
+    .click();
+  await expect(
+    page.getByRole('button', { name: 'Generating…', exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole('heading', { name: 'Pumpkin risotto', exact: true }),
+  ).toHaveCount(0);
+  companion.resume();
+  await expect(
+    page.getByRole('heading', { name: 'Pumpkin risotto', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel('Cooking portions', { exact: true }),
+  ).toHaveValue('4');
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'Pumpkin risotto', exact: true }),
+  ).toBeVisible();
+});
+
 const invalidRecipes: [string, unknown][] = [
   ['missing name', { ...generatedRecipe, name: '' }],
   ['no ingredients', { ...generatedRecipe, ingredients: [] }],
