@@ -24,7 +24,7 @@ export default defineConfig({
   ],
   webServer: {
     command:
-      'cargo build -p forkcast-backend && npm run build && npm run preview -- --port 4173 --strictPort',
+      'cargo build -p forkcast-backend -p forkcast-ai-companion && npm run build && npm run preview -- --port 4173 --strictPort',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: false,
     timeout: 180_000,

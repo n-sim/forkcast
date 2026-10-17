@@ -30,6 +30,7 @@ import { CookingView } from './CookingView';
 import { CookingConflictDialog } from './CookingConflictDialog';
 import { SuspendedCookingBar } from './SuspendedCookingBar';
 import { BackendAccounts, useBackendConnection } from './BackendAccounts';
+import { AiConnection } from './AiConnection';
 import { FoodLog } from './FoodLog';
 import { MealPlan } from './MealPlan';
 import { ShoppingListView } from './ShoppingList';
@@ -609,6 +610,7 @@ export function App({
           ) : settingsOpen ? (
             <article>
               <h1>Settings</h1>
+              <AiConnection />
               <BackendAccounts connection={connection} />
               <RecipeSync
                 config={connection.config}
