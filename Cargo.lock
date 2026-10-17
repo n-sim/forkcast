@@ -417,16 +417,28 @@ dependencies = [
 name = "forkcast-backend"
 version = "0.1.0"
 dependencies = [
- "argon2",
  "axum",
+ "forkcast-core",
+ "http-body-util",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tower",
+ "tower-http",
+]
+
+[[package]]
+name = "forkcast-core"
+version = "0.1.0"
+dependencies = [
+ "argon2",
  "base64 0.22.1",
  "forkcast-recipe-domain",
  "rusqlite",
  "serde",
  "serde_json",
  "sha2",
- "tokio",
- "tower-http",
  "uuid",
 ]
 
@@ -1769,6 +1781,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c9cc2678c2cdd569ef8215e2afd7954ada2ae20b4fdd2c5fe6139a3b02d105db"
 dependencies = [
  "rustls",
+ "tokio",
+]
+
+[[package]]
+name = "tokio-stream"
+version = "0.1.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3d06f0b082ba57c26b79407372e57cf2a1e28124f78e9479fe80322cf53420b"
+dependencies = [
+ "futures-core",
+ "pin-project-lite",
  "tokio",
 ]
 

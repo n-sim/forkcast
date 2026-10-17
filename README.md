@@ -1,5 +1,17 @@
 # Forkcast
 
+The target architecture is now an installed desktop/Android app with an embedded Rust
+application core and SQLite, plus an optional self-hosted household server using the same
+core. Installed apps keep local reads and writes when connected and synchronize after
+outages; browser use requires the server. Integrated ChatGPT setup will replace the
+separate companion and manual SSH credential transfer. See [the product specification](https://github.com/n-sim/forkcast/issues/1)
+and [ADR 0015](docs/adr/0015-embed-a-shared-rust-core-and-synchronize.md).
+
+The shared Rust core now exists in `crates/core` and the backend hosts it as a thin HTTP
+adapter ([interface](docs/core-interface.md)). The browser app has not moved onto it yet:
+the instructions below still describe the browser's local store and the separate companion,
+retained while the rest of the migration is delivered.
+
 A local-first recipe collection with household cooking plans and shopping, resumable guided cooking, and a personal food
 log. Create recipes, plan cooking, and record intake without an account, application backend, or
 AI connection. The interface is English with metric defaults.
