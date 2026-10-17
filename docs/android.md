@@ -13,13 +13,13 @@ companion is **not** ported as a child process.
 
 ## Platform adapters
 
-| Concern | Android adapter |
-| --- | --- |
-| Credential encryption | `crates/secure-store`: AES-256-GCM with a non-exportable Android Keystore key; ciphertext in app-private preferences. A plaintext fallback does not exist: if the Keystore is unavailable the person signs in again. |
-| App-private storage | The core's SQLite lives in the app's data directory (`app_data_dir`). |
-| Resume | `RunEvent::Resumed` calls `Core::nudge_sync`; there is no daemon. |
-| Browser sign-in (companion-free AI) | Not part of this release; integrated ChatGPT setup is a separate ticket (#28) and must pass its own physical-device proof first. |
-| Files | The webview file input picks cover photos; shopping PDFs go through `save_file`. |
+| Concern                             | Android adapter                                                                                                                                                                                                      |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Credential encryption               | `crates/secure-store`: AES-256-GCM with a non-exportable Android Keystore key; ciphertext in app-private preferences. A plaintext fallback does not exist: if the Keystore is unavailable the person signs in again. |
+| App-private storage                 | The core's SQLite lives in the app's data directory (`app_data_dir`).                                                                                                                                                |
+| Resume                              | `RunEvent::Resumed` calls `Core::nudge_sync`; there is no daemon.                                                                                                                                                    |
+| Browser sign-in (companion-free AI) | Not part of this release; integrated ChatGPT setup is a separate ticket (#28) and must pass its own physical-device proof first.                                                                                     |
+| Files                               | The webview file input picks cover photos; shopping PDFs go through `save_file`.                                                                                                                                     |
 
 ## Backup and device transfer
 
@@ -87,12 +87,13 @@ app sharing an origin.
 
 ## Verification
 
-| Area | How | Status |
-| --- | --- | --- |
-| Rust core and sync engine on Android targets | `cargo check --target aarch64-linux-android -p forkcast-core` | see below |
-| APK build | `npm run android:build` | see below |
-| Emulator journeys (recipes, planning, shopping, cooking timers in the foreground, food log, import) | `tests/android/` over adb and the web view's DevTools socket | see below |
-| Physical device: Keystore, lifecycle (backgrounding, process death, rotation), file delivery (image selection, PDF save/share), Back, keyboard insets, accessibility, tablet layouts, upgrade over a populated install | manual checklist below | **not done** |
+| Area                                                                                                                         | How                                                                                                                                                                               | Status                                                                                                                                                                                                                               |
+| ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Rust core, sync engine, and secure-store plugin build for Android                                                            | `cargo check -p forkcast-core --target aarch64-linux-android`; `npx tauri android build --debug --target x86_64` compiles the whole app library (including `crates/secure-store`) | **Verified** (NDK 27.2.12479018)                                                                                                                                                                                                     |
+| Android project (manifest, backup exclusions, Keystore plugin module)                                                        | `crates/desktop/gen/android`, committed                                                                                                                                           | Generated; not yet built into an APK                                                                                                                                                                                                 |
+| APK build                                                                                                                    | `npm run android:build`                                                                                                                                                           | **Blocked on this machine**: Tauri symlinks the native library into `jniLibs`, which Windows refuses without Developer Mode / `SeCreateSymbolicLinkPrivilege`. Enable Developer Mode, or build on Linux/macOS/CI. Not worked around. |
+| Emulator journeys (recipes, planning, shopping, cooking timers in the foreground, food log, import)                          | planned: adb + the web view's DevTools socket, driven like the desktop suite                                                                                                      | **Not done** (an emulator image is installable; no APK to run yet)                                                                                                                                                                   |
+| Physical device: Keystore, lifecycle, file delivery, Back, keyboard insets, accessibility, tablet layouts, populated upgrade | manual checklist below                                                                                                                                                            | **Not done**                                                                                                                                                                                                                         |
 
 ### Physical-device release gates (all open)
 

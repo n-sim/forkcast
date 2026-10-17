@@ -6,7 +6,7 @@ status: accepted
 
 Meal plans and shopping lists belong to the household, replacing the personal ownership chosen in [ADR 0001](0001-household-recipes-personal-planning.md). All household members have equal rights to add, change, and remove planned cooking and to edit, regenerate, and check off shopping items; account administration remains separate. Each household has one active shopping list, giving members one shared source of shopping requirements instead of parallel personal lists, with no shopping-list history. Food logs and nutrition goals remain personal.
 
-The optional backend synchronizes the household's meal plan and active shopping list alongside its recipes. Standalone use and offline edits remain supported under [ADR 0002](0002-optional-self-hosted-backend.md); using the same household data across devices requires the backend.
+The optional household server synchronizes the household's meal plan and active shopping list alongside its recipes. Installed apps keep using their embedded Rust core and local SQLite store for standalone use and offline edits under [ADR 0015](0015-embed-a-shared-rust-core-and-synchronize.md); using the same household data across devices requires the server. Browser clients use the server directly and require connectivity.
 
 Synchronization combines independent and identical changes automatically, including changes to different fields of the same planned cooking or shopping item. Competing changes to the same field, or deletion versus editing, are retained for explicit resolution, following the recipe-conflict policy in [ADR 0008](0008-preserve-conflicting-recipe-edits.md). These rules also apply when offline changes reconnect. Retained conflict alternatives do not create additional active shopping lists.
 
