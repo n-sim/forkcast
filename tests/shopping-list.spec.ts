@@ -205,6 +205,11 @@ test('keep reviews stable after source changes and regenerate offline without lo
   await other
     .getByRole('button', { name: 'Save planned cooking', exact: true })
     .click();
+  // The recipe edit already changed the source notice. Wait for this save
+  // to finish before closing the editing tab and reopening offline.
+  await expect(
+    other.getByRole('region', { name: 'Planned cooking details', exact: true }),
+  ).not.toBeVisible();
   await expect(sourceStatus).toContainText(
     'The meal plan changed within this cooking period.',
   );
