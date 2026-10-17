@@ -28,6 +28,69 @@ Deploy `dist/` to a static host over HTTPS (or serve it on localhost). Standalon
 needs no application server. Hash URLs let recipe links reopen on static hosts
 without route rewrites. Keep the same origin to retain access to this device's data.
 
+## Optional local ChatGPT companion
+
+For standalone ChatGPT subscription access, start the small native Rust companion
+in a separate terminal:
+
+```sh
+npm run companion:dev
+```
+
+For an installable release binary, run `npm run companion:build` and use
+`target/release/forkcast-ai-companion` (`.exe` on Windows). No synchronization
+backend, SQLite database, backend account, or API key is needed.
+
+Open **Settings → ChatGPT**, enter `http://127.0.0.1:8788`, and choose
+**Connect companion**, then **Continue with ChatGPT**. Complete authorization in
+the new browser window and return to Settings to see the connected account.
+Allow popups and local network access for your Forkcast frontend if the browser
+requests them. The companion runs on the same device as that browser.
+
+The native listener is started before sign-in and receives the callback at
+`http://127.0.0.1:8788/auth/callback`. It follows OpenAI's
+[registration and sign-in flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in):
+dynamic client registration, a stable host identity, fresh state/nonce and S256
+PKCE, exact callback matching during code exchange, and signed ID-token checks
+against OpenAI's JWKS, issuer, issued-client audience, expiry, and nonce. ChatGPT
+plan permission must be granted before the account is shown as connected.
+
+Credentials persist only in the native runtime: `%LOCALAPPDATA%/Forkcast/ai/`
+with Windows user-bound DPAPI encryption, or `~/.config/forkcast/ai/` with an
+owner-only directory and atomically replaced `0600` files on Unix. The browser
+remembers only the companion URL and receives connection state and account email.
+Access, refresh, and ID tokens never enter browser storage, recipe records, sync
+payloads, response bodies, or logs. A runtime lock prevents concurrent companions
+from using the same credential directory. Keep that directory private; do not
+commit it or serve it as static content.
+
+Denied, incomplete, or failed authorization has a visible retry state. Closing
+the sign-in window leaves a pending attempt that can be restarted and expires
+after ten minutes. An expired session offers reconnection. **Sign out of ChatGPT**
+clears local tokens and attempts remote session revocation; a warning explains
+when revocation could not be confirmed. Reconnecting reuses the issued registration
+and host identity. Manual workflows remain available when AI is unconfigured or
+the companion is stopped. Recipes, plans, food logs, and cooking progress stay in
+the frontend's existing local store; installing this companion adds no backups or
+cross-device synchronization. This increment supplies connection setup and state;
+AI generation and backend AI execution are separate work.
+
+Companion environment settings:
+
+| Variable                      | Default                                       | Purpose                                                                                                  |
+| ----------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `FORKCAST_AI_BIND`            | `127.0.0.1:8788`                              | IPv4 loopback listener; non-loopback binds are rejected. The selected port is used for the callback too. |
+| `FORKCAST_AI_ALLOWED_ORIGINS` | `http://127.0.0.1:5173,http://127.0.0.1:4173` | Comma-separated exact frontend origins. Add your HTTPS static-host origin when needed; no wildcards.     |
+| `FORKCAST_AI_DIRECTORY`       | Native path above                             | Private runtime credential directory, separate from application data.                                    |
+
+Only allowed frontend origins with the companion request header can use its API.
+Host checks also reject DNS rebinding. Callbacks require the one-time pending
+state. Responses are `no-store`, callback pages do not load external resources,
+and they send no referrer. Release builds always use OpenAI's issuer. Debug builds
+alone accept `FORKCAST_AI_TEST_ISSUER` for an HTTP `127.0.0.1` authorization fixture
+with an explicitly isolated credential directory; stored credentials cannot be
+reused with another issuer.
+
 ## Optional self-hosted backend and accounts
 
 In a separate terminal, run:
@@ -408,7 +471,10 @@ shared photos and metadata, private ratings across devices and account switches,
 retained food-log nutrition, backend outages, durable pending changes, removals,
 and competing edits retained through backend restarts. Focused HTTP tests cover ownership,
 unauthorized requests, session revocation, setup races, and sign-in throttling. No
-external provider credentials or network-service fixtures are needed.
+external provider credentials are needed. Companion workflows use the real native
+process and protected runtime persistence with a deterministic local OAuth/JWKS
+provider fixture. Narrow connector checks cover callback validation and credential
+secrecy; live ChatGPT sign-in is a manual check.
 To run one workflow:
 
 ```sh
@@ -425,6 +491,7 @@ Rust changes need a new WebAssembly build; restart `npm run dev` or build it aga
 - `crates/recipe-domain/`: Rust recipe types, normalization, validation, scaling, conversions, shopping aggregation, and step timers, also
   usable by native Rust code. Generated WebAssembly is not committed.
 - `crates/backend/`: optional Rust HTTP service, SQLite accounts, recipe synchronization, authentication, and ownership boundaries.
+- `crates/ai-companion/`: optional native ChatGPT authorization, protected credentials, and connection state; independent of synchronization.
 - `tests/`: browser workflow specifications, the confirmed main testing seam.
 - `docs/adr/` and `GLOSSARY.md`: accepted decisions and domain vocabulary.
 
@@ -444,5 +511,6 @@ Source-period change notices and explicit regeneration with manual groceries pre
 are implemented in [issue #7](https://github.com/n-sim/forkcast/issues/7).
 The separate shopping checklist, shared progress, completion, and PDF downloads are
 implemented in [issue #8](https://github.com/n-sim/forkcast/issues/8).
-Cooking history, AI, personal plan/log synchronization, explicit conflict resolution,
+Standalone ChatGPT connection setup is implemented in [issue #16](https://github.com/n-sim/forkcast/issues/16).
+Cooking history, AI generation, personal plan/log synchronization, explicit conflict resolution,
 and backups are later work.
