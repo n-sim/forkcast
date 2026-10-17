@@ -54,16 +54,25 @@ export async function companionRequest<T>(
   url: string,
   path: string,
   method = 'GET',
+  body?: unknown,
+  signal?: AbortSignal,
 ): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${url}/api${path}`, {
       method,
-      headers: { 'X-Forkcast-Companion': '1' },
+      headers: {
+        'X-Forkcast-Companion': '1',
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
       credentials: 'omit',
       redirect: 'error',
       cache: 'no-store',
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.any([
+        AbortSignal.timeout(path === '/execute' ? 190_000 : 8_000),
+        ...(signal ? [signal] : []),
+      ]),
     });
   } catch {
     throw new Error(
@@ -71,8 +80,12 @@ export async function companionRequest<T>(
     );
   }
   if (!response.ok) {
+    const error = (await response.json().catch(() => null)) as {
+      message?: string;
+    } | null;
     throw new Error(
-      'The companion could not complete this request. Try connecting again.',
+      error?.message ??
+        'The companion could not complete this request. Try connecting again.',
     );
   }
   return (await response.json()) as T;

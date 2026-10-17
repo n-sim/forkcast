@@ -21,6 +21,38 @@ type Mode =
   | 'no_email'
   | 'revocation';
 
+export const generatedRecipe = {
+  id: 'provider-recipe',
+  name: 'Tomato soup',
+  basePortions: 2,
+  ingredients: [{ id: 'tomatoes', name: 'Tomatoes', quantity: 400, unit: 'g' }],
+  steps: [
+    {
+      id: 'simmer',
+      instruction: 'Simmer the tomatoes.',
+      allocations: [{ ingredientId: 'tomatoes', quantity: 400, unit: 'g' }],
+    },
+  ],
+  difficulty: 'easy',
+  activeMinutes: 5,
+  totalMinutes: 20,
+};
+
+export interface InferenceRequest {
+  instructions: string;
+  input: { role: string; content: string }[];
+}
+
+type InferenceFailure =
+  | 'http'
+  | 'limited'
+  | 'unauthorized'
+  | 'failed'
+  | 'incomplete'
+  | 'interrupted'
+  | 'refusal'
+  | 'malformed';
+
 export const test = base.extend<{
   legacyHost: boolean;
   companion: {
@@ -28,6 +60,10 @@ export const test = base.extend<{
     directory: string;
     issuer: string;
     mode: (value: Mode) => void;
+    reply: (value: unknown | ((request: InferenceRequest) => unknown)) => void;
+    fail: (value: InferenceFailure | null) => void;
+    pause: () => void;
+    resume: () => void;
     stop: () => Promise<void>;
     restart: () => Promise<void>;
   };
@@ -46,6 +82,10 @@ export const test = base.extend<{
     };
     const attempts = new Map<string, URLSearchParams>();
     let mode: Mode = 'success';
+    let reply: unknown = generatedRecipe;
+    let failure: InferenceFailure | null = null;
+    let gate: Promise<void> | undefined;
+    let resume = () => {};
     let issuer = '';
     const provider = createServer(async (request, response) => {
       const url = new URL(request.url!, issuer);
@@ -150,6 +190,87 @@ export const test = base.extend<{
               mode === 'scope' ? 'openid email profile' : params.get('scope'),
           }),
         );
+      } else if (url.pathname === '/v1/models') {
+        if (request.headers.authorization !== 'Bearer SECRET_ACCESS_TOKEN') {
+          response.statusCode = 401;
+          response.end('{}');
+          return;
+        }
+        response.end(
+          JSON.stringify({
+            models: [
+              {
+                slug: 'fixture-recipe',
+                display_name: 'Fixture recipe model',
+                visibility: 'list',
+              },
+            ],
+          }),
+        );
+      } else if (url.pathname === '/v1/responses') {
+        let body = '';
+        for await (const part of request) body += part;
+        const input = JSON.parse(body);
+        if (
+          request.headers.authorization !== 'Bearer SECRET_ACCESS_TOKEN' ||
+          input.model !== 'fixture-recipe' ||
+          input.store !== false ||
+          input.stream !== true ||
+          !Array.isArray(input.input)
+        ) {
+          response.statusCode = 400;
+          response.end('{}');
+          return;
+        }
+        if (
+          failure === 'http' ||
+          failure === 'limited' ||
+          failure === 'unauthorized'
+        ) {
+          response.statusCode =
+            failure === 'limited'
+              ? 429
+              : failure === 'unauthorized'
+                ? 401
+                : 503;
+          response.end(
+            JSON.stringify({
+              error: {
+                message: 'DO_NOT_EXPOSE_PROVIDER_ERRORS SECRET_ACCESS_TOKEN',
+              },
+            }),
+          );
+          return;
+        }
+        response.setHeader('Content-Type', 'text/event-stream');
+        const text = JSON.stringify(
+          typeof reply === 'function' ? reply(input) : reply,
+        );
+        response.write(
+          `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: text })}\r\n\r\n`,
+        );
+        if (gate) await gate;
+        if (failure === 'interrupted') {
+          response.end();
+          return;
+        }
+        if (failure === 'failed' || failure === 'incomplete') {
+          response.end(
+            `data: ${JSON.stringify({ type: `response.${failure}`, response: { error: { message: 'DO_NOT_EXPOSE_PROVIDER_ERRORS' } } })}\n\n`,
+          );
+          return;
+        }
+        if (failure === 'malformed') {
+          response.end('data: invalid-json\n\n');
+          return;
+        }
+        const completed = Buffer.from(
+          `data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output: [{ type: 'message', content: [failure === 'refusal' ? { type: 'refusal', refusal: 'Cannot help.' } : { type: 'output_text', text }] }] } })}\n\n`,
+        );
+        // Exercise byte/chunk boundaries, including multibyte recipe names.
+        const split = completed.indexOf(Buffer.from('🍲')) + 1;
+        response.write(completed.subarray(0, split));
+        response.end(completed.subarray(split));
       } else if (url.pathname === '/api/accounts/oauth/revoke') {
         if (mode === 'revocation') response.statusCode = 503;
         response.end();
@@ -271,6 +392,21 @@ export const test = base.extend<{
         mode: (value) => {
           mode = value;
         },
+        reply: (value) => {
+          reply = value;
+        },
+        fail: (value) => {
+          failure = value;
+        },
+        pause: () => {
+          gate = new Promise<void>((resolve) => {
+            resume = resolve;
+          });
+        },
+        resume: () => {
+          resume();
+          gate = undefined;
+        },
         stop,
         restart: async () => {
           await stop();
@@ -278,6 +414,7 @@ export const test = base.extend<{
         },
       });
     } finally {
+      resume();
       await stop();
       provider.closeAllConnections();
       await new Promise<void>((resolve) => provider.close(() => resolve()));

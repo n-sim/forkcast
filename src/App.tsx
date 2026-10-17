@@ -31,6 +31,8 @@ import { CookingConflictDialog } from './CookingConflictDialog';
 import { SuspendedCookingBar } from './SuspendedCookingBar';
 import { BackendAccounts, useBackendConnection } from './BackendAccounts';
 import { AiConnection } from './AiConnection';
+import { RecipeGeneration } from './RecipeGeneration';
+import { AiPrompts } from './AiPrompts';
 import { FoodLog } from './FoodLog';
 import { MealPlan } from './MealPlan';
 import { ShoppingListView } from './ShoppingList';
@@ -248,6 +250,11 @@ export function App({
 }) {
   const [recipes, setRecipes] = useState(initialRecipes);
   const connection = useBackendConnection();
+  const aiPromptOwner = connection.config
+    ? connection.session
+      ? `account:${connection.config.url}:${connection.session.account.id}`
+      : null
+    : 'standalone';
   const sync = useRecipeSync(connection.config);
   const [coverPhotos, setCoverPhotos] = useState(initialCoverPhotos);
   const [ratings, setRatings] = useState(initialRatings);
@@ -356,6 +363,7 @@ export function App({
     (route === '#/' ||
       selected ||
       route === '#/recipes/new' ||
+      route === '#/recipes/generate' ||
       foodLogOpen ||
       shoppingOpen ||
       planningView)
@@ -363,7 +371,7 @@ export function App({
       : undefined;
 
   useEffect(() => {
-    document.title = `${selectedSession?.recipe.name ?? selected?.name ?? (settingsOpen ? 'Settings' : planningConflictsOpen ? 'Review planning conflicts' : conflictsOpen ? 'Review recipe conflicts' : foodLogOpen ? 'Food log' : shoppingOpen ? 'Shopping list' : planningView === 'today' ? 'Today’s cooking' : planningView ? 'Your weekly meal plan' : route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
+    document.title = `${selectedSession?.recipe.name ?? selected?.name ?? (settingsOpen ? 'Settings' : planningConflictsOpen ? 'Review planning conflicts' : conflictsOpen ? 'Review recipe conflicts' : foodLogOpen ? 'Food log' : shoppingOpen ? 'Shopping list' : planningView === 'today' ? 'Today’s cooking' : planningView ? 'Your weekly meal plan' : route === '#/recipes/generate' ? 'Generate recipe' : route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
   }, [
     route,
     selected,
@@ -611,6 +619,10 @@ export function App({
             <article>
               <h1>Settings</h1>
               <AiConnection />
+              <AiPrompts
+                key={aiPromptOwner ?? 'signed-out'}
+                owner={aiPromptOwner}
+              />
               <BackendAccounts connection={connection} />
               <RecipeSync
                 config={connection.config}
@@ -629,6 +641,12 @@ export function App({
               onFinish={() => endSession(selectedSession, 'finished')}
               onCancel={() => endSession(selectedSession, 'canceled')}
               onSuspend={() => suspendSession(selectedSession)}
+            />
+          ) : route === '#/recipes/generate' ? (
+            <RecipeGeneration
+              key={aiPromptOwner ?? 'signed-out'}
+              promptOwner={aiPromptOwner}
+              onSave={save}
             />
           ) : route === '#/recipes/new' || (selected && editing) ? (
             <RecipeForm
@@ -696,15 +714,20 @@ export function App({
                   <h1>Your recipe collection</h1>
                   <p>The dishes you love, all in one place.</p>
                 </div>
-                <button
-                  className="button primary"
-                  aria-label="New recipe"
-                  onClick={() => {
-                    window.location.hash = '#/recipes/new';
-                  }}
-                >
-                  + New recipe
-                </button>
+                <div className="form-actions">
+                  <a className="button secondary" href="#/recipes/generate">
+                    Generate recipe
+                  </a>
+                  <button
+                    className="button primary"
+                    aria-label="New recipe"
+                    onClick={() => {
+                      window.location.hash = '#/recipes/new';
+                    }}
+                  >
+                    + New recipe
+                  </button>
+                </div>
               </div>
               <div className="collection-count">
                 {recipes.length} {recipes.length === 1 ? 'recipe' : 'recipes'}
