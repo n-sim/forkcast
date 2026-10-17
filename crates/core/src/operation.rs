@@ -3,8 +3,9 @@
 //! `POST /api/operations` calls, so both transports share one implementation.
 
 use crate::{
-    AccountChange, CookingOutcome, Core, Credentials, CurrentChoice, JoinSelection, LogManualFood,
-    LogRecipeFood, Photo, PlanningChoice, Principal, SetCoverPhoto, ShoppingItemKind, StartCooking,
+    AccountChange, CookingOutcome, Core, Credentials, CurrentChoice, EditBase, JoinSelection,
+    LogManualFood, LogRecipeFood, Photo, PlanningChoice, Principal, SetCoverPhoto,
+    ShoppingItemKind, StartCooking,
     error::{Error, Result},
 };
 use forkcast_recipe_domain::{planning::PlannedCooking, shopping::ShoppingItem};
@@ -42,9 +43,11 @@ pub enum Operation {
     MealPlan,
     PlanCooking {
         cooking: PlannedCooking,
+        edit_base: Option<EditBase>,
     },
     RemovePlannedCooking {
         id: String,
+        edit_base: Option<EditBase>,
     },
     PlanningSnapshot,
     ResolvePlanningConflict {
@@ -56,24 +59,29 @@ pub enum Operation {
         start_date: String,
         end_date: String,
         replacing_list_id: Option<String>,
+        edit_base: Option<EditBase>,
     },
     SaveShoppingItem {
         list_id: String,
         kind: ShoppingItemKind,
         item: ShoppingItem,
+        edit_base: Option<EditBase>,
     },
     RemoveShoppingItem {
         list_id: String,
         kind: ShoppingItemKind,
         item_id: String,
+        edit_base: Option<EditBase>,
     },
     CheckShoppingItem {
         list_id: String,
         item_id: String,
         checked: bool,
+        edit_base: Option<EditBase>,
     },
     CompleteShoppingList {
         list_id: String,
+        edit_base: Option<EditBase>,
     },
     CookingSessions,
     StartCooking {
@@ -209,9 +217,11 @@ impl Core {
                 Ok(Value::Null)
             }
             MealPlan => json(self.meal_plan(principal)?),
-            PlanCooking { cooking } => json(self.plan_cooking(principal, cooking)?),
-            RemovePlannedCooking { id } => {
-                self.remove_planned_cooking(principal, &id)?;
+            PlanCooking { cooking, edit_base } => {
+                json(self.plan_cooking(principal, cooking, edit_base)?)
+            }
+            RemovePlannedCooking { id, edit_base } => {
+                self.remove_planned_cooking(principal, &id, edit_base)?;
                 Ok(Value::Null)
             }
             PlanningSnapshot => self.planning_snapshot(principal),
@@ -231,29 +241,34 @@ impl Core {
                 start_date,
                 end_date,
                 replacing_list_id,
+                edit_base,
             } => json(self.generate_shopping_list(
                 principal,
                 &start_date,
                 &end_date,
                 replacing_list_id.as_deref(),
+                edit_base,
             )?),
             SaveShoppingItem {
                 list_id,
                 kind,
                 item,
-            } => json(self.save_shopping_item(principal, &list_id, kind, item)?),
+                edit_base,
+            } => json(self.save_shopping_item(principal, &list_id, kind, item, edit_base)?),
             RemoveShoppingItem {
                 list_id,
                 kind,
                 item_id,
-            } => json(self.remove_shopping_item(principal, &list_id, kind, &item_id)?),
+                edit_base,
+            } => json(self.remove_shopping_item(principal, &list_id, kind, &item_id, edit_base)?),
             CheckShoppingItem {
                 list_id,
                 item_id,
                 checked,
-            } => json(self.check_shopping_item(principal, &list_id, &item_id, checked)?),
-            CompleteShoppingList { list_id } => {
-                json(self.complete_shopping_list(principal, &list_id)?)
+                edit_base,
+            } => json(self.check_shopping_item(principal, &list_id, &item_id, checked, edit_base)?),
+            CompleteShoppingList { list_id, edit_base } => {
+                json(self.complete_shopping_list(principal, &list_id, edit_base)?)
             }
             CookingSessions => json(self.cooking_sessions(principal)?),
             StartCooking { start } => json(self.start_cooking(principal, start)?),

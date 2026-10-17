@@ -86,7 +86,7 @@ fn a_standalone_browser_profile_arrives_whole_with_its_identities() {
     assert_eq!(recipes[0].revision_id, "revision-1");
     assert!(recipes[0].cover_photo.is_some());
     assert_eq!(core.ratings(&me).unwrap()[0].value, Some(4));
-    assert_eq!(core.meal_plan(&me).unwrap().len(), 1);
+    assert_eq!(core.meal_plan(&me).unwrap().cookings.len(), 1);
     let list = core.shopping_list(&me).unwrap().unwrap();
     assert_eq!(list.list["id"], "list-1");
     assert_eq!(list.list["manualItems"][0]["checked"], true);
@@ -219,7 +219,7 @@ fn a_household_profile_keeps_its_binding_and_pending_work_but_must_sign_in_again
     let me = me(&core);
     assert_eq!(me.person_id(), "account-7");
     assert_eq!(core.recipes(&me).unwrap().len(), 1);
-    assert_eq!(core.meal_plan(&me).unwrap().len(), 1);
+    assert_eq!(core.meal_plan(&me).unwrap().cookings.len(), 1);
     assert_eq!(
         core.ratings(&me).err().unwrap().kind,
         ErrorKind::Forbidden,

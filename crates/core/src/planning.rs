@@ -234,22 +234,51 @@ fn merge_mutation(
     Ok(saved)
 }
 
-/// A local edit applies to the latest document inside one serialized
-/// transaction, so it cannot be based on stale contents.
+/// What a view of the plan was based on. An edit made from that view is
+/// merged with anything that changed since, and retained for review when the
+/// same field changed differently, instead of silently overwriting it.
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EditBase {
+    pub base_revision: Option<String>,
+    pub base_mutation_id: Option<String>,
+    pub data: Value,
+}
+
+fn edit_base(db: &Connection, data: &Value) -> Result<EditBase> {
+    let (base_revision, base_mutation_id) = sync::planning_base(db)?;
+    Ok(EditBase {
+        base_revision,
+        base_mutation_id,
+        data: data.clone(),
+    })
+}
+
+/// Applies a change to the plan inside one serialized transaction. `change`
+/// edits a copy of the base the person saw and also sees the latest data.
 fn edit(
     db: &Connection,
     principal: &Principal,
     effects: &mut Effects,
-    change: impl FnOnce(&mut Value, &Connection) -> Result<()>,
+    base: Option<EditBase>,
+    change: impl FnOnce(&mut Value, &Value, &Connection) -> Result<()>,
 ) -> Result<Value> {
     let household = principal.household_id();
     let current = snapshot(db, household)?;
-    let base = current["data"].clone();
-    let mut data = base.clone();
-    change(&mut data, db)?;
+    let base = match base {
+        Some(base) => base,
+        None => edit_base(db, &current["data"])?,
+    };
+    let mut incoming = base.data.clone();
+    change(&mut incoming, &current["data"], db)?;
+    let live = if sync::is_bound(db)? {
+        household_planning::merge(&base.data, &current["data"], &incoming).data
+    } else {
+        incoming.clone()
+    };
     let conflicts: Vec<Conflict> = serde_json::from_value(current["conflicts"].clone())?;
-    let saved = persist(db, household, data.clone(), conflicts)?;
-    sync::record_planning(db, effects, principal, &base, &data)?;
+    let saved = persist(db, household, live, conflicts)?;
+    sync::record_planning(db, effects, principal, &base, &incoming)?;
     effects.household(principal, Topic::Planning);
     Ok(saved)
 }
@@ -285,6 +314,14 @@ pub enum SourceStatus {
 pub struct ShoppingListView {
     pub list: Value,
     pub source_status: SourceStatus,
+    pub edit_base: EditBase,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MealPlanView {
+    pub cookings: Vec<PlannedCooking>,
+    pub edit_base: EditBase,
 }
 
 fn drafts(db: &Connection, household: &str) -> Result<Vec<RecipeDraft>> {
@@ -403,10 +440,12 @@ impl Core {
         })
     }
 
-    /// The household meal plan, ordered by day, time, then identity.
-    pub fn meal_plan(&self, principal: &Principal) -> Result<Vec<PlannedCooking>> {
+    /// The household meal plan, ordered by day, time, then identity, with the
+    /// base an edit made from this view should name.
+    pub fn meal_plan(&self, principal: &Principal) -> Result<MealPlanView> {
         self.read(|db| {
-            let mut plan = cookings(&snapshot(db, principal.household_id())?["data"])?;
+            let data = snapshot(db, principal.household_id())?["data"].clone();
+            let mut plan = cookings(&data)?;
             plan.sort_by(|a, b| {
                 (&a.cooking_date, &a.cooking_time, &a.id).cmp(&(
                     &b.cooking_date,
@@ -414,7 +453,10 @@ impl Core {
                     &b.id,
                 ))
             });
-            Ok(plan)
+            Ok(MealPlanView {
+                cookings: plan,
+                edit_base: edit_base(db, &data)?,
+            })
         })
     }
 
@@ -423,13 +465,14 @@ impl Core {
         &self,
         principal: &Principal,
         cooking: PlannedCooking,
+        base: Option<EditBase>,
     ) -> Result<PlannedCooking> {
         let cooking = validate_planned_cooking(cooking).map_err(|errors| {
             Error::invalid("Check the planned cooking before saving.")
                 .with_fields(serde_json::to_value(errors).unwrap_or(Value::Null))
         })?;
         self.write(|db, effects| {
-            edit(db, principal, effects, |data, db| {
+            edit(db, principal, effects, base, |data, _, db| {
                 if recipes::current_recipe(db, principal.household_id(), &cooking.recipe_id)?
                     .is_none()
                 {
@@ -444,9 +487,14 @@ impl Core {
         })
     }
 
-    pub fn remove_planned_cooking(&self, principal: &Principal, id: &str) -> Result<()> {
+    pub fn remove_planned_cooking(
+        &self,
+        principal: &Principal,
+        id: &str,
+        base: Option<EditBase>,
+    ) -> Result<()> {
         self.write(|db, effects| {
-            edit(db, principal, effects, |data, _| {
+            edit(db, principal, effects, base, |data, _, _| {
                 if let Some(cookings) = data["cookings"].as_object_mut() {
                     cookings.remove(id);
                 }
@@ -456,23 +504,30 @@ impl Core {
         })
     }
 
+    fn shopping_view(
+        &self,
+        db: &Connection,
+        principal: &Principal,
+    ) -> Result<Option<ShoppingListView>> {
+        let data = snapshot(db, principal.household_id())?["data"].clone();
+        if data["shoppingList"].is_null() {
+            return Ok(None);
+        }
+        let status = source_status(
+            &data["shoppingList"],
+            &data,
+            drafts(db, principal.household_id())?,
+        )?;
+        Ok(Some(ShoppingListView {
+            list: data["shoppingList"].clone(),
+            source_status: status,
+            edit_base: edit_base(db, &data)?,
+        }))
+    }
+
     /// The current shopping list with whether its sources have changed.
     pub fn shopping_list(&self, principal: &Principal) -> Result<Option<ShoppingListView>> {
-        self.read(|db| {
-            let data = snapshot(db, principal.household_id())?["data"].clone();
-            if data["shoppingList"].is_null() {
-                return Ok(None);
-            }
-            let status = source_status(
-                &data["shoppingList"],
-                &data,
-                drafts(db, principal.household_id())?,
-            )?;
-            Ok(Some(ShoppingListView {
-                list: data["shoppingList"].clone(),
-                source_status: status,
-            }))
-        })
+        self.read(|db| self.shopping_view(db, principal))
     }
 
     /// Generates a list from the planned cookings in the period. Manual items
@@ -484,17 +539,18 @@ impl Core {
         start_date: &str,
         end_date: &str,
         replacing_list_id: Option<&str>,
+        base: Option<EditBase>,
     ) -> Result<ShoppingListView> {
         self.write(|db, effects| {
             let generated_at = self.now();
-            edit(db, principal, effects, |data, db| {
-                if data["shoppingList"]["id"].as_str() != replacing_list_id {
+            edit(db, principal, effects, base, |data, current, db| {
+                if current["shoppingList"]["id"].as_str() != replacing_list_id {
                     return Err(Error::conflict(
-                        "Your shopping list changed in another tab. Review it before replacing it.",
+                        "Your shopping list changed elsewhere. Review it before replacing it.",
                     ));
                 }
                 let requirements = shopping::generate_shopping_requirements(
-                    cookings(data)?,
+                    cookings(current)?,
                     drafts(db, principal.household_id())?,
                     start_date,
                     end_date,
@@ -525,15 +581,8 @@ impl Core {
                 });
                 Ok(())
             })?;
-            let data = snapshot(db, principal.household_id())?["data"].clone();
-            Ok(ShoppingListView {
-                source_status: source_status(
-                    &data["shoppingList"],
-                    &data,
-                    drafts(db, principal.household_id())?,
-                )?,
-                list: data["shoppingList"].clone(),
-            })
+            self.shopping_view(db, principal)?
+                .ok_or_else(Error::internal)
         })
     }
 
@@ -541,21 +590,15 @@ impl Core {
         &self,
         principal: &Principal,
         list_id: &str,
+        base: Option<EditBase>,
         change: impl FnOnce(&mut Value) -> Result<()>,
     ) -> Result<ShoppingListView> {
         self.write(|db, effects| {
-            edit(db, principal, effects, |data, _| {
+            edit(db, principal, effects, base, |data, _, _| {
                 change(list_mut(data, list_id)?)
             })?;
-            let data = snapshot(db, principal.household_id())?["data"].clone();
-            Ok(ShoppingListView {
-                source_status: source_status(
-                    &data["shoppingList"],
-                    &data,
-                    drafts(db, principal.household_id())?,
-                )?,
-                list: data["shoppingList"].clone(),
-            })
+            self.shopping_view(db, principal)?
+                .ok_or_else(Error::internal)
         })
     }
 
@@ -566,9 +609,10 @@ impl Core {
         list_id: &str,
         kind: ShoppingItemKind,
         item: ShoppingItem,
+        base: Option<EditBase>,
     ) -> Result<ShoppingListView> {
         let item = shopping::validate_shopping_item(item).map_err(Error::invalid)?;
-        self.change_list(principal, list_id, |list| {
+        self.change_list(principal, list_id, base, |list| {
             let items = list[kind.field()]
                 .as_array_mut()
                 .ok_or_else(Error::internal)?;
@@ -593,8 +637,9 @@ impl Core {
         list_id: &str,
         kind: ShoppingItemKind,
         item_id: &str,
+        base: Option<EditBase>,
     ) -> Result<ShoppingListView> {
-        self.change_list(principal, list_id, |list| {
+        self.change_list(principal, list_id, base, |list| {
             if let Some(items) = list[kind.field()].as_array_mut() {
                 items.retain(|item| item["id"].as_str() != Some(item_id));
             }
@@ -608,8 +653,9 @@ impl Core {
         list_id: &str,
         item_id: &str,
         checked: bool,
+        base: Option<EditBase>,
     ) -> Result<ShoppingListView> {
-        self.change_list(principal, list_id, |list| {
+        self.change_list(principal, list_id, base, |list| {
             let item = find_item(list, item_id).ok_or_else(|| {
                 Error::conflict("This item has been removed. Review the current list.")
             })?;
@@ -622,8 +668,9 @@ impl Core {
         &self,
         principal: &Principal,
         list_id: &str,
+        base: Option<EditBase>,
     ) -> Result<ShoppingListView> {
-        self.change_list(principal, list_id, |list| {
+        self.change_list(principal, list_id, base, |list| {
             list["completed"] = Value::Bool(true);
             Ok(())
         })

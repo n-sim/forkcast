@@ -282,6 +282,7 @@ pub fn everything(core: &Core) -> JoinSelection {
         cooking_ids: core
             .meal_plan(&principal)
             .unwrap()
+            .cookings
             .iter()
             .map(|cooking| {
                 serde_json::to_value(cooking).unwrap()["id"]

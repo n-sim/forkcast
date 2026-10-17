@@ -75,6 +75,8 @@ impl Effects {
 struct Subscriber {
     household_id: String,
     person_id: String,
+    /// A host-wide subscription sees every change on this device.
+    everything: bool,
     sender: Sender<Change>,
 }
 
@@ -92,6 +94,21 @@ impl Hub {
             .push(Subscriber {
                 household_id: principal.household_id().to_owned(),
                 person_id: principal.person_id().to_owned(),
+                everything: false,
+                sender,
+            });
+        Subscription { receiver }
+    }
+
+    pub(crate) fn subscribe_all(&self) -> Subscription {
+        let (sender, receiver) = channel();
+        self.subscribers
+            .lock()
+            .expect("change subscribers poisoned")
+            .push(Subscriber {
+                household_id: String::new(),
+                person_id: String::new(),
+                everything: true,
                 sender,
             });
         Subscription { receiver }
@@ -108,9 +125,12 @@ impl Hub {
         subscribers.retain(|subscriber| {
             changes
                 .iter()
-                .filter(|change| match &change.scope {
-                    Scope::Household(id) => *id == subscriber.household_id,
-                    Scope::Person(id) => *id == subscriber.person_id,
+                .filter(|change| {
+                    subscriber.everything
+                        || match &change.scope {
+                            Scope::Household(id) => *id == subscriber.household_id,
+                            Scope::Person(id) => *id == subscriber.person_id,
+                        }
                 })
                 .all(|change| subscriber.sender.send(change.clone()).is_ok())
         });

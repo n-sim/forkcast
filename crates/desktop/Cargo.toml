@@ -1,0 +1,29 @@
+[package]
+name = "forkcast-desktop"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Forkcast desktop app: the React frontend and the embedded Rust core."
+
+[lib]
+name = "forkcast_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+base64 = "0.22"
+forkcast-core = { path = "../core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Security_Cryptography", "Win32_Foundation", "Win32_Storage_FileSystem"] }
+
+[features]
+# Set by `tauri build`: serve the bundled frontend instead of the dev server.
+custom-protocol = ["tauri/custom-protocol"]
