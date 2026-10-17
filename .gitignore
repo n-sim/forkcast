@@ -12,3 +12,10 @@ test-results/
 crates/desktop/gen/schemas/
 crates/desktop/icons/android/
 crates/desktop/icons/ios/
+target-android/
+crates/secure-store/android/.tauri/
+crates/desktop/gen/android/app/src/main/jniLibs/
+crates/desktop/gen/android/app/tauri.build.gradle.kts
+crates/desktop/gen/android/app/tauri.properties
+crates/desktop/gen/android/tauri.settings.gradle
+crates/desktop/gen/android/buildSrc/build
