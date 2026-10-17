@@ -265,4 +265,23 @@ test('connect a ChatGPT subscription without a backend and retain it after brows
   await expect(
     page.getByRole('status', { name: 'Backend connection' }),
   ).toContainText('Standalone');
+  await ai
+    .getByRole('button', { name: 'Disconnect companion', exact: true })
+    .click();
+  await expect(ai.getByRole('status')).toContainText('AI not configured');
+  await expect(
+    ai.getByRole('button', { name: 'Continue with ChatGPT', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    ai.getByRole('button', { name: 'Connect companion', exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(ai.getByRole('status')).toContainText('AI not configured');
+  await ai.getByLabel('Companion URL').fill(companion.url);
+  await ai
+    .getByRole('button', { name: 'Connect companion', exact: true })
+    .click();
+  await expect(ai.getByRole('status')).toContainText(
+    'Connected as cook@example.test',
+  );
 });

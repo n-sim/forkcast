@@ -72,6 +72,13 @@ export function AiConnection() {
     }
   }
 
+  function disconnect() {
+    localStorage.removeItem(companionKey);
+    setActiveUrl(null);
+    setStatus(null);
+    setError('');
+  }
+
   async function authorize() {
     // Open during the user's click so popup blockers do not swallow sign-in.
     const popup = window.open('about:blank', '_blank');
@@ -200,20 +207,37 @@ export function AiConnection() {
           Start the native AI companion on this device, then connect it here.
         </p>
       )}
-      <form className="account-form" onSubmit={(event) => void connect(event)}>
-        <label>
-          Companion URL
-          <input
-            type="url"
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-            required
-          />
-        </label>
-        <button className="button secondary" disabled={busy}>
-          Connect companion
-        </button>
-      </form>
+      {activeUrl ? (
+        <div className="account-form">
+          <p>Companion: {activeUrl}</p>
+          <button
+            type="button"
+            className="button secondary"
+            disabled={busy}
+            onClick={disconnect}
+          >
+            Disconnect companion
+          </button>
+        </div>
+      ) : (
+        <form
+          className="account-form"
+          onSubmit={(event) => void connect(event)}
+        >
+          <label>
+            Companion URL
+            <input
+              type="url"
+              value={url}
+              onChange={(event) => setUrl(event.target.value)}
+              required
+            />
+          </label>
+          <button className="button primary" disabled={busy}>
+            Connect companion
+          </button>
+        </form>
+      )}
     </section>
   );
 }
