@@ -83,6 +83,19 @@ fn validate_data(db: &Connection, household: &str, data: &Value) -> Result<()> {
     Ok(())
 }
 
+/// Stores a planning document carried over from another store, as is.
+pub(crate) fn store_imported_document(
+    db: &Connection,
+    household: &str,
+    document: &Value,
+) -> Result<()> {
+    db.execute(
+        "INSERT INTO household_planning (household_id, payload) VALUES (?, ?) ON CONFLICT(household_id) DO UPDATE SET payload = excluded.payload",
+        params![household, document.to_string()],
+    )?;
+    Ok(())
+}
+
 pub(crate) fn local_snapshot(db: &Connection, household: &str) -> Result<Value> {
     snapshot(db, household)
 }
