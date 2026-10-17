@@ -49,6 +49,12 @@ pub struct Revision {
 }
 
 impl Revision {
+    /// The revision with its recipe normalized by the shared validation.
+    pub(crate) fn validated(mut self) -> Result<Self> {
+        self.validate()?;
+        Ok(self)
+    }
+
     /// Returns the recipe id after normalizing the recipe through the shared
     /// domain validation.
     fn validate(&mut self) -> Result<String> {
@@ -267,7 +273,7 @@ pub(crate) fn current_recipe(
 
 /// Shared by device synchronization and local saves, so both enforce the same
 /// ownership, identity, and branching rules. Returns whether it stored anything.
-fn insert_revision(
+pub(crate) fn insert_revision(
     db: &Connection,
     principal: &Principal,
     revision: &Revision,
