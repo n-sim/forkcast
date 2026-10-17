@@ -23,6 +23,7 @@ pub struct AiPreferences {
 
 impl Core {
     pub fn ai_preferences(&self, principal: &Principal) -> Result<AiPreferences> {
+        principal.require_personal()?;
         self.read(|db| {
             let stored: Option<String> = db
                 .query_row(
@@ -38,6 +39,7 @@ impl Core {
     }
 
     pub fn set_recipe_prompt(&self, principal: &Principal, prompt: &str) -> Result<AiPreferences> {
+        principal.require_personal()?;
         if prompt.chars().count() > MAX_PROMPT_CHARS {
             return Err(Error::invalid(format!(
                 "Use a recipe prompt of up to {MAX_PROMPT_CHARS} characters."

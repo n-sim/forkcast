@@ -143,9 +143,21 @@ const MIGRATIONS: &[&str] = &[
      CREATE TABLE sync_binding (
          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
          server_url TEXT NOT NULL,
-         remote_household_id TEXT NOT NULL,
-         remote_account_id TEXT NOT NULL,
-         person_id TEXT NOT NULL REFERENCES people(id)
+         remote_household_id TEXT NOT NULL
+     );
+     CREATE TABLE remote_accounts (
+         account_id TEXT PRIMARY KEY REFERENCES people(id),
+         username TEXT,
+         role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('administrator', 'member'))
+     );
+     CREATE TABLE sync_state (
+         singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+         active_account TEXT REFERENCES people(id),
+         signed_out INTEGER NOT NULL DEFAULT 0 CHECK (signed_out IN (0, 1)),
+         paused INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1)),
+         planning_revision TEXT,
+         last_error TEXT,
+         last_synced_at INTEGER
      );
      CREATE TABLE sync_outbox (
          seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -154,7 +166,12 @@ const MIGRATIONS: &[&str] = &[
          household_id TEXT NOT NULL,
          kind TEXT NOT NULL,
          payload TEXT NOT NULL
-     );",
+     );
+     CREATE TABLE legacy_imports (
+         id TEXT PRIMARY KEY,
+         applied_at INTEGER NOT NULL
+     );
+     ALTER TABLE shared_recipes ADD COLUMN held_back INTEGER NOT NULL DEFAULT 0 CHECK (held_back IN (0, 1));",
 ];
 
 pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;

@@ -16,6 +16,10 @@ pub enum ErrorKind {
     /// The database or request needs a newer Forkcast. Nothing was changed.
     Unsupported,
     Internal,
+    /// The server could not be reached.
+    Unavailable,
+    /// Client and server speak different synchronization protocol versions.
+    ProtocolMismatch,
 }
 
 #[derive(Debug, Serialize)]

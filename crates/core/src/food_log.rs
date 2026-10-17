@@ -129,6 +129,7 @@ impl Core {
     /// The day's entries and nutrition totals, computed by the shared domain
     /// rules from the nutrition versions each entry retained.
     pub fn food_log(&self, principal: &Principal, date: &str) -> Result<DailyFoodLog> {
+        principal.require_personal()?;
         if !valid_date(date) {
             return Err(Error::invalid("Choose a valid food log date."));
         }
@@ -146,6 +147,7 @@ impl Core {
     }
 
     pub fn food_log_date(&self, principal: &Principal) -> Result<Option<String>> {
+        principal.require_personal()?;
         self.read(|db| {
             Ok(db
                 .query_row(
@@ -158,6 +160,7 @@ impl Core {
     }
 
     pub fn set_food_log_date(&self, principal: &Principal, date: &str) -> Result<()> {
+        principal.require_personal()?;
         if !valid_date(date) {
             return Err(Error::invalid("Choose a valid food log date."));
         }
@@ -171,6 +174,7 @@ impl Core {
     /// Logs portions of a household recipe against one of its retained
     /// nutrition versions; later recipe edits never change the entry.
     pub fn log_recipe_food(&self, principal: &Principal, input: LogRecipeFood) -> Result<()> {
+        principal.require_personal()?;
         self.write(|db, effects| {
             let view = recipes::current_recipe(db, principal.household_id(), &input.recipe_id)?
                 .ok_or_else(|| {
@@ -200,6 +204,7 @@ impl Core {
     }
 
     pub fn log_manual_food(&self, principal: &Principal, input: LogManualFood) -> Result<()> {
+        principal.require_personal()?;
         let entry = validate_manual_entry(ManualFoodLogEntry {
             id: input.id.unwrap_or_else(|| Uuid::new_v4().to_string()),
             description: input.description,

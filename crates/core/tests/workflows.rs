@@ -4,9 +4,9 @@ mod common;
 
 use common::{TempDatabase, cover_photo, risotto};
 use forkcast_core::{
-    CookingOutcome, Core, Credentials, CurrentChoice, ErrorKind, JoinServer, LogManualFood,
-    LogRecipeFood, Operation, Principal, SaveRecipe, SetCoverPhoto, SetupServer, ShoppingItemKind,
-    SourceStatus, StartCooking, Topic,
+    CookingOutcome, Core, Credentials, CurrentChoice, ErrorKind, LogManualFood, LogRecipeFood,
+    Operation, Principal, SaveRecipe, SetCoverPhoto, SetupServer, ShoppingItemKind, SourceStatus,
+    StartCooking, Topic,
 };
 use forkcast_recipe_domain::{planning::PlannedCooking, shopping::ShoppingItem};
 use serde_json::{Value, json};
@@ -37,14 +37,6 @@ fn manual_food(id: &str) -> LogManualFood {
         "nutrition": {"calories": 100.0, "protein": null, "fat": null, "carbohydrates": null},
     }))
     .unwrap()
-}
-
-fn join() -> JoinServer {
-    JoinServer {
-        server_url: "https://forkcast.example".into(),
-        remote_household_id: "household-1".into(),
-        remote_account_id: "account-1".into(),
-    }
 }
 
 #[test]
@@ -374,86 +366,6 @@ fn planning_shopping_cooking_and_food_log_work_end_to_end() {
     );
 }
 
-#[test]
-fn failed_operations_roll_back_everything_including_pending_sync() {
-    let database = TempDatabase::new();
-    let core = database.open();
-    let me = core.standalone().unwrap();
-    core.join_server(&me, join()).unwrap();
-    save(&core, &me, risotto());
-    let pending = core.sync_state(&me).unwrap().pending.len();
-    assert_eq!(pending, 1);
-
-    // A planning edit naming a missing recipe fails after the document was
-    // loaded; neither the plan nor the outbox may change.
-    let mut missing = cooking("c1", "2030-05-06", 2.0);
-    missing.recipe_id = "missing".into();
-    assert!(core.plan_cooking(&me, missing).is_err());
-    assert!(core.meal_plan(&me).unwrap().is_empty());
-    assert_eq!(core.sync_state(&me).unwrap().pending.len(), pending);
-
-    // A revision that reuses another recipe's nutrition identity is refused
-    // as a whole: no half-created recipe remains.
-    let mut revision = core.recipe_collection(&me).unwrap().revisions[0].clone();
-    revision["id"] = json!("hijack");
-    revision["parentId"] = Value::Null;
-    revision["recipe"]["id"] = json!("another");
-    for version in revision["nutritionVersions"].as_array_mut().unwrap() {
-        version["recipeId"] = json!("another");
-    }
-    let revision = serde_json::from_value(revision).unwrap();
-    assert_eq!(
-        core.ingest_recipe_revision(&me, revision)
-            .err()
-            .unwrap()
-            .kind,
-        ErrorKind::Conflict
-    );
-    assert_eq!(core.recipe_collection(&me).unwrap().current.len(), 1);
-}
-
-#[test]
-fn pending_sync_state_survives_restart_and_keeps_its_owner() {
-    let database = TempDatabase::new();
-    let core = database.open();
-    let me = core.standalone().unwrap();
-    // Nothing is queued before the profile joins a server.
-    save(&core, &me, risotto());
-    assert!(core.sync_state(&me).unwrap().pending.is_empty());
-    core.join_server(&me, join()).unwrap();
-
-    core.rate_recipe(&me, "veggie-pumpkin-risotto", Some(5))
-        .unwrap();
-    core.plan_cooking(&me, cooking("c1", "2030-05-06", 2.0))
-        .unwrap();
-    drop(core);
-
-    let core = database.open();
-    let state = core.sync_state(&me).unwrap();
-    let kinds: Vec<_> = state
-        .pending
-        .iter()
-        .map(|change| change.kind.as_str())
-        .collect();
-    assert_eq!(kinds, ["rating", "planning"]);
-    assert!(state.pending.iter().all(
-        |change| change.person_id == me.person_id() && change.household_id == me.household_id()
-    ));
-    // Rejoining the same household resumes; another needs a separate profile.
-    core.join_server(&me, join()).unwrap();
-    let mut other = join();
-    other.remote_household_id = "household-2".into();
-    assert_eq!(
-        core.join_server(&me, other).err().unwrap().kind,
-        ErrorKind::Conflict
-    );
-
-    let first = state.pending[0].id.clone();
-    let after = core.acknowledge_sync(&me, &[first.clone(), first]).unwrap();
-    assert_eq!(after.pending.len(), 1);
-    assert_eq!(after.pending[0].kind, "planning");
-}
-
 fn server(database: &TempDatabase) -> (Core, Principal, Principal) {
     let core = database.open();
     let admin = core
@@ -556,11 +468,6 @@ fn household_records_are_shared_and_personal_records_are_not() {
         ErrorKind::Forbidden
     );
     assert_eq!(core.accounts(&admin).unwrap().len(), 2);
-    // Joining a server is for standalone profiles only.
-    assert_eq!(
-        core.join_server(&admin, join()).err().unwrap().kind,
-        ErrorKind::Forbidden
-    );
 }
 
 #[test]
@@ -596,8 +503,9 @@ fn every_operation_shape_parses_from_the_serialized_contract() {
                "consumedAt": "2030-05-06T19:00", "portions": 1.0}),
         json!({"operation": "logManualFood", "description": "Tea", "consumedAt": "2030-05-06T19:00",
                "nutrition": {"calories": null, "protein": null, "fat": null, "carbohydrates": null}}),
-        json!({"operation": "joinServer", "serverUrl": "https://x.example",
-               "remoteHouseholdId": "h", "remoteAccountId": "a"}),
+        json!({"operation": "connectServer", "serverUrl": "https://x.example"}),
+        json!({"operation": "completeJoin", "recipeIds": ["r"], "adoptPersonal": true}),
+        json!({"operation": "changeAccount", "id": "a", "active": false}),
         json!({"operation": "resolvePlanningConflict",
                "conflict": {"path": ["cookings"], "values": [1, 2]}, "value": 1}),
         json!({"operation": "saveShoppingItem", "listId": "l", "kind": "manual",

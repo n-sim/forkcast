@@ -18,7 +18,11 @@ mod planning;
 mod preferences;
 mod principal;
 mod recipes;
+mod remote;
+mod secrets;
+mod session;
 mod sync;
+mod transfer;
 
 pub use accounts::{
     Account, AccountChange, Authenticated, Credentials, Household, Role, ServerStatus, Session,
@@ -39,7 +43,13 @@ pub use recipes::{
     Collection, CurrentChoice, Photo, Rating, RatingChange, RecipeView, Revision, SaveRecipe,
     SavedRecipe, SetCoverPhoto,
 };
-pub use sync::{JoinServer, PendingChange, SyncBinding, SyncState};
+pub use remote::PROTOCOL_VERSION;
+pub use secrets::{MemorySecrets, Secrets};
+pub use session::{
+    AccountInfo, JoinReview, JoinSelection, PendingJoin, ServerAuthentication, ServerProbe,
+};
+pub use sync::{PendingChange, SyncStatus};
+pub use transfer::ImportReport;
 
 use changes::{Effects, Hub};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
@@ -56,12 +66,15 @@ pub type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
 pub struct Config {
     pub database: PathBuf,
     pub clock: Clock,
+    /// Protected storage for remote session tokens. Defaults to memory.
+    pub secrets: Arc<dyn Secrets>,
 }
 
 impl Config {
     pub fn new(database: impl Into<PathBuf>) -> Self {
         Self {
             database: database.into(),
+            secrets: Arc::new(MemorySecrets::default()),
             clock: Arc::new(|| {
                 SystemTime::now()
                     .duration_since(UNIX_EPOCH)
@@ -72,10 +85,12 @@ impl Config {
     }
 }
 
-struct Inner {
+pub(crate) struct Inner {
     database: PathBuf,
     clock: Clock,
     hub: Hub,
+    pub(crate) secrets: Arc<dyn Secrets>,
+    pub(crate) sync: sync::SyncControl,
 }
 
 /// Cheap to clone and safe to share between threads. Every operation opens
@@ -83,7 +98,7 @@ struct Inner {
 /// host or frontend could reach.
 #[derive(Clone)]
 pub struct Core {
-    inner: Arc<Inner>,
+    pub(crate) inner: Arc<Inner>,
 }
 
 impl Core {
@@ -96,7 +111,9 @@ impl Core {
             inner: Arc::new(Inner {
                 database: config.database,
                 clock: config.clock,
+                secrets: config.secrets,
                 hub: Hub::default(),
+                sync: sync::SyncControl::default(),
             }),
         })
     }
@@ -169,6 +186,9 @@ impl Core {
         let value = f(&transaction, &mut effects)?;
         transaction.commit()?;
         self.inner.hub.publish(effects.changes);
+        if effects.queued {
+            self.nudge_sync();
+        }
         Ok(value)
     }
 }
