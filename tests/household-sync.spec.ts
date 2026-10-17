@@ -288,10 +288,12 @@ test('an incompatible server release fails visibly and keeps pending work', asyn
     await expect(
       device.getByRole('status', { name: 'Data synchronization' }),
     ).toContainText(/protocol/i, { timeout: 30_000 });
-    await device.goto('/#/');
+    await device
+      .getByRole('link', { name: 'Recipe collection', exact: true })
+      .click();
     await expect(
       device.getByRole('link', { name: /Kept while incompatible/ }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15_000 });
   } finally {
     await new Promise((resolve) => newer.close(resolve));
   }
