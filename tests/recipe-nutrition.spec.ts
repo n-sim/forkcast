@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './app-fixture';
 
 async function createRecipe(page: Page, nutrition = true) {
   await page.goto('/');
@@ -79,7 +79,7 @@ test('enter whole-recipe nutrition and keep per-portion values independent of co
 
 test('link food-log recipes to current contents and explain older nutrition without changing logged values', async ({
   page,
-  context,
+  app,
 }) => {
   await createRecipe(page);
   const recipeUrl = page.url();
@@ -119,7 +119,7 @@ test('link food-log recipes to current contents and explain older nutrition with
   await page.getByRole('link', { name: 'Food log', exact: true }).click();
   await expect(oldEntry).not.toContainText('Newer recipe nutrition available');
 
-  const editor = await context.newPage();
+  const editor = await app.newWindow();
   await editor.goto(`${recipeUrl}/edit`);
   await editor.getByLabel('Calories (kcal)', { exact: true }).fill('2400');
   await editor
@@ -165,10 +165,6 @@ test('link food-log recipes to current contents and explain older nutrition with
     'Newer recipe nutrition available',
   );
 
-  await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-  });
-  await context.setOffline(true);
   await page.reload();
   await expect(oldEntry).toContainText('Newer recipe nutrition available');
   await oldLink.click();
@@ -238,7 +234,7 @@ test('identify older nutrition versions even when a later correction restores th
 
 test('cook four portions for a household and log only the portions actually eaten on each day, including offline', async ({
   page,
-  context,
+  app,
 }) => {
   await createRecipe(page);
   await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
@@ -288,10 +284,6 @@ test('cook four portions for a household and log only the portions actually eate
     '10 g',
     '80 g',
   ]);
-  await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-  });
-  await context.setOffline(true);
   await logRecipe(page, '2026-10-14T12:15', '1.5');
   await expect(page.getByLabel('Food log date', { exact: true })).toHaveValue(
     '2026-10-14',
@@ -304,8 +296,7 @@ test('cook four portions for a household and log only the portions actually eate
     '120 g',
   ]);
   const url = page.url();
-  await page.close();
-  const reopened = await context.newPage();
+  const reopened = await app.restart();
   await reopened.goto(url);
   await expect(
     reopened.getByRole('region', { name: 'Daily nutrition', exact: true }),

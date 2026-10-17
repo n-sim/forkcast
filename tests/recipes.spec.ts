@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './app-fixture';
 
 async function createSimpleRecipe(page: Page, name = 'Tomato pasta') {
   await page.goto('/');
@@ -13,7 +13,7 @@ async function createSimpleRecipe(page: Page, name = 'Tomato pasta') {
 
 test('attach a recipe cover photo and recognize it in the collection after reopening offline', async ({
   page,
-  context,
+  app,
 }) => {
   await createSimpleRecipe(page);
   const savedUrl = page.url();
@@ -32,12 +32,7 @@ test('attach a recipe cover photo and recognize it in the collection after reope
   await expect(photo).toBeVisible();
   await expect(photo).toHaveJSProperty('naturalWidth', 48);
 
-  await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-  });
-  await page.close();
-  await context.setOffline(true);
-  const reopened = await context.newPage();
+  const reopened = await app.restart();
   await reopened.goto(savedUrl);
   await expect(
     reopened.getByRole('img', { name: 'Tomato pasta cover photo' }),
@@ -125,7 +120,7 @@ test('replace and remove only the selected recipe cover photo while keeping its 
 
 test('record and edit a personal recipe rating independently of shared recipe metadata', async ({
   page,
-  context,
+  app,
 }) => {
   await createSimpleRecipe(page);
   const savedUrl = page.url();
@@ -146,8 +141,7 @@ test('record and edit a personal recipe rating independently of shared recipe me
   await expect(
     page.getByRole('status', { name: 'Rating status' }),
   ).toContainText('Your rating saved');
-  await page.close();
-  const reopened = await context.newPage();
+  const reopened = await app.restart();
   await reopened.goto(savedUrl);
   await expect(reopened.getByLabel('Your rating', { exact: true })).toHaveValue(
     '4',
@@ -241,7 +235,7 @@ test('reject unreadable and oversized photos without losing the attached cover p
 
 test('keep unsaved ratings out of the collection and edit or clear a saved rating offline', async ({
   page,
-  context,
+  app,
 }) => {
   await createSimpleRecipe(page);
   const savedUrl = page.url();
@@ -262,18 +256,13 @@ test('keep unsaved ratings out of the collection and edit or clear a saved ratin
     '5',
   );
 
-  await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-  });
   await page.reload();
-  await context.setOffline(true);
   await page.getByLabel('Your rating', { exact: true }).selectOption('1');
   await page.getByRole('button', { name: 'Save rating', exact: true }).click();
   await expect(
     page.getByRole('status', { name: 'Rating status' }),
   ).toContainText('Your rating saved');
-  await page.close();
-  const reopened = await context.newPage();
+  const reopened = await app.restart();
   await reopened.goto(savedUrl);
   await expect(reopened.getByLabel('Your rating', { exact: true })).toHaveValue(
     '1',
@@ -299,7 +288,7 @@ test('keep unsaved ratings out of the collection and edit or clear a saved ratin
 
 test('create a recipe, then close and reopen it with its saved quantities and ordered instructions', async ({
   page,
-  context,
+  app,
 }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'New recipe', exact: true }).click();
@@ -340,8 +329,7 @@ test('create a recipe, then close and reopen it with its saved quantities and or
   await expect(page.getByLabel('Recipe details')).toContainText('15 min');
   await expect(page.getByLabel('Recipe details')).toContainText('35 min');
 
-  await page.close();
-  const reopened = await context.newPage();
+  const reopened = await app.restart();
   await reopened.goto(savedUrl);
   await expect(
     reopened.getByRole('heading', {
@@ -525,18 +513,20 @@ test('canceling an edit preserves the saved recipe and the rest of the collectio
 test('create, edit, and reopen offline with fractional metric amounts and optional metadata', async ({
   page,
   context,
+  app,
 }) => {
   const externalRequests: string[] = [];
   context.on('request', (request) => {
-    if (new URL(request.url()).origin !== 'http://127.0.0.1:4173')
+    // The app's own assets and its native bridge are not external.
+    if (
+      !['http://tauri.localhost', 'http://ipc.localhost'].includes(
+        new URL(request.url()).origin,
+      )
+    )
       externalRequests.push(request.url());
   });
   await page.goto('/');
-  await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-  });
   await page.reload();
-  await context.setOffline(true);
 
   await createSimpleRecipe(page);
   await expect(
@@ -554,8 +544,7 @@ test('create, edit, and reopen offline with fractional metric amounts and option
   await page.getByLabel('Total time (minutes)').fill('0');
   await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
   await expect(page).toHaveURL(savedUrl);
-  await page.close();
-  const reopened = await context.newPage();
+  const reopened = await app.restart();
   await reopened.goto(savedUrl);
   await expect(
     reopened.getByRole('heading', { name: 'Offline pasta', exact: true }),

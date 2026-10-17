@@ -6,11 +6,7 @@ use crate::protected;
 use forkcast_core::{Config, Core, Error, ErrorKind, Operation};
 use serde::Serialize;
 use serde_json::Value;
-use std::{
-    path::PathBuf,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{path::PathBuf, sync::Mutex, time::Duration};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 pub struct Host {
@@ -64,7 +60,7 @@ impl Host {
         if self.core.lock().expect("core lock poisoned").is_some() {
             return;
         }
-        match self.open() {
+        match self.open(app) {
             Ok(core) => {
                 *self.failure.lock().expect("failure lock poisoned") = None;
                 if std::env::var_os("FORKCAST_NO_SYNC_WORKER").is_none() {
@@ -80,7 +76,7 @@ impl Host {
         }
     }
 
-    fn open(&self) -> Result<Core, String> {
+    fn open(&self, app: &AppHandle) -> Result<Core, String> {
         std::fs::create_dir_all(&self.data_directory).map_err(|error| {
             format!(
                 "The data folder {} could not be created: {error}. Check that the disk is writable.",
@@ -88,7 +84,7 @@ impl Host {
             )
         })?;
         let mut config = Config::new(self.data_directory.join("forkcast.sqlite3"));
-        config.secrets = Arc::from(protected::open(self.data_directory.clone()));
+        config.secrets = protected::open(self.data_directory.clone(), app);
         Core::open(config).map_err(|error| error.message)
     }
 }
@@ -150,6 +146,51 @@ pub fn open_data_folder(app: AppHandle, host: State<'_, Host>) -> Result<(), Str
     use tauri_plugin_opener::OpenerExt;
     app.opener()
         .open_path(host.data_directory.display().to_string(), None::<&str>)
+        .map_err(|error| error.to_string())
+}
+
+/// Opens another Forkcast window on the same data. Every window talks to the
+/// one embedded core, whose transactions serialize what they do.
+#[tauri::command]
+pub async fn open_window(app: AppHandle) -> Result<String, String> {
+    let label = format!("window-{}", uuid_label());
+    tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App("index.html".into()))
+        .title("Forkcast")
+        .inner_size(1280.0, 860.0)
+        .min_inner_size(360.0, 480.0)
+        .build()
+        .map_err(|error| error.to_string())?;
+    Ok(label)
+}
+
+fn uuid_label() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_nanos())
+}
+
+/// Opens an address in the person's own browser, for sign-in pages. Automation
+/// can set `FORKCAST_EXTERNAL_URL_FILE` to record addresses instead.
+#[tauri::command]
+pub fn open_external(app: AppHandle, url: String) -> Result<(), String> {
+    let parsed = url
+        .parse::<tauri::Url>()
+        .map_err(|_| "Enter a valid web address.")?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("Only web addresses can be opened.".to_owned());
+    }
+    if let Some(file) = std::env::var_os("FORKCAST_EXTERNAL_URL_FILE") {
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(file)
+            .map_err(|error| error.to_string())?;
+        return writeln!(file, "{parsed}").map_err(|error| error.to_string());
+    }
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_url(parsed.as_str(), None::<&str>)
         .map_err(|error| error.to_string())
 }
 

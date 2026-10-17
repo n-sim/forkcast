@@ -1,4 +1,10 @@
-import { expect, test, type Page } from '@playwright/test';
+import {
+  expect,
+  importTransfer,
+  legacyTransfer,
+  test,
+  type Page,
+} from './app-fixture';
 
 async function startRecipe(page: Page) {
   await page.goto('/');
@@ -81,7 +87,7 @@ test('truncate displayed quantities to two decimal places while retaining small 
 
 test('allocate ingredient totals across steps and scale both after reopening offline', async ({
   page,
-  context,
+  app,
 }) => {
   await startRecipe(page);
   await allocate(page, 1, '100');
@@ -124,12 +130,7 @@ test('allocate ingredient totals across steps and scale both after reopening off
   await expect(
     page.getByRole('list', { name: 'Ingredients', exact: true }),
   ).toHaveCount(0);
-  await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-  });
-  await page.close();
-  await context.setOffline(true);
-  const reopened = await context.newPage();
+  const reopened = await app.restart();
   await reopened.goto(savedUrl);
   await expect(
     reopened.getByLabel('Cooking portions', { exact: true }),
@@ -447,19 +448,12 @@ test('combine US fluid ounces and teaspoons as volume allocations without confus
 test('open recipes saved before allocations were introduced, then allocate and retain their totals', async ({
   page,
 }) => {
-  await page.goto('/');
-  await expect(
-    page.getByRole('heading', { name: 'Your recipe collection', exact: true }),
-  ).toBeVisible();
-  // Fixture from the preceding recipe format; assertions stay at the visible workflow seam.
-  await page.evaluate(async () => {
-    await new Promise<void>((resolve, reject) => {
-      const request = indexedDB.open('forkcast');
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        const db = request.result;
-        const transaction = db.transaction('recipes', 'readwrite');
-        transaction.objectStore('recipes').put({
+  // A recipe saved before allocations existed arrives through the browser transfer.
+  await importTransfer(
+    page,
+    legacyTransfer({
+      recipes: [
+        {
           id: 'legacy-recipe',
           name: 'Old soup',
           basePortions: 2,
@@ -475,19 +469,11 @@ test('open recipes saved before allocations were introduced, then allocate and r
           difficulty: null,
           activeMinutes: null,
           totalMinutes: null,
-        });
-        transaction.oncomplete = () => {
-          db.close();
-          resolve();
-        };
-        transaction.onabort = () => {
-          db.close();
-          reject(transaction.error);
-        };
-      };
-    });
-  });
-  await page.reload();
+        },
+      ],
+    }),
+  );
+  await page.goto('/');
   await page.getByRole('link', { name: 'Old soup' }).click();
   await expect(
     page.getByRole('region', { name: 'Allocation checks' }),

@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/recipe-domain", "crates/core", "crates/backend", "crates/ai-companion", "crates/desktop"]
+members = ["crates/recipe-domain", "crates/core", "crates/backend", "crates/ai-companion", "crates/desktop", "crates/secure-store"]
 resolver = "2"
 
 [profile.release]

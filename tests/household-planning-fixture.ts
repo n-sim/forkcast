@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Page } from './app-fixture';
 import { expect } from './backend-fixture';
 export { test, expect } from './backend-fixture';
 

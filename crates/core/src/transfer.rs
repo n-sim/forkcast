@@ -17,7 +17,7 @@ use forkcast_recipe_domain::{
     food_log::{
         ManualFoodLogEntry, RecipeFoodLogEntry, validate_manual_entry, validate_recipe_entry,
     },
-    nutrition::NutritionVersion,
+    nutrition::{Nutrition, NutritionVersion},
     planning::validate_planned_cooking,
     recipe::{RecipeDraft, validate_recipe},
 };
@@ -75,7 +75,10 @@ fn records<'a>(transfer: &'a Value, key: &str) -> Vec<&'a Value> {
 }
 
 fn photo(value: &Value) -> Option<crate::Photo> {
-    serde_json::from_value(value.clone()).ok()
+    Some(crate::Photo {
+        mime: value.get("mime")?.as_str()?.to_owned(),
+        data: value.get("data")?.as_str()?.to_owned(),
+    })
 }
 
 struct Prepared {
@@ -173,10 +176,42 @@ fn prepare_recipes(transfer: &Value, problems: &mut Vec<String>) -> Prepared {
                     .rev()
                     .find(|revision| revision.recipe["id"] == recipe_id)
                     .map(|revision| revision.id.clone());
+                // The first releases kept no nutrition versions. Like the browser
+                // upgrade did, give such a recipe an initial retained version.
+                let mut live = recipe.clone();
+                let known = versions_by_recipe
+                    .get(recipe_id)
+                    .into_iter()
+                    .flatten()
+                    .any(|version| text(&live, "nutritionVersionId") == Some(version.id.as_str()));
+                if !known {
+                    let version_id = Uuid::new_v4().to_string();
+                    live["nutritionVersionId"] = json!(version_id);
+                    let per_portion =
+                        serde_json::from_value::<Nutrition>(live["nutrition"].clone())
+                            .ok()
+                            .zip(live["basePortions"].as_f64())
+                            .and_then(|(nutrition, portions)| nutrition.scale(1.0 / portions).ok())
+                            .unwrap_or_default();
+                    let minted = NutritionVersion {
+                        id: version_id,
+                        recipe_id: recipe_id.to_owned(),
+                        per_portion,
+                    };
+                    versions.push(NutritionVersion {
+                        id: minted.id.clone(),
+                        recipe_id: minted.recipe_id.clone(),
+                        per_portion: minted.per_portion.clone(),
+                    });
+                    versions_by_recipe
+                        .entry(recipe_id.to_owned())
+                        .or_default()
+                        .push(minted);
+                }
                 revisions.push(Revision {
                     id: id.clone(),
                     parent_id: parent,
-                    recipe: recipe.clone(),
+                    recipe: live,
                     nutrition_versions: versions_by_recipe
                         .get(recipe_id)
                         .into_iter()
@@ -570,12 +605,12 @@ impl Core {
             let mut cookings = Map::new();
             for cooking in records(&transfer, "plannedCookings") {
                 if cooking[scope_key] == scope_id.as_str() || (!bound && cooking[scope_key].is_null()) {
-                    let mut cooking = cooking.clone();
-                    if let Some(object) = cooking.as_object_mut() {
-                        object.remove("personId");
-                        object.remove("householdId");
-                    }
-                    cookings.insert(cooking["id"].as_str().unwrap_or_default().to_owned(), cooking);
+                    // Normalize through the shared rules: fields from earlier
+                    // releases (such as per-cooking labels) are dropped here.
+                    let parsed: forkcast_recipe_domain::planning::PlannedCooking =
+                        serde_json::from_value(cooking.clone())?;
+                    let parsed = validate_planned_cooking(parsed).map_err(|_| Error::internal())?;
+                    cookings.insert(parsed.id.clone(), serde_json::to_value(&parsed)?);
                 }
             }
             let lists: Vec<&Value> = records(&transfer, "shoppingLists")
@@ -603,6 +638,15 @@ impl Core {
                 json!([])
             };
             if !cookings.is_empty() || list.is_some() || bound {
+                let data = json!({
+                    "cookings": cookings,
+                    "shoppingList": list.clone().unwrap_or(Value::Null),
+                });
+                forkcast_recipe_domain::household_planning::validate(&data).map_err(|_| {
+                    Error::invalid(
+                        "The transfer's meal plan or shopping list is not valid, so nothing was imported.",
+                    )
+                })?;
                 let document = json!({
                     "revision": revision,
                     "data": {"cookings": cookings, "shoppingList": list.unwrap_or(Value::Null)},

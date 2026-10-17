@@ -1,5 +1,5 @@
 import { test, expect } from './backend-fixture';
-import type { APIRequestContext } from '@playwright/test';
+import type { APIRequestContext } from './app-fixture';
 
 async function planningHousehold(
   request: APIRequestContext,

@@ -273,14 +273,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .save(&record)
         .map_err(|_| "Cannot protect AI runtime storage.")?;
     let origins = std::env::var("FORKCAST_AI_ALLOWED_ORIGINS")
-        .unwrap_or_else(|_| "http://127.0.0.1:5173,http://127.0.0.1:4173".into())
+        .unwrap_or_else(|_| {
+            "http://127.0.0.1:5173,http://127.0.0.1:4173,http://tauri.localhost".into()
+        })
         .split(',')
         .map(|origin| {
             let url = url::Url::parse(origin.trim())?;
             if url.origin().ascii_serialization() != origin.trim()
                 || (url.scheme() != "https"
                     && !(url.scheme() == "http"
-                        && matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"))))
+                        // `tauri.localhost` is the installed desktop app's own origin.
+                        && matches!(
+                            url.host_str(),
+                            Some("127.0.0.1" | "localhost" | "[::1]" | "tauri.localhost")
+                        )))
             {
                 return Err("Use exact HTTPS frontend origins, or HTTP loopback origins.".into());
             }

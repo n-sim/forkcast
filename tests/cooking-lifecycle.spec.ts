@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './app-fixture';
 
 async function createRecipe(page: Page, name = 'Lentil supper') {
   await page.goto('/');
@@ -11,30 +11,6 @@ async function createRecipe(page: Page, name = 'Lentil supper') {
   await page.getByLabel('Step 2 instruction').fill('Serve the lentils.');
   await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
-}
-
-async function usePerson(page: Page, personId: string) {
-  // Fixture input for the standalone personal identity; assertions use the UI.
-  await page.evaluate(async (personId) => {
-    await new Promise<void>((resolve, reject) => {
-      const request = indexedDB.open('forkcast');
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        const db = request.result;
-        const transaction = db.transaction('localSettings', 'readwrite');
-        transaction.objectStore('localSettings').put(personId, 'personId');
-        transaction.oncomplete = () => {
-          db.close();
-          resolve();
-        };
-        transaction.onabort = () => {
-          db.close();
-          reject(transaction.error);
-        };
-      };
-    });
-  }, personId);
-  await page.reload();
 }
 
 async function confirmCancellation(page: Page) {
@@ -335,90 +311,12 @@ test('keep the existing personal session or explicitly cancel it before starting
   ).toHaveCount(0);
 });
 
-test('keep cooking sessions personal while the recipe collection is shared', async ({
-  page,
-}) => {
-  await createRecipe(page);
-  const recipeUrl = page.url();
-  await usePerson(page, 'person-a');
-  await page
-    .getByRole('button', { name: 'Start cooking', exact: true })
-    .click();
-  await page.getByRole('button', { name: 'Next step', exact: true }).click();
-  await expect(
-    page.getByRole('region', { name: 'Current cooking step' }),
-  ).toContainText('Step 2 of 2');
-  const firstSessionUrl = page.url();
-  await page
-    .getByRole('button', { name: 'Suspend cooking', exact: true })
-    .click();
-  await expect(
-    page.getByRole('link', { name: 'Resume cooking', exact: true }),
-  ).toBeVisible();
-  await usePerson(page, 'person-b');
-  await expect(
-    page.getByRole('link', { name: 'Resume cooking', exact: true }),
-  ).toHaveCount(0);
-  await page.goto(firstSessionUrl);
-  await expect(
-    page.getByRole('region', { name: 'Current cooking step' }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole('button', { name: 'Cancel cooking', exact: true }),
-  ).toHaveCount(0);
-  await page.goto(recipeUrl);
-  await page
-    .getByRole('button', { name: 'Start cooking', exact: true })
-    .click();
-  await expect(
-    page.getByRole('region', { name: 'Current cooking step' }),
-  ).toContainText('Step 1 of 2');
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await page
-    .getByRole('button', { name: 'Suspend cooking', exact: true })
-    .click();
-  await expect(
-    page.getByRole('link', { name: 'Resume cooking', exact: true }),
-  ).toBeVisible();
-  await usePerson(page, 'person-a');
-  await page.getByRole('link', { name: 'Resume cooking', exact: true }).click();
-  await expect(
-    page.getByRole('region', { name: 'Current cooking step' }),
-  ).toContainText('Step 2 of 2');
-  await page
-    .getByRole('button', { name: 'Cancel cooking', exact: true })
-    .click();
-  await confirmCancellation(page);
-  await expect(
-    page.getByRole('region', { name: 'Current cooking step' }),
-  ).toHaveCount(0);
-  await usePerson(page, 'person-b');
-  await page.getByRole('link', { name: 'Resume cooking', exact: true }).click();
-  await expect(
-    page.getByRole('region', { name: 'Current cooking step' }),
-  ).toContainText('Step 1 of 2');
-  await page.getByRole('button', { name: 'Next step', exact: true }).click();
-  await expect(
-    page.getByRole('button', { name: 'Finish cooking', exact: true }),
-  ).toBeEnabled();
-  await page
-    .getByRole('button', { name: 'Finish cooking', exact: true })
-    .click();
-  await expect(
-    page.getByRole('region', { name: 'Current cooking step' }),
-  ).toHaveCount(0);
-  await page.reload();
-  await expect(
-    page.getByRole('link', { name: 'Resume cooking', exact: true }),
-  ).toHaveCount(0);
-});
-
 test('serialize simultaneous starts in two tabs and retire a canceled session in both views', async ({
   page,
-  context,
+  app,
 }) => {
   await createRecipe(page);
-  const other = await context.newPage();
+  const other = await app.newWindow();
   await other.goto(page.url());
   await Promise.all(
     [page, other].map((tab) =>

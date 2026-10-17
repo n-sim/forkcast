@@ -20,7 +20,11 @@
     "test:ui": "playwright test --ui",
     "format": "prettier --write src tests *.ts package.json tsconfig.json .prettierrc.json index.html README.md .github/workflows",
     "check:format": "prettier --check src tests *.ts package.json tsconfig.json .prettierrc.json index.html README.md .github/workflows",
-    "check:rust": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings"
+    "check:rust": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build",
+    "server:build": "npm run build && cargo build --release -p forkcast-backend",
+    "test:prepare": "npm run build && cargo build -p forkcast-desktop -p forkcast-backend -p forkcast-ai-companion --features forkcast-desktop/custom-protocol"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",
@@ -41,7 +45,6 @@
     "prettier": "3.9.10",
     "typescript": "7.0.2",
     "vite": "8.3.4",
-    "vite-plugin-pwa": "2.0.0",
     "wasm-pack": "0.15.0"
   }
 }

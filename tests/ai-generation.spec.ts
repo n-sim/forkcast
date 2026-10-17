@@ -4,8 +4,8 @@ import {
   generatedRecipe,
   type InferenceRequest,
 } from './ai-fixture';
-import type { Page } from '@playwright/test';
-import { mergeTests } from '@playwright/test';
+import type { Page } from './app-fixture';
+import { mergeTests } from './app-fixture';
 import { test as backendTest } from './backend-fixture';
 import pumpkinRisotto from './fixtures/pumpkin-risotto.json' with { type: 'json' };
 

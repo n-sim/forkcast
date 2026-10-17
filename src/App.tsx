@@ -17,8 +17,7 @@ import {
   endCookingSession,
   loadCookingSessions,
   subscribeToCookingChanges,
-  loadRecipes,
-  loadRecipeCoverPhotos,
+  loadRecipeCollection,
   loadPersonalRecipeRatings,
   subscribeToRecipeChanges,
 } from './recipe-store';
@@ -29,7 +28,12 @@ import { cookingUrl, startCooking, type CookingSession } from './cooking';
 import { CookingView } from './CookingView';
 import { CookingConflictDialog } from './CookingConflictDialog';
 import { SuspendedCookingBar } from './SuspendedCookingBar';
-import { BackendAccounts, useBackendConnection } from './BackendAccounts';
+import { HouseholdSettings, SyncPanel } from './Household';
+import { useSyncStatus } from './household-client';
+import { useConflicts } from './conflicts';
+import { LegacyImport } from './LegacyImport';
+import { BrowserAccountPanel, type BrowserSession } from './BrowserAccount';
+import { isNative } from './core';
 import { AiConnection } from './AiConnection';
 import { RecipeGeneration } from './RecipeGeneration';
 import { AiPrompts } from './AiPrompts';
@@ -38,10 +42,7 @@ import { MealPlan } from './MealPlan';
 import { ShoppingListView } from './ShoppingList';
 import { ShoppingChecklistView } from './ShoppingChecklist';
 import { RecipeNutrition } from './RecipeNutrition';
-import { RecipeSync, useRecipeSync } from './RecipeSync';
-import { PlanningImportReview } from './PlanningImportReview';
 import { PlanningConflicts } from './PlanningConflicts';
-import { recipeSyncAccount } from './recipe-sync-store';
 import { RecipeConflicts } from './RecipeConflicts';
 import { RecipeMetadata } from './RecipeMetadata';
 
@@ -242,30 +243,47 @@ export function App({
   initialCoverPhotos,
   initialRatings,
   initialCookingSessions,
+  browserSession,
 }: {
   initialRecipes: Recipe[];
   initialCoverPhotos: Record<string, Blob>;
   initialRatings: Record<string, RecipeRating>;
   initialCookingSessions: CookingSession[];
+  browserSession?: BrowserSession;
 }) {
   const [recipes, setRecipes] = useState(initialRecipes);
-  const connection = useBackendConnection();
-  const aiPromptOwner = connection.config
-    ? connection.session
-      ? `account:${connection.config.url}:${connection.session.account.id}`
-      : null
-    : 'standalone';
-  const sync = useRecipeSync(connection.config);
+  const { status, refresh: refreshSync } = useSyncStatus();
+  const conflicts = useConflicts(true);
+  // Private records are hidden while a joined profile is signed out.
+  const personalAvailable = !isNative || !status?.signedOut;
+  const accountKey = isNative
+    ? `${status?.activeAccount?.id ?? 'local'}:${status?.signedOut ? 'out' : 'in'}`
+    : (browserSession?.account.id ?? 'browser');
+  const canResolveConflicts = isNative
+    ? !status?.bound || Boolean(status.signedIn)
+    : true;
+  const recipeConflictCount = conflicts.recipes.reduce(
+    (sum, conflict) => sum + Math.max(0, conflict.revisions.length - 1),
+    0,
+  );
+  const roleLabel = (role?: string) =>
+    role === 'administrator' ? 'Administrator' : 'Household member';
+  const connectionLabel = !isNative
+    ? browserSession
+      ? `${browserSession.account.username} · ${roleLabel(browserSession.account.role)}`
+      : 'Household server'
+    : !status
+      ? 'Checking…'
+      : !status.bound
+        ? 'Standalone'
+        : status.lastError?.includes('unavailable')
+          ? 'Backend unavailable'
+          : status.signedIn && status.activeAccount
+            ? `${status.activeAccount.username} · ${roleLabel(status.activeAccount.role)}`
+            : 'Backend · signed out';
   const [coverPhotos, setCoverPhotos] = useState(initialCoverPhotos);
   const [ratings, setRatings] = useState(initialRatings);
-  const ratingOwner = recipeSyncAccount(connection.config, sync.binding);
-  const visibleRatings = sync.binding
-    ? Object.fromEntries(
-        Object.entries(ratings).filter(
-          ([, rating]) => rating.personId === ratingOwner,
-        ),
-      )
-    : ratings;
+  const visibleRatings = ratings;
   const [sessions, setSessions] = useState(initialCookingSessions);
   const [cookingConflict, setCookingConflict] = useState<{
     proposed: CookingSession;
@@ -288,14 +306,10 @@ export function App({
   useEffect(
     () =>
       subscribeToRecipeChanges(() => {
-        void Promise.all([
-          loadRecipes(),
-          loadRecipeCoverPhotos(),
-          loadPersonalRecipeRatings(),
-        ])
-          .then(([recipes, photos, ratings]) => {
-            setRecipes(recipes);
-            setCoverPhotos(photos);
+        void Promise.all([loadRecipeCollection(), loadPersonalRecipeRatings()])
+          .then(([collection, ratings]) => {
+            setRecipes(collection.recipes);
+            setCoverPhotos(collection.photos);
             setRatings(ratings);
             setRefreshError('');
           })
@@ -308,28 +322,25 @@ export function App({
     [],
   );
   useEffect(() => {
+    // Signing in or out changes which private records are visible.
     let active = true;
-    setRatings({});
-    void loadPersonalRecipeRatings()
-      .then((ratings) => {
-        if (active) setRatings(ratings);
+    void Promise.all([loadPersonalRecipeRatings(), loadCookingSessions()])
+      .then(([ratings, sessions]) => {
+        if (active) {
+          setRatings(ratings);
+          setSessions(sessions);
+        }
       })
       .catch(() => {
         if (active)
           setRefreshError(
-            'Your personal ratings could not be loaded. Reload to try again.',
+            'Your personal records could not be loaded. Reload to try again.',
           );
       });
     return () => {
       active = false;
     };
-  }, [
-    connection.config?.url,
-    connection.config?.token,
-    connection.config?.accountId,
-    sync.binding?.url,
-    sync.binding?.householdId,
-  ]);
+  }, [accountKey]);
   const route = useSyncExternalStore(
     subscribeToRoute,
     () => window.location.hash || '#/',
@@ -501,13 +512,23 @@ export function App({
         <div className="sidebar-footer">
           <div className="device-note">
             <span className="status-dot" />
-            {sync.binding ? 'Household collection' : 'On this device'}
+            {status?.bound
+              ? 'Household collection'
+              : isNative
+                ? 'On this device'
+                : 'Household server'}
             <p>
-              {sync.binding
+              {status?.bound
                 ? 'Recipes synchronize when connected.'
-                : 'Your recipes stay in your browser.'}
-              <br />
-              No account needed.
+                : isNative
+                  ? 'Your recipes stay on this device.'
+                  : 'Your recipes are saved on your household server.'}
+              {isNative && !status?.bound && (
+                <>
+                  <br />
+                  No account needed.
+                </>
+              )}
             </p>
           </div>
           <nav aria-label="Settings navigation">
@@ -530,18 +551,10 @@ export function App({
             aria-label="Backend connection"
           >
             <span className="status-dot" />
-            {connection.label}
+            {connectionLabel}
           </span>
         </header>
         <main id="main-content" tabIndex={-1}>
-          {sync.importReview && (
-            <PlanningImportReview
-              review={sync.importReview}
-              config={connection.config}
-              recipes={recipes}
-              onRefresh={sync.sync}
-            />
-          )}
           {cookingConflict && (
             <CookingConflictDialog
               sessions={cookingConflict.existing}
@@ -559,47 +572,42 @@ export function App({
               {refreshError}
             </p>
           )}
-          {sync.conflicts > 0 && (
+          {recipeConflictCount > 0 && (
             <p
               role="status"
               aria-label="Recipe edit conflicts"
               className="nutrition-version-notice"
             >
-              {sync.conflicts} unresolved competing{' '}
-              {sync.conflicts === 1 ? 'edit' : 'edits'}. Both revisions are
+              {recipeConflictCount} unresolved competing{' '}
+              {recipeConflictCount === 1 ? 'edit' : 'edits'}. Both revisions are
               retained for conflict resolution.{' '}
               <a href="#/recipe-conflicts">Review recipe conflicts</a>
             </p>
           )}
-          {!!sync.planning?.snapshot.conflicts.length && (
+          {!!conflicts.planning.conflicts.length && (
             <p
               role="status"
               aria-label="Planning edit conflicts"
               className="nutrition-version-notice"
             >
-              {sync.planning.snapshot.conflicts.length} unresolved competing
+              {conflicts.planning.conflicts.length} unresolved competing
               planning changes.{' '}
               <a href="#/planning-conflicts">Review planning conflicts</a>
             </p>
           )}
           {planningConflictsOpen ? (
             <PlanningConflicts
-              conflicts={sync.planning?.snapshot.conflicts ?? []}
-              data={
-                sync.planning?.snapshot.data ?? {
-                  cookings: {},
-                  shoppingList: null,
-                }
-              }
+              conflicts={conflicts.planning.conflicts}
+              data={conflicts.planning.data}
               recipes={recipes}
-              config={ratingOwner ? connection.config : null}
-              onRefresh={sync.sync}
+              canResolve={canResolveConflicts}
+              onRefresh={() => void refreshSync()}
             />
           ) : conflictsOpen ? (
             <RecipeConflicts
-              conflicts={sync.alternatives}
-              config={ratingOwner ? connection.config : null}
-              onRefresh={sync.sync}
+              conflicts={conflicts.recipes}
+              canResolve={canResolveConflicts}
+              onRefresh={() => void refreshSync()}
             />
           ) : planningView ? (
             <MealPlan
@@ -618,17 +626,30 @@ export function App({
           ) : settingsOpen ? (
             <article>
               <h1>Settings</h1>
-              <AiConnection />
-              <AiPrompts
-                key={aiPromptOwner ?? 'signed-out'}
-                owner={aiPromptOwner}
-              />
-              <BackendAccounts connection={connection} />
-              <RecipeSync
-                config={connection.config}
-                session={connection.session}
-                sync={sync}
-              />
+              {isNative ? (
+                <AiConnection />
+              ) : (
+                <section className="panel" aria-label="ChatGPT connection">
+                  <h2>ChatGPT</h2>
+                  <p>
+                    ChatGPT connections are set up and reconnected in the
+                    installed Forkcast app. An established connection on your
+                    household server can be used here once it exists.
+                  </p>
+                </section>
+              )}
+              <AiPrompts key={accountKey} enabled={personalAvailable} />
+              {isNative ? (
+                <>
+                  <HouseholdSettings status={status} refresh={refreshSync} />
+                  <SyncPanel status={status} refresh={refreshSync} />
+                  <LegacyImport />
+                </>
+              ) : (
+                browserSession && (
+                  <BrowserAccountPanel session={browserSession} />
+                )
+              )}
             </article>
           ) : selectedSession ? (
             <CookingView
@@ -644,8 +665,8 @@ export function App({
             />
           ) : route === '#/recipes/generate' ? (
             <RecipeGeneration
-              key={aiPromptOwner ?? 'signed-out'}
-              promptOwner={aiPromptOwner}
+              key={accountKey}
+              promptsAvailable={personalAvailable}
               onSave={save}
             />
           ) : route === '#/recipes/new' || (selected && editing) ? (
@@ -659,7 +680,7 @@ export function App({
             />
           ) : selected ? (
             <RecipeDetails
-              key={`${selected.id}:${sync.binding ? (connection.config?.accountId ?? 'signed-out') : 'local'}`}
+              key={`${selected.id}:${accountKey}`}
               recipe={selected}
               loggedNutritionVersionId={loggedNutritionVersionId}
               onStartCooking={async (portions, displayUnits) => {

@@ -1,5 +1,5 @@
 import { expect, test } from './backend-fixture';
-import type { Page } from '@playwright/test';
+import type { Page } from './app-fixture';
 
 async function connect(page: Page, url: string) {
   await page.goto('/#/settings');

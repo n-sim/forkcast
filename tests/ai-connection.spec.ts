@@ -1,5 +1,5 @@
 import { test, expect } from './ai-fixture';
-import type { Page } from '@playwright/test';
+import { openedExternally, type App, type Page } from './app-fixture';
 
 async function connectCompanion(page: Page, url: string) {
   await page.goto('/#/settings');
@@ -11,12 +11,16 @@ async function connectCompanion(page: Page, url: string) {
   return ai;
 }
 
-async function authorizeChatGpt(page: Page) {
-  const popupPromise = page.waitForEvent('popup');
-  await page
-    .getByRole('button', { name: 'Continue with ChatGPT', exact: true })
-    .click();
-  const popup = await popupPromise;
+async function authorizeChatGpt(
+  page: Page,
+  app: App,
+  systemBrowser: () => Promise<Page>,
+) {
+  const popup = await openedExternally(app, systemBrowser, () =>
+    page
+      .getByRole('button', { name: 'Continue with ChatGPT', exact: true })
+      .click(),
+  );
   await popup.getByRole('link', { name: 'Authorize Forkcast' }).click();
   return popup;
 }
@@ -33,10 +37,12 @@ for (const mode of [
   test(`reject ${mode} authorization failure and allow a fresh sign-in`, async ({
     page,
     companion,
+    app,
+    systemBrowser,
   }) => {
     companion.mode(mode);
     const ai = await connectCompanion(page, companion.url);
-    const failed = await authorizeChatGpt(page);
+    const failed = await authorizeChatGpt(page, app, systemBrowser);
     await expect(
       failed.getByRole('heading', { name: 'ChatGPT sign-in incomplete' }),
     ).toBeVisible();
@@ -53,7 +59,7 @@ for (const mode of [
     );
     await expect(ai).not.toContainText('DO_NOT_EXPOSE_PROVIDER_ERRORS');
     companion.mode('success');
-    const recovered = await authorizeChatGpt(page);
+    const recovered = await authorizeChatGpt(page, app, systemBrowser);
     await expect(
       recovered.getByRole('heading', { name: 'ChatGPT connected' }),
     ).toBeVisible();
@@ -106,10 +112,12 @@ test('standalone cooking workflows remain available without the AI companion', a
 test('a connected ChatGPT account without an email claim can still sign out', async ({
   page,
   companion,
+  app,
+  systemBrowser,
 }) => {
   companion.mode('no_email');
   const ai = await connectCompanion(page, companion.url);
-  const connected = await authorizeChatGpt(page);
+  const connected = await authorizeChatGpt(page, app, systemBrowser);
   await expect(
     connected.getByRole('heading', { name: 'ChatGPT connected' }),
   ).toBeVisible();
@@ -128,10 +136,12 @@ test('a connected ChatGPT account without an email claim can still sign out', as
 test('show expired sessions and companion outages with usable reconnection', async ({
   page,
   companion,
+  app,
+  systemBrowser,
 }) => {
   const ai = await connectCompanion(page, companion.url);
   companion.mode('short_session');
-  const expired = await authorizeChatGpt(page);
+  const expired = await authorizeChatGpt(page, app, systemBrowser);
   await expect(
     expired.getByRole('heading', { name: 'ChatGPT connected' }),
   ).toBeVisible();
@@ -141,7 +151,7 @@ test('show expired sessions and companion outages with usable reconnection', asy
   );
   await expect(ai).toContainText('Your ChatGPT session has expired');
   companion.mode('success');
-  const recovered = await authorizeChatGpt(page);
+  const recovered = await authorizeChatGpt(page, app, systemBrowser);
   await expect(
     recovered.getByRole('heading', { name: 'ChatGPT connected' }),
   ).toBeVisible();
@@ -175,17 +185,19 @@ test('show expired sessions and companion outages with usable reconnection', asy
 test('recover from denied authorization, sign out, and reconnect to the same registration', async ({
   page,
   companion,
+  app,
+  systemBrowser,
 }) => {
   const ai = await connectCompanion(page, companion.url);
   companion.mode('denied');
-  const denied = await authorizeChatGpt(page);
+  const denied = await authorizeChatGpt(page, app, systemBrowser);
   await expect(
     denied.getByRole('heading', { name: 'ChatGPT sign-in incomplete' }),
   ).toBeVisible();
   await denied.close();
   await expect(ai.getByRole('alert')).toContainText('cancelled or denied');
   companion.mode('success');
-  const connected = await authorizeChatGpt(page);
+  const connected = await authorizeChatGpt(page, app, systemBrowser);
   await expect(
     connected.getByRole('heading', { name: 'ChatGPT connected' }),
   ).toBeVisible();
@@ -205,11 +217,11 @@ test('recover from denied authorization, sign out, and reconnect to the same reg
   await expect(ai.getByRole('status')).toContainText(
     'ChatGPT needs reconnection',
   );
-  const popupPromise = page.waitForEvent('popup');
-  await ai
-    .getByRole('button', { name: 'Continue with ChatGPT', exact: true })
-    .click();
-  const returning = await popupPromise;
+  const returning = await openedExternally(app, systemBrowser, () =>
+    ai
+      .getByRole('button', { name: 'Continue with ChatGPT', exact: true })
+      .click(),
+  );
   await expect(
     returning.getByRole('link', { name: 'Authorize Forkcast' }),
   ).toBeVisible();
@@ -233,6 +245,8 @@ test('recover from denied authorization, sign out, and reconnect to the same reg
 test('connect a ChatGPT subscription without a backend and retain it after browser and companion restarts', async ({
   page,
   companion,
+  app,
+  systemBrowser,
 }) => {
   await page.goto('/#/settings');
   const ai = page.getByRole('region', { name: 'ChatGPT connection' });
@@ -240,11 +254,11 @@ test('connect a ChatGPT subscription without a backend and retain it after brows
   await ai
     .getByRole('button', { name: 'Connect companion', exact: true })
     .click();
-  const popupPromise = page.waitForEvent('popup');
-  await ai
-    .getByRole('button', { name: 'Continue with ChatGPT', exact: true })
-    .click();
-  const popup = await popupPromise;
+  const popup = await openedExternally(app, systemBrowser, () =>
+    ai
+      .getByRole('button', { name: 'Continue with ChatGPT', exact: true })
+      .click(),
+  );
   await popup.getByRole('link', { name: 'Authorize Forkcast' }).click();
   await expect(
     popup.getByRole('heading', { name: 'ChatGPT connected' }),

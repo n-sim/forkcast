@@ -1,4 +1,4 @@
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect } from './app-fixture';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import { once } from 'node:events';
@@ -352,7 +352,7 @@ export const test = base.extend<{
             ...process.env,
             FORKCAST_AI_BIND: url ? new URL(url).host : '127.0.0.1:0',
             FORKCAST_AI_DIRECTORY: directory,
-            FORKCAST_AI_ALLOWED_ORIGINS: 'http://127.0.0.1:4173',
+            FORKCAST_AI_ALLOWED_ORIGINS: 'http://tauri.localhost',
             FORKCAST_AI_TEST_ISSUER: issuer,
           },
           stdio: ['ignore', 'pipe', 'pipe'],

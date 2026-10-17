@@ -1,21 +1,42 @@
 import { validatePlannedCooking, type PlannedCooking } from './planning';
-import {
-  changePlanningData,
-  loadPlanningData,
-  planningEditBase,
-  type PlanningEditBase,
-} from './planning-sync-store';
+import type { ShoppingList } from './shopping';
+import { execute, subscribeToTopics } from './core';
+
+export interface PlanningData {
+  cookings: Record<string, PlannedCooking>;
+  shoppingList: ShoppingList | null;
+}
+
+export interface PlanningConflict {
+  path: string[];
+  values: unknown[];
+}
+
+export interface PlanningSnapshot {
+  revision: string | null;
+  data: PlanningData;
+  conflicts: PlanningConflict[];
+}
+
+/** What a view of the plan was based on; saving from it never overwrites newer changes. */
+export interface PlanningEditBase {
+  baseRevision: string | null;
+  baseMutationId: string | null;
+  data: PlanningData;
+}
 
 export type EditablePlannedCooking = PlannedCooking & {
   editBase?: PlanningEditBase;
 };
 
 export async function loadPlannedCookings(): Promise<EditablePlannedCooking[]> {
-  const { state, data } = await loadPlanningData();
-  const editBase = planningEditBase(state, data);
-  return Object.values(data.cookings).map((cooking) => ({
+  const plan = await execute<{
+    cookings: PlannedCooking[];
+    editBase: PlanningEditBase | null;
+  }>('mealPlan');
+  return plan.cookings.map((cooking) => ({
     ...cooking,
-    editBase,
+    editBase: plan.editBase ?? undefined,
   }));
 }
 
@@ -25,24 +46,27 @@ export async function savePlannedCooking(
 ): Promise<void> {
   const { cooking } = validatePlannedCooking(draft);
   if (!cooking) throw new Error('Check the planned cooking before saving.');
-  await changePlanningData((data, recipes) => {
-    if (!recipes.some((recipe) => recipe.id === cooking.recipeId))
-      throw new Error('Choose a current recipe for your household meal plan.');
-    data.cookings[cooking.id] = cooking;
-  }, editBase);
+  await execute('planCooking', { cooking, editBase: editBase ?? null });
 }
 
 export async function removePlannedCooking(
   id: string,
   editBase?: PlanningEditBase,
 ): Promise<void> {
-  await changePlanningData((data) => {
-    delete data.cookings[id];
-  }, editBase);
+  await execute('removePlannedCooking', { id, editBase: editBase ?? null });
 }
 
 export function subscribeToPlanningChanges(listener: () => void): () => void {
-  const channel = new BroadcastChannel('forkcast-planning');
-  channel.onmessage = listener;
-  return () => channel.close();
+  return subscribeToTopics(['planning', 'recipes'], listener);
+}
+
+export async function loadPlanningSnapshot(): Promise<PlanningSnapshot> {
+  return execute<PlanningSnapshot>('planningSnapshot');
+}
+
+export async function resolvePlanningConflict(
+  conflict: PlanningConflict,
+  value: unknown,
+): Promise<void> {
+  await execute('resolvePlanningConflict', { conflict, value });
 }

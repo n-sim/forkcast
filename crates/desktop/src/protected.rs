@@ -3,25 +3,31 @@
 //! a protected-storage adapter keep secrets in memory only, so a restart
 //! asks the person to sign in again rather than writing tokens in the clear.
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "android")))]
 use forkcast_core::MemorySecrets;
 use forkcast_core::Secrets;
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 #[cfg(windows)]
 use {
     forkcast_core::{Error, Result},
     std::{collections::BTreeMap, fs, io, sync::Mutex},
 };
 
-pub fn open(directory: PathBuf) -> Box<dyn Secrets> {
+pub fn open(directory: PathBuf, app: &tauri::AppHandle) -> Arc<dyn Secrets> {
     #[cfg(windows)]
     {
-        Box::new(Protected::new(directory.join("secrets.dat")))
+        let _ = app;
+        Arc::new(Protected::new(directory.join("secrets.dat")))
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "android")]
     {
         let _ = directory;
-        Box::new(MemorySecrets::default())
+        tauri_plugin_forkcast_secure_store::secrets(app)
+    }
+    #[cfg(not(any(windows, target_os = "android")))]
+    {
+        let _ = (directory, app);
+        Arc::new(MemorySecrets::default())
     }
 }
 

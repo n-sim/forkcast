@@ -1,4 +1,10 @@
-import { expect, test, type Page } from '@playwright/test';
+import {
+  expect,
+  importTransfer,
+  legacyTransfer,
+  test,
+  type Page,
+} from './app-fixture';
 import { readFileSync } from 'node:fs';
 
 async function createRecipe(page: Page) {
@@ -32,7 +38,7 @@ async function createRecipe(page: Page) {
 
 test('cook scaled step amounts and resume saved navigation after closing and reopening offline', async ({
   page,
-  context,
+  app,
 }) => {
   await createRecipe(page);
   await page.getByLabel('Cooking portions', { exact: true }).fill('3');
@@ -71,12 +77,7 @@ test('cook scaled step amounts and resume saved navigation after closing and reo
     .click();
   await page.getByRole('link', { name: 'Resume cooking', exact: true }).click();
   await expect(step).toContainText('Step 2 of 2');
-  await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-  });
-  await page.close();
-  await context.setOffline(true);
-  const reopened = await context.newPage();
+  const reopened = await app.restart();
   await reopened.goto('/');
   await reopened
     .getByRole('link', { name: 'Resume cooking', exact: true })
@@ -112,7 +113,7 @@ for (const { preference, firstStep, secondStep } of [
 ] as const) {
   test(`keep selected ${preference} display units through cooking navigation and offline reopening`, async ({
     page,
-    context,
+    app,
   }) => {
     await createRecipe(page);
     await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
@@ -166,12 +167,7 @@ for (const { preference, firstStep, secondStep } of [
       .getByRole('link', { name: 'Resume cooking', exact: true })
       .click();
     await expect(ingredients).toHaveText(firstStep);
-    await page.evaluate(async () => {
-      await navigator.serviceWorker.ready;
-    });
-    await page.close();
-    await context.setOffline(true);
-    const reopened = await context.newPage();
+    const reopened = await app.restart();
     await reopened.goto(sessionUrl);
     const resumedIngredients = reopened.getByRole('list', {
       name: 'Step ingredients',
@@ -233,7 +229,7 @@ test('finish cooking from the last step and allow a fresh session after reopenin
 
 test('run independent step timers, pause and resume them, and restore deadlines after closing the application', async ({
   page,
-  context,
+  app,
 }) => {
   const start = new Date('2026-10-15T12:00:00Z');
   await page.clock.install({ time: start });
@@ -278,12 +274,7 @@ test('run independent step timers, pause and resume them, and restore deadlines 
   await page.getByRole('button', { name: 'Back step', exact: true }).click();
   await expect(timer).toHaveText('01:00');
   const sessionUrl = page.url();
-  await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-  });
-  await page.close();
-  await context.setOffline(true);
-  const reopened = await context.newPage();
+  const reopened = await app.restart();
   const later = new Date('2026-10-15T12:02:15Z');
   await reopened.clock.install({ time: later });
   await reopened.clock.pauseAt(later);
@@ -418,14 +409,14 @@ test('keep captured ingredients, scale, ordered instructions and timer progress 
 
 test('notice recipe edits made in another tab while keeping the current cooking session', async ({
   page,
-  context,
+  app,
 }) => {
   await createRecipe(page);
   const recipeUrl = page.url();
   await page
     .getByRole('button', { name: 'Start cooking', exact: true })
     .click();
-  const editor = await context.newPage();
+  const editor = await app.newWindow();
   await editor.goto(`${recipeUrl}/edit`);
   await editor
     .getByLabel('Step 1 instruction')
@@ -447,13 +438,12 @@ test('notice recipe edits made in another tab while keeping the current cooking 
 test('upgrade existing local recipes and ratings, cook unallocated steps, and reject invalid timer amounts', async ({
   page,
 }) => {
-  // Previous-release browser data is fixture input; all verification uses the UI.
-  await page.addInitScript(
-    (cover) => {
-      const request = indexedDB.open('forkcast', 2);
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        db.createObjectStore('recipes', { keyPath: 'id' }).put({
+  // Data from the previous release arrives through the browser transfer.
+  await importTransfer(
+    page,
+    legacyTransfer({
+      recipes: [
+        {
           id: 'existing-soup',
           name: 'Existing soup',
           basePortions: 2,
@@ -466,28 +456,21 @@ test('upgrade existing local recipes and ratings, cook unallocated steps, and re
           difficulty: null,
           activeMinutes: null,
           totalMinutes: null,
-        });
-        db.createObjectStore('recipeCoverPhotos', { keyPath: 'recipeId' }).put({
+        },
+      ],
+      coverPhotos: [
+        {
           recipeId: 'existing-soup',
-          image: new Blob([new Uint8Array(cover)], { type: 'image/png' }),
-        });
-        const ratings = db.createObjectStore('personalRecipeRatings', {
-          keyPath: ['personId', 'recipeId'],
-        });
-        ratings.createIndex('personId', 'personId');
-        ratings.put({
-          personId: 'existing-person',
-          recipeId: 'existing-soup',
-          value: 4,
-        });
-        db.createObjectStore('localSettings').put(
-          'existing-person',
-          'personId',
-        );
-      };
-      request.onsuccess = () => request.result.close();
-    },
-    Array.from(readFileSync('tests/fixtures/cover-photo.png')),
+          mime: 'image/png',
+          data: readFileSync('tests/fixtures/cover-photo.png').toString(
+            'base64',
+          ),
+        },
+      ],
+      ratings: [
+        { personId: 'existing-person', recipeId: 'existing-soup', value: 4 },
+      ],
+    }),
   );
   const start = new Date('2026-10-15T12:00:00Z');
   await page.clock.install({ time: start });

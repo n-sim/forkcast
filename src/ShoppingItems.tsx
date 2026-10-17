@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { formatQuantity, unitLabels, type Unit } from './domain';
 import type { ShoppingItem } from './shopping';
-import type { PlanningEditBase } from './planning-sync-store';
+import type { PlanningEditBase } from './planning-store';
 
 export function ShoppingItemEditor({
   item,

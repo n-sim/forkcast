@@ -1,5 +1,5 @@
 import { test, expect } from './backend-fixture';
-import type { Page } from '@playwright/test';
+import type { Page } from './app-fixture';
 import { readFile } from 'node:fs/promises';
 
 async function connect(

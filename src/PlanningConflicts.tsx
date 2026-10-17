@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import type { BackendConfig } from './backend-client';
 import type { Recipe } from './domain';
-import type { PlanningConflict, PlanningData } from './planning-sync-store';
-import { resolvePlanningConflict } from './planning-sync';
+import {
+  resolvePlanningConflict,
+  type PlanningConflict,
+  type PlanningData,
+} from './planning-store';
 
 const fieldNames: Record<string, string> = {
   portions: 'Portions to cook',
@@ -107,23 +109,23 @@ export function PlanningConflicts({
   conflicts,
   data,
   recipes,
-  config,
+  canResolve,
   onRefresh,
 }: {
   conflicts: PlanningConflict[];
   data: PlanningData;
   recipes: Recipe[];
-  config: BackendConfig | null;
+  canResolve: boolean;
   onRefresh: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   async function choose(conflict: PlanningConflict, value: unknown) {
-    if (!config) return;
+    if (!canResolve) return;
     setBusy(true);
     setError('');
     try {
-      await resolvePlanningConflict(config, conflict, value);
+      await resolvePlanningConflict(conflict, value);
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -137,7 +139,7 @@ export function PlanningConflicts({
       <p>
         Choose the value your household wants to keep for each competing change.
       </p>
-      {!config?.token && (
+      {!canResolve && (
         <p>Sign in to your household to resolve competing changes.</p>
       )}
       {error && (
@@ -166,7 +168,7 @@ export function PlanningConflicts({
                 <Contents value={value} recipes={recipes} />
                 <button
                   className="button primary"
-                  disabled={busy || !config?.token}
+                  disabled={busy || !canResolve}
                   onClick={() => void choose(conflict, value)}
                 >
                   Use this value

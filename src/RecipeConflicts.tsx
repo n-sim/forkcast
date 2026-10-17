@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import type { BackendConfig } from './backend-client';
 import { formatQuantity, unitLabels } from './domain';
 import { RecipeMetadata } from './RecipeMetadata';
 import { RecipeCoverPhoto } from './RecipePhoto';
 import { RecipeNutrition } from './RecipeNutrition';
-import { chooseCurrentRecipe } from './recipe-sync';
-import type { RecipeConflict, RecipeRevision } from './recipe-sync-store';
+import {
+  chooseCurrentRecipe,
+  type RecipeConflict,
+  type RecipeRevision,
+} from './conflicts';
 
 function RevisionContents({ revision }: { revision: RecipeRevision }) {
   const { recipe, coverPhoto } = revision;
@@ -56,21 +58,21 @@ function RevisionContents({ revision }: { revision: RecipeRevision }) {
 
 export function RecipeConflicts({
   conflicts,
-  config,
+  canResolve,
   onRefresh,
 }: {
   conflicts: RecipeConflict[];
-  config: BackendConfig | null;
+  canResolve: boolean;
   onRefresh: () => void;
 }) {
   const [choosing, setChoosing] = useState(false);
   const [error, setError] = useState('');
   async function choose(conflict: RecipeConflict, revisionId: string) {
-    if (!config) return;
+    if (!canResolve) return;
     setChoosing(true);
     setError('');
     try {
-      await chooseCurrentRecipe(config, conflict, revisionId);
+      await chooseCurrentRecipe(conflict, revisionId);
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -94,7 +96,7 @@ export function RecipeConflicts({
         choose which contents become current for your household. Retained
         food-log nutrition stays unchanged.
       </p>
-      {!config?.token && (
+      {!canResolve && (
         <p>Sign in to your household to choose the current recipe.</p>
       )}
       {error && (
@@ -125,7 +127,7 @@ export function RecipeConflicts({
                 <RevisionContents revision={revision} />
                 <button
                   className="button primary"
-                  disabled={choosing || !config?.token}
+                  disabled={choosing || !canResolve}
                   onClick={() => void choose(conflict, revision.id)}
                 >
                   Make current

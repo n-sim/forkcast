@@ -1,0 +1,7 @@
+{$FORKCAST_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy forkcast:8787 {
+		# The change stream is long-lived; never buffer it.
+		flush_interval -1
+	}
+}

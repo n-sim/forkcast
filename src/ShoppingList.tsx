@@ -14,7 +14,7 @@ import {
 } from './shopping';
 import { ManualShoppingItemForm, ShoppingItemEditor } from './ShoppingItems';
 import { ShoppingListReplacementDialog } from './ShoppingListReplacementDialog';
-import type { PlanningEditBase } from './planning-sync-store';
+import type { PlanningEditBase } from './planning-store';
 import { useShoppingList } from './use-shopping-list';
 import { ShoppingProgress } from './ShoppingProgress';
 
@@ -138,8 +138,12 @@ export function ShoppingListView() {
     setExportMessage('Preparing PDF…');
     try {
       const { exportShoppingPdf } = await import('./shopping-pdf');
-      await exportShoppingPdf(list);
-      setExportMessage('PDF exported. Your shopping list is still available.');
+      const saved = await exportShoppingPdf(list);
+      setExportMessage(
+        saved
+          ? 'PDF exported. Your shopping list is still available.'
+          : 'PDF export cancelled. Your shopping list is still available.',
+      );
     } catch {
       setError(
         'The PDF could not be exported. Try again. Your shopping list has been kept.',

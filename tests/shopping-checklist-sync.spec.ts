@@ -8,7 +8,7 @@ import {
   addManualItem,
   syncNow,
 } from './household-planning-fixture';
-import type { Page } from '@playwright/test';
+import type { Page } from './app-fixture';
 
 async function openChecklist(page: Page) {
   await page.getByRole('link', { name: 'Shopping list', exact: true }).click();

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './app-fixture';
 
 // Headless Chromium normally hides scrollbars, concealing this layout shift.
 test.use({ launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'] } });

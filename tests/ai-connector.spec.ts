@@ -1,10 +1,10 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test, expect } from './ai-fixture';
-import type { APIRequestContext } from '@playwright/test';
+import type { APIRequestContext } from './app-fixture';
 
 const headers = {
-  Origin: 'http://127.0.0.1:4173',
+  Origin: 'http://tauri.localhost',
   'X-Forkcast-Companion': '1',
 };
 

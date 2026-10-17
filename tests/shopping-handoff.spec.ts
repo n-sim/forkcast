@@ -21,7 +21,6 @@ function pdfText(content: Awaited<ReturnType<PDFPageProxy['getTextContent']>>) {
 
 test('open the checklist from shopping review and retain household shopping progress after reopening offline', async ({
   page,
-  context,
 }) => {
   await createRecipe(page);
   await plan(page);
@@ -60,10 +59,6 @@ test('open the checklist from shopping review and retain household shopping prog
   });
   await expect(status).toContainText('1 of 2 items checked');
   await expect(status).toContainText('Shopping in progress');
-  await page.evaluate(() =>
-    navigator.serviceWorker.ready.then(() => undefined),
-  );
-  await context.setOffline(true);
   await page.reload();
   await expect(pasta).toBeChecked();
   await expect(coffee).not.toBeChecked();
@@ -88,7 +83,7 @@ test('open the checklist from shopping review and retain household shopping prog
 
 test('download the reviewed quantities and manual groceries as a PDF without completing shopping', async ({
   page,
-  context,
+  app,
 }) => {
   await createRecipe(page, '豆腐 Käsespätzle 🥑');
   await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
@@ -124,18 +119,12 @@ test('download the reviewed quantities and manual groceries as a PDF without com
   await page
     .getByRole('link', { name: 'Review shopping list', exact: true })
     .click();
-  await page.evaluate(() =>
-    navigator.serviceWorker.ready.then(() => undefined),
-  );
-  await context.setOffline(true);
-  const downloadEvent = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export PDF', exact: true }).click();
-  const download = await downloadEvent;
-  expect(download.suggestedFilename()).toBe(
-    'forkcast-shopping-2026-10-12-to-2026-10-18.pdf',
-  );
-  const path = await download.path();
-  const bytes = await readFile(path!);
+  // The app delivers the file through its platform adapter (a save dialog for
+  // people; a folder under automation).
+  const delivered = await app.delivered();
+  expect(delivered.name).toBe('forkcast-shopping-2026-10-12-to-2026-10-18.pdf');
+  const bytes = await readFile(delivered.path);
   expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
   const pdf = await getDocument({
     data: new Uint8Array(bytes),
@@ -187,6 +176,7 @@ test('download the reviewed quantities and manual groceries as a PDF without com
 
 test('a long shopping PDF wraps names and retains every grocery across pages', async ({
   page,
+  app,
 }) => {
   await page.goto('/');
   await generate(page);
@@ -196,10 +186,8 @@ test('a long shopping PDF wraps names and retains every grocery across pages', a
       `Grocery ${index + 1}: dark chocolate, toasted almonds and dried cranberries for the household’s weekend baking`,
   );
   for (const name of names) await addManualItem(page, name);
-  const downloadEvent = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export PDF', exact: true }).click();
-  const download = await downloadEvent;
-  const bytes = await readFile((await download.path())!);
+  const bytes = await readFile((await app.delivered()).path);
   const pdf = await getDocument({
     data: new Uint8Array(bytes),
     useSystemFonts: false,
