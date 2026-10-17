@@ -1,10 +1,8 @@
 import {
   validate_manual_food_log_entry,
-  daily_food_log,
   validate_recipe_food_log_entry,
 } from '../crates/recipe-domain/pkg/forkcast_recipe_domain';
 import type { FieldError } from './domain';
-import type { NutritionVersion } from './nutrition';
 
 export interface Nutrition {
   calories: number | null;
@@ -39,11 +37,14 @@ export interface FoodLogEntry extends ManualFoodLogEntry {
   portions: number | null;
 }
 
-export interface FoodLogData {
-  entries: ManualFoodLogEntry[];
-  recipeEntries: RecipeFoodLogEntry[];
-  nutritionVersions: NutritionVersion[];
-  date?: string;
+/** A day's entries and totals, computed by the application core. */
+export interface DailyFoodLog {
+  entries: FoodLogEntry[];
+  totals: Record<
+    keyof Nutrition,
+    { knownValue: number | null; unknownEntries: number }
+  >;
+  incomplete: boolean;
 }
 
 export function validateRecipeFoodLogEntry(entry: RecipeFoodLogEntryDraft): {
@@ -65,25 +66,6 @@ export function validateManualFoodLogEntry(entry: ManualFoodLogEntry): {
   errors: FieldError[];
 } {
   return validate_manual_food_log_entry(entry);
-}
-
-export function dailyFoodLog(
-  log: FoodLogData,
-  date: string,
-): {
-  entries: FoodLogEntry[];
-  totals: Record<
-    keyof Nutrition,
-    { knownValue: number | null; unknownEntries: number }
-  >;
-  incomplete: boolean;
-} {
-  return daily_food_log(
-    log.entries,
-    log.recipeEntries,
-    log.nutritionVersions,
-    date,
-  );
 }
 
 export function localDateTime(now = new Date()): string {

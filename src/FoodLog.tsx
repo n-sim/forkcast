@@ -1,14 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  dailyFoodLog,
   localDateTime,
   nutrients,
+  type DailyFoodLog,
   type ManualFoodLogEntry,
   type RecipeFoodLogEntry,
-  type FoodLogData,
 } from './food-log';
 import {
-  loadFoodLog,
+  loadFoodLogDate,
+  loadFoodLogDay,
   saveFoodLogDate,
   saveManualFoodLogEntry,
   saveRecipeFoodLogEntry,
@@ -19,38 +19,54 @@ import { RecipeFoodLogForm } from './RecipeFoodLogForm';
 import type { Recipe } from './domain';
 import { nutritionValue } from './nutrition';
 
-const emptyLog: FoodLogData = {
-  entries: [],
-  recipeEntries: [],
-  nutritionVersions: [],
-};
-
 export function FoodLog({ recipes }: { recipes: Recipe[] }) {
-  const [log, setLog] = useState<FoodLogData>(emptyLog);
+  const [daily, setDaily] = useState<DailyFoodLog | null>(null);
   const [date, setDate] = useState('');
   const [adding, setAdding] = useState<'manual' | 'recipe' | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
+  const [calculationError, setCalculationError] = useState('');
+
+  // The day being shown, set as soon as it is chosen so that a change
+  // notification arriving meanwhile reloads the same day.
+  const shown = useRef('');
+  const requests = useRef(0);
+  const refreshDay = useRef<(day?: string) => void>(() => undefined);
+
   useEffect(() => {
     let active = true;
-    async function refresh(initial = false) {
+    async function refresh(day?: string) {
+      if (day) shown.current = day;
+      const request = ++requests.current;
       try {
-        const log = await loadFoodLog();
-        if (active) {
-          setLog(log);
-          if (initial) setDate(log.date ?? localDateTime().slice(0, 10));
+        const chosen =
+          shown.current ||
+          (await loadFoodLogDate()) ||
+          localDateTime().slice(0, 10);
+        shown.current = chosen;
+        const log = await loadFoodLogDay(chosen);
+        if (active && request === requests.current) {
+          setDate(chosen);
+          setDaily(log);
+          setCalculationError('');
           setError('');
         }
-      } catch {
-        if (active)
-          setError(
-            'Your food log could not be loaded. Reload to try again. Your stored data has been kept.',
-          );
+      } catch (failure) {
+        if (active && request === requests.current) {
+          setDaily(null);
+          if (failure instanceof Error && failure.message.includes('retained'))
+            setCalculationError(failure.message);
+          else
+            setError(
+              'Your food log could not be loaded. Reload to try again. Your stored data has been kept.',
+            );
+        }
       }
     }
+    refreshDay.current = (day) => void refresh(day);
     const unsubscribe = subscribeToFoodLogChanges(() => void refresh());
-    void refresh(true);
+    void refresh();
     return () => {
       active = false;
       unsubscribe();
@@ -60,9 +76,8 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
   async function selectDate(date: string) {
     if (!date) return;
     try {
-      dailyFoodLog(emptyLog, date);
       await saveFoodLogDate(date);
-      setDate(date);
+      refreshDay.current(date);
       setMessage('');
       setError('');
     } catch {
@@ -73,21 +88,10 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
   async function save(entry: ManualFoodLogEntry | RecipeFoodLogEntry) {
     if ('recipeId' in entry) await saveRecipeFoodLogEntry(entry);
     else await saveManualFoodLogEntry(entry);
-    setLog(await loadFoodLog());
-    setDate(entry.consumedAt.slice(0, 10));
+    refreshDay.current(entry.consumedAt.slice(0, 10));
     setAdding(null);
     setMessage('Food-log entry saved on this device.');
     setError('');
-  }
-
-  let daily = null;
-  let calculationError = '';
-  if (date) {
-    try {
-      daily = dailyFoodLog(log, date);
-    } catch (error) {
-      calculationError = String(error);
-    }
   }
 
   return (

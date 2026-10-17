@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './app-fixture';
 
 async function openFoodLog(page: Page, date: string) {
   await page.goto('/');
@@ -39,7 +39,7 @@ async function addManualEntry(
 
 test('record manual food on its consumption day and reopen its daily view offline', async ({
   page,
-  context,
+  app,
 }) => {
   await openFoodLog(page, '2026-10-14');
   await expect(
@@ -104,12 +104,7 @@ test('record manual food on its consumption day and reopen its daily view offlin
   await expect(page.getByLabel('Food log date', { exact: true })).toHaveValue(
     '2026-10-13',
   );
-  await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-  });
-  await page.close();
-  await context.setOffline(true);
-  const reopened = await context.newPage();
+  const reopened = await app.restart();
   await reopened.goto(savedUrl);
   await expect(
     reopened.getByLabel('Food log date', { exact: true }),
@@ -207,7 +202,6 @@ test('sum only known nutrition for the selected day and distinguish unknown valu
 
 test('validate consumption details, discard a canceled draft, and save fully unknown nutrition offline', async ({
   page,
-  context,
 }) => {
   await openFoodLog(page, '2026-02-28');
   await page
@@ -235,14 +229,10 @@ test('validate consumption details, discard a canceled draft, and save fully unk
   await expect(
     page.getByText('No food logged for this day.', { exact: true }),
   ).toBeVisible();
-  await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-  });
   await page.reload();
   await expect(page.getByLabel('Food log date', { exact: true })).toHaveValue(
     '2026-02-28',
   );
-  await context.setOffline(true);
   await page
     .getByRole('button', { name: 'Add manual entry', exact: true })
     .click();

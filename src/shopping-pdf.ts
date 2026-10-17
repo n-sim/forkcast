@@ -1,4 +1,5 @@
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
+import { saveFile } from './core';
 import { formatQuantity, unitLabels } from './domain';
 import type { ShoppingItem, ShoppingList } from './shopping';
 import {
@@ -44,7 +45,7 @@ function groceries(title: string, items: ShoppingItem[]): Content[] {
   ];
 }
 
-export async function exportShoppingPdf(list: ShoppingList): Promise<void> {
+export async function exportShoppingPdf(list: ShoppingList): Promise<boolean> {
   const [{ default: pdfMake }, { default: fonts }] = await Promise.all([
     import('pdfmake/build/pdfmake'),
     import('pdfmake/build/vfs_fonts'),
@@ -97,7 +98,13 @@ export async function exportShoppingPdf(list: ShoppingList): Promise<void> {
         : [{ text: 'No recipe contributions.' }]),
     ],
   };
-  await pdfMake
-    .createPdf(document)
-    .download(`forkcast-shopping-${list.startDate}-to-${list.endDate}.pdf`);
+  const bytes = await pdfMake.createPdf(document).getBuffer();
+  // The platform decides where the file goes: a save dialog in the app, a download in a browser.
+  return (
+    (await saveFile(
+      `forkcast-shopping-${list.startDate}-to-${list.endDate}.pdf`,
+      bytes,
+      'application/pdf',
+    )) !== null
+  );
 }

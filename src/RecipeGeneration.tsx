@@ -11,10 +11,10 @@ interface Model {
 
 export function RecipeGeneration({
   onSave,
-  promptOwner,
+  promptsAvailable,
 }: {
   onSave: (recipe: Recipe) => Promise<void>;
-  promptOwner: string | null;
+  promptsAvailable: boolean;
 }) {
   const [url] = useState(savedCompanion);
   const [models, setModels] = useState<Model[]>([]);
@@ -52,13 +52,14 @@ export function RecipeGeneration({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!url || !model || !promptOwner || busy || !description.trim()) return;
+    if (!url || !model || !promptsAvailable || busy || !description.trim())
+      return;
     setBusy(true);
     setError('');
     const controller = new AbortController();
     execution.current = controller;
     try {
-      const preferences = loadRecipePrompt(promptOwner);
+      const preferences = await loadRecipePrompt();
       const recipe = await generateRecipe(
         url,
         model,
@@ -70,9 +71,7 @@ export function RecipeGeneration({
       try {
         await onSave(recipe);
       } catch {
-        throw new Error(
-          'The generated recipe could not be saved on this device. Try again.',
-        );
+        throw new Error('The generated recipe could not be saved. Try again.');
       }
     } catch (error) {
       if (controller.signal.aborted) return;
@@ -102,7 +101,7 @@ export function RecipeGeneration({
         Your saved <a href="#/settings">personal prompt defaults</a> apply to
         each request. Include any instructions for this dish in its description.
       </p>
-      {!promptOwner && (
+      {!promptsAvailable && (
         <p>Sign in to your backend account to use your personal prompts.</p>
       )}
       {!url && (
@@ -148,7 +147,7 @@ export function RecipeGeneration({
         <button
           className="button primary"
           disabled={
-            !url || !model || !promptOwner || !description.trim() || busy
+            !url || !model || !promptsAvailable || !description.trim() || busy
           }
         >
           {busy ? 'Generating…' : 'Generate recipe'}

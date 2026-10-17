@@ -1,11 +1,9 @@
 import {
   generate_shopping_requirements,
-  shopping_source_changed,
   shopping_list_complete,
   validate_shopping_item,
 } from '../crates/recipe-domain/pkg/forkcast_recipe_domain';
 import type { Recipe, Unit } from './domain';
-import type { PlannedCooking } from './planning';
 
 export interface RecipeContribution {
   cookingId: string;
@@ -53,39 +51,10 @@ export function shoppingComplete(list: ShoppingList): boolean {
 
 export type ShoppingSourceStatus = 'changed' | 'unchanged' | 'unknown';
 
-export function shoppingSourceStatus(
-  cookings: PlannedCooking[],
-  recipes: Recipe[],
-  list: ShoppingList,
-): ShoppingSourceStatus {
-  const sourceContributions = list.contributions.map((contribution) => ({
-    ...contribution,
-    // Older lists did not capture cooking times; only compare known source fields.
-    cookingTime:
-      contribution.cookingTime === undefined
-        ? (cookings.find((cooking) => cooking.id === contribution.cookingId)
-            ?.cookingTime ?? null)
-        : contribution.cookingTime,
-  }));
-  if (
-    shopping_source_changed(
-      cookings,
-      recipes,
-      sourceContributions,
-      list.startDate,
-      list.endDate,
-    )
-  )
-    return 'changed';
-  return list.contributions.some(
-    (contribution) => contribution.cookingTime === undefined,
-  )
-    ? 'unknown'
-    : 'unchanged';
-}
-
+// A calculation preview. The application core owns generation and source
+// status; this validates periods before asking to replace a reviewed list.
 export function generateShoppingRequirements(
-  cookings: PlannedCooking[],
+  cookings: unknown[],
   recipes: Recipe[],
   startDate: string,
   endDate: string,

@@ -1,4 +1,10 @@
-import { expect, test, type Page } from '@playwright/test';
+import {
+  expect,
+  importTransfer,
+  legacyTransfer,
+  test,
+  type Page,
+} from './app-fixture';
 
 type Ingredient = { name: string; quantity: string; unit: string };
 
@@ -133,7 +139,7 @@ test('aggregate scaled totals across an inclusive cooking period and retain reci
 
 test('keep reviews stable after source changes and regenerate offline without losing manual groceries', async ({
   page,
-  context,
+  app,
 }) => {
   const recipeUrl = await createRecipe(page, 'Lentil stew', [
     { name: 'Lentils', quantity: '250', unit: 'g' },
@@ -191,7 +197,7 @@ test('keep reviews stable after source changes and regenerate offline without lo
   await expect(sourceStatus).toContainText(
     'unchanged within this cooking period',
   );
-  const other = await context.newPage();
+  const other = await app.newWindow();
   await other.goto(recipeUrl + '/edit');
   await other.getByLabel('Recipe name', { exact: true }).fill('Renamed stew');
   await other.getByLabel('Ingredient 1 quantity', { exact: true }).fill('900');
@@ -225,13 +231,8 @@ test('keep reviews stable after source changes and regenerate offline without lo
   ).toHaveAttribute('href', new URL(recipeUrl).hash);
   await expect(lentils).toContainText('2026-10-13, 4 portions');
   await expect(lentils).not.toContainText('Renamed stew');
-  await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-  });
   const url = page.url();
-  await page.close();
-  await context.setOffline(true);
-  const reopened = await context.newPage();
+  const reopened = await app.restart();
   await reopened.goto(url);
   await expect(
     reopened
@@ -316,7 +317,7 @@ test('keep reviews stable after source changes and regenerate offline without lo
 
 test('flag ingredient changes in contributing recipes while keeping the reviewed list stable until regeneration', async ({
   page,
-  context,
+  app,
 }) => {
   const stewUrl = await createRecipe(page, 'Lentil stew', [
     { name: 'Lentils', quantity: '250', unit: 'g' },
@@ -368,7 +369,7 @@ test('flag ingredient changes in contributing recipes while keeping the reviewed
     exact: true,
   });
   await expect(manual).toContainText('2 l');
-  const other = await context.newPage();
+  const other = await app.newWindow();
   async function editRecipe(url: string, change: () => Promise<unknown>) {
     await other.goto(url + '/edit');
     await change();
@@ -541,7 +542,7 @@ for (const change of ingredientChanges) {
 
 test('track only changes within the saved cooking period, including time, recipe, and moves across its boundaries', async ({
   page,
-  context,
+  app,
 }) => {
   await createRecipe(page, 'Lentil stew', [
     { name: 'Lentils', quantity: '250', unit: 'g' },
@@ -561,7 +562,7 @@ test('track only changes within the saved cooking period, including time, recipe
     name: 'Generated requirements',
     exact: true,
   });
-  const other = await context.newPage();
+  const other = await app.newWindow();
   await other.goto('/#/meal-plan');
   await other.getByLabel('Week containing', { exact: true }).fill('2026-10-13');
   const monday = 'Monday, 12 October 2026';
@@ -675,8 +676,9 @@ test('track only changes within the saved cooking period, including time, recipe
 });
 
 test('keep older reviewed lists with unknown source times and establish a source baseline by regenerating', async ({
-  page,
+  launch,
 }) => {
+  let { page } = await launch();
   await createRecipe(page, 'Lentil stew', [
     { name: 'Lentils', quantity: '250', unit: 'g' },
   ]);
@@ -707,39 +709,52 @@ test('keep older reviewed lists with unknown source times and establish a source
   }
   await setCookingTime('18:00');
   await generate(page);
-  const lentils = page.getByRole('article', { name: 'Lentils', exact: true });
-  await lentils.getByLabel('Quantity', { exact: true }).fill('150');
-  await lentils
+  const reviewed = page.getByRole('article', { name: 'Lentils', exact: true });
+  await reviewed.getByLabel('Quantity', { exact: true }).fill('150');
+  await reviewed
     .getByRole('button', { name: 'Save quantity', exact: true })
     .click();
-  await expect(lentils).toContainText('150 g');
-  // Previous-release persisted contributions are fixture input; verify through the UI.
-  await page.evaluate(async () => {
-    const request = indexedDB.open('forkcast');
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const transaction = db.transaction('shoppingLists', 'readwrite');
-        const store = transaction.objectStore('shoppingLists');
-        const lists = store.getAll();
-        lists.onsuccess = () => {
-          for (const list of lists.result) {
-            for (const contribution of list.contributions)
-              delete contribution.cookingTime;
-            store.put(list);
-          }
-        };
-        transaction.oncomplete = () => resolve();
-        transaction.onabort = () => reject(transaction.error);
-      });
-    } finally {
-      db.close();
-    }
+  await expect(reviewed).toContainText('150 g');
+  // A list saved by an earlier release recorded no cooking times in its
+  // contributions. Reproduce it by carrying this list to a fresh app through
+  // the browser transfer, without those times.
+  const held = await page.evaluate(async () => {
+    const run = (operation: string) =>
+      (
+        window as unknown as {
+          __TAURI_INTERNALS__: {
+            invoke: (
+              name: string,
+              args: object,
+            ) => Promise<{ [key: string]: unknown }>;
+          };
+        }
+      ).__TAURI_INTERNALS__.invoke('execute', { operation: { operation } });
+    return {
+      recipes: (await run('recipes')) as unknown as { recipe: object }[],
+      plan: (await run('mealPlan')) as unknown as { cookings: object[] },
+      list: (await run('shoppingList')) as unknown as {
+        list: Record<string, unknown>;
+      },
+    };
   });
-  await page.reload();
+  const older = (held.list.list.contributions as Record<string, unknown>[]).map(
+    (contribution) => {
+      const { cookingTime: _time, ...rest } = contribution;
+      return rest;
+    },
+  );
+  page = (await launch()).page;
+  await importTransfer(
+    page,
+    legacyTransfer({
+      recipes: held.recipes.map((view) => view.recipe),
+      plannedCookings: held.plan.cookings,
+      shoppingLists: [{ ...held.list.list, contributions: older }],
+    }),
+  );
+  await page.goto('/#/shopping-list');
+  const lentils = page.getByRole('article', { name: 'Lentils', exact: true });
   const status = page.getByRole('status', {
     name: 'Shopping source status',
     exact: true,
@@ -961,7 +976,7 @@ test('validate review inputs and confirm replacement of the current list while k
 
 test('retain concurrent reviews of different generated items across tabs', async ({
   page,
-  context,
+  app,
 }) => {
   await createRecipe(page, 'Lentil stew', [
     { name: 'Lentils', quantity: '250', unit: 'g' },
@@ -969,7 +984,7 @@ test('retain concurrent reviews of different generated items across tabs', async
   ]);
   await plan(page, 'Lentil stew', '2026-10-13', '4');
   await generate(page);
-  const other = await context.newPage();
+  const other = await app.newWindow();
   await other.goto('/#/shopping-list');
   const lentils = page.getByRole('article', { name: 'Lentils', exact: true });
   const oil = other.getByRole('article', { name: 'Oil', exact: true });
@@ -1028,14 +1043,14 @@ test('reject unrepresentable aggregation without replacing an existing reviewed 
 
 test('require a fresh confirmation if another tab replaces the shopping list', async ({
   page,
-  context,
+  app,
 }) => {
   await createRecipe(page, 'Lentil stew', [
     { name: 'Lentils', quantity: '250', unit: 'g' },
   ]);
   await plan(page, 'Lentil stew', '2026-10-13', '4');
   await generate(page);
-  const other = await context.newPage();
+  const other = await app.newWindow();
   await other.goto('/#/shopping-list');
   await expect(
     other.getByRole('article', { name: 'Lentils', exact: true }),

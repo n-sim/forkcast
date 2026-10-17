@@ -1,0 +1,26 @@
+# Household server with automatic HTTPS. Set FORKCAST_DOMAIN to the public
+# name of your server (for example forkcast.example.com) before `docker compose up -d`.
+services:
+  forkcast:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - forkcast-data:/data
+    expose:
+      - "8787"
+  proxy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - forkcast
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      FORKCAST_DOMAIN: ${FORKCAST_DOMAIN:?Set FORKCAST_DOMAIN to your server's public name}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - proxy-data:/data
+volumes:
+  forkcast-data:
+  proxy-data:

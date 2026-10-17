@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { openExternal } from './core';
 import {
   companionKey,
   companionRequest,
@@ -80,15 +81,6 @@ export function AiConnection() {
   }
 
   async function authorize() {
-    // Open during the user's click so popup blockers do not swallow sign-in.
-    const popup = window.open('about:blank', '_blank');
-    if (!popup) {
-      setError(
-        'Allow popups for Forkcast, then try Continue with ChatGPT again.',
-      );
-      return;
-    }
-    popup.opener = null;
     setBusy(true);
     setError('');
     try {
@@ -107,10 +99,10 @@ export function AiConnection() {
         destination.pathname !== '/api/accounts/authorize'
       )
         throw new Error('The companion returned an invalid sign-in address.');
-      popup.location.href = destination.href;
+      // Sign-in happens in the person's own browser, not inside the app.
+      await openExternal(destination.href);
       setStatus({ state: 'authorizing', email: null, message: null });
     } catch (error) {
-      popup.close();
       setError(
         error instanceof Error
           ? error.message

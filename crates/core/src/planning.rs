@@ -245,13 +245,23 @@ pub struct EditBase {
     pub data: Value,
 }
 
-fn edit_base(db: &Connection, data: &Value) -> Result<EditBase> {
+fn current_base(db: &Connection, data: &Value) -> Result<EditBase> {
     let (base_revision, base_mutation_id) = sync::planning_base(db)?;
     Ok(EditBase {
         base_revision,
         base_mutation_id,
         data: data.clone(),
     })
+}
+
+/// Only a profile that synchronizes needs to remember what a view was based
+/// on; a standalone profile always edits the latest plan.
+fn view_base(db: &Connection, data: &Value) -> Result<Option<EditBase>> {
+    if sync::is_bound(db)? {
+        current_base(db, data).map(Some)
+    } else {
+        Ok(None)
+    }
 }
 
 /// Applies a change to the plan inside one serialized transaction. `change`
@@ -265,13 +275,14 @@ fn edit(
 ) -> Result<Value> {
     let household = principal.household_id();
     let current = snapshot(db, household)?;
-    let base = match base {
+    let bound = sync::is_bound(db)?;
+    let base = match base.filter(|_| bound) {
         Some(base) => base,
-        None => edit_base(db, &current["data"])?,
+        None => current_base(db, &current["data"])?,
     };
     let mut incoming = base.data.clone();
     change(&mut incoming, &current["data"], db)?;
-    let live = if sync::is_bound(db)? {
+    let live = if bound {
         household_planning::merge(&base.data, &current["data"], &incoming).data
     } else {
         incoming.clone()
@@ -314,14 +325,14 @@ pub enum SourceStatus {
 pub struct ShoppingListView {
     pub list: Value,
     pub source_status: SourceStatus,
-    pub edit_base: EditBase,
+    pub edit_base: Option<EditBase>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MealPlanView {
     pub cookings: Vec<PlannedCooking>,
-    pub edit_base: EditBase,
+    pub edit_base: Option<EditBase>,
 }
 
 fn drafts(db: &Connection, household: &str) -> Result<Vec<RecipeDraft>> {
@@ -455,7 +466,7 @@ impl Core {
             });
             Ok(MealPlanView {
                 cookings: plan,
-                edit_base: edit_base(db, &data)?,
+                edit_base: view_base(db, &data)?,
             })
         })
     }
@@ -521,7 +532,7 @@ impl Core {
         Ok(Some(ShoppingListView {
             list: data["shoppingList"].clone(),
             source_status: status,
-            edit_base: edit_base(db, &data)?,
+            edit_base: view_base(db, &data)?,
         }))
     }
 
@@ -546,7 +557,7 @@ impl Core {
             edit(db, principal, effects, base, |data, current, db| {
                 if current["shoppingList"]["id"].as_str() != replacing_list_id {
                     return Err(Error::conflict(
-                        "Your shopping list changed elsewhere. Review it before replacing it.",
+                        "Your shopping list changed in another tab. Review it before replacing it.",
                     ));
                 }
                 let requirements = shopping::generate_shopping_requirements(

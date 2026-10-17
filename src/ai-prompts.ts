@@ -1,14 +1,12 @@
-const defaultRecipePrompt =
-  'Use English and metric quantities. Prefer practical home cooking.';
+import { execute } from './core';
 
-function promptKey(owner: string) {
-  return `forkcast-ai-prompts:${owner}`;
+// A person's AI preferences live in the application core. Credentials never
+// pass through here.
+export async function loadRecipePrompt(): Promise<string> {
+  return (await execute<{ recipePrompt: string }>('aiPreferences'))
+    .recipePrompt;
 }
 
-export function loadRecipePrompt(owner: string): string {
-  return localStorage.getItem(promptKey(owner)) ?? defaultRecipePrompt;
-}
-
-export function saveRecipePrompt(owner: string, prompt: string) {
-  localStorage.setItem(promptKey(owner), prompt);
+export async function saveRecipePrompt(prompt: string): Promise<void> {
+  await execute('setRecipePrompt', { prompt });
 }

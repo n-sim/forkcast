@@ -1,4 +1,10 @@
-import { expect, test, type Page } from '@playwright/test';
+import {
+  expect,
+  importTransfer,
+  legacyTransfer,
+  test,
+  type Page,
+} from './app-fixture';
 
 test.use({ timezoneId: 'Europe/Berlin' });
 
@@ -53,7 +59,7 @@ async function planCooking(
 
 test('plan household quantities and multiple cookings per day in week and today views, then reopen offline', async ({
   page,
-  context,
+  app,
 }) => {
   await createRecipe(page, 'Tomato pasta', '2', 'Weeknight dinner');
   await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
@@ -89,13 +95,8 @@ test('plan household quantities and multiple cookings per day in week and today 
     page.getByRole('article', { name: 'Tomato pasta', exact: true }),
   ).toHaveCount(2);
   await expect(page.getByRole('main')).not.toContainText('3 portions');
-  await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-  });
   const url = page.url();
-  await page.close();
-  await context.setOffline(true);
-  const reopened = await context.newPage();
+  const reopened = await app.restart();
   await reopened.clock.setFixedTime(new Date('2026-10-13T10:00:00+02:00'));
   await reopened.goto(url);
   await expect(
@@ -291,12 +292,12 @@ test('keep cooking four household portions independent of actual intake on two d
 
 test('show planning changes and current recipe contents across tabs', async ({
   page,
-  context,
+  app,
 }) => {
   await createRecipe(page);
   const recipeUrl = page.url();
   await page.getByRole('link', { name: 'Today', exact: true }).click();
-  const other = await context.newPage();
+  const other = await app.newWindow();
   await other.clock.setFixedTime(new Date('2026-10-13T10:00:00+02:00'));
   await other.goto('/#/meal-plan');
   await planCooking(other, { time: '17:00' });
@@ -393,7 +394,7 @@ test('navigate calendar weeks over daylight saving and update today after midnig
 
 test('assign labels in the recipe editor and show the current recipe label for every planned cooking', async ({
   page,
-  context,
+  app,
 }) => {
   await createRecipe(page);
   const recipeUrl = page.url();
@@ -421,7 +422,7 @@ test('assign labels in the recipe editor and show the current recipe label for e
     page.getByLabel('Label (optional)', { exact: true }),
   ).toHaveCount(0);
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  const other = await context.newPage();
+  const other = await app.newWindow();
   await other.goto(recipeUrl + '/edit');
   await expect(
     other.getByLabel('Label (optional)', { exact: true }),
@@ -499,73 +500,58 @@ test('default portions to the selected recipe base yield and retain saved overri
 test('reopen recipes, planned cookings, and cooking snapshots saved before recipe labels', async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    const request = indexedDB.open('forkcast', 5);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      const recipe = {
-        id: 'legacy-pasta',
-        name: 'Existing pasta',
-        basePortions: 2,
-        ingredients: [{ id: 'pasta', name: 'Pasta', quantity: 250, unit: 'g' }],
-        steps: [
-          { id: 'boil', instruction: 'Boil the pasta.', allocations: [] },
-        ],
-        difficulty: null,
-        activeMinutes: 15,
-        totalMinutes: 30,
-      };
-      db.createObjectStore('recipes', { keyPath: 'id' }).put(recipe);
-      db.createObjectStore('recipeCoverPhotos', { keyPath: 'recipeId' });
-      db.createObjectStore('personalRecipeRatings', {
-        keyPath: ['personId', 'recipeId'],
-      }).createIndex('personId', 'personId');
-      db.createObjectStore('localSettings').put('existing-person', 'personId');
-      const sessions = db.createObjectStore('cookingSessions', {
-        keyPath: 'id',
-      });
-      sessions.createIndex('personId', 'personId');
-      sessions.put({
-        id: 'existing-session',
-        personId: 'existing-person',
-        recipe,
-        portions: 4,
-        displayUnits: 'metric',
-        currentStep: 0,
-        timers: {},
-      });
-      const foodLog = db.createObjectStore('manualFoodLogEntries', {
-        keyPath: 'id',
-      });
-      foodLog.createIndex('personId', 'personId');
-      foodLog.put({
-        id: 'existing-snack',
-        personId: 'existing-person',
-        description: 'Existing snack',
-        consumedAt: '2026-10-13T09:00',
-        nutrition: {
-          calories: 50,
-          protein: null,
-          fat: null,
-          carbohydrates: null,
+  const recipe = {
+    id: 'legacy-pasta',
+    name: 'Existing pasta',
+    basePortions: 2,
+    ingredients: [{ id: 'pasta', name: 'Pasta', quantity: 250, unit: 'g' }],
+    steps: [{ id: 'boil', instruction: 'Boil the pasta.', allocations: [] }],
+    difficulty: null,
+    activeMinutes: 15,
+    totalMinutes: 30,
+  };
+  await importTransfer(
+    page,
+    legacyTransfer({
+      recipes: [recipe],
+      cookingSessions: [
+        {
+          id: 'existing-session',
+          personId: 'existing-person',
+          recipe,
+          portions: 4,
+          displayUnits: 'metric',
+          currentStep: 0,
+          timers: {},
         },
-      });
-      const cookings = db.createObjectStore('plannedCookings', {
-        keyPath: 'id',
-      });
-      cookings.createIndex('personId', 'personId');
-      cookings.put({
-        id: 'existing-cooking',
-        personId: 'existing-person',
-        recipeId: recipe.id,
-        cookingDate: '2026-10-13',
-        cookingTime: '18:30',
-        portions: 4,
-        label: 'Former per-cooking label',
-      });
-    };
-    request.onsuccess = () => request.result.close();
-  });
+      ],
+      manualFoodLogEntries: [
+        {
+          id: 'existing-snack',
+          personId: 'existing-person',
+          description: 'Existing snack',
+          consumedAt: '2026-10-13T09:00',
+          nutrition: {
+            calories: 50,
+            protein: null,
+            fat: null,
+            carbohydrates: null,
+          },
+        },
+      ],
+      plannedCookings: [
+        {
+          id: 'existing-cooking',
+          personId: 'existing-person',
+          recipeId: recipe.id,
+          cookingDate: '2026-10-13',
+          cookingTime: '18:30',
+          portions: 4,
+          label: 'Former per-cooking label',
+        },
+      ],
+    }),
+  );
   await page.goto('/#/today');
   const entry = page.getByRole('article', {
     name: 'Existing pasta',
