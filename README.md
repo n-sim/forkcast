@@ -78,8 +78,8 @@ the frontend's existing local store; installing this companion adds no backups o
 cross-device synchronization. Backend AI execution is separate work; recipe
 generation currently uses the connected companion, including when recipe sync is enabled.
 
-Choose **Generate recipe** in the recipe collection, describe your dish, select an
-available ChatGPT model, and optionally add **Instructions for this request**.
+Choose **Generate recipe** in the recipe collection, include any dish-specific
+instructions in **Describe your dish**, and select an available ChatGPT model.
 **Settings → Personal AI prompts** stores editable recipe-generation system-prompt
 defaults on this device, separately for standalone use and each backend account.
 Defaults are applied to future requests; request-specific instructions are not

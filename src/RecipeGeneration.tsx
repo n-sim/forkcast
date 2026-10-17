@@ -20,7 +20,6 @@ export function RecipeGeneration({
   const [models, setModels] = useState<Model[]>([]);
   const [model, setModel] = useState('');
   const [description, setDescription] = useState('');
-  const [instructions, setInstructions] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const execution = useRef<AbortController | null>(null);
@@ -65,7 +64,6 @@ export function RecipeGeneration({
         model,
         description,
         preferences,
-        instructions,
         controller.signal,
       );
       if (controller.signal.aborted) return;
@@ -102,7 +100,7 @@ export function RecipeGeneration({
       </p>
       <p>
         Your saved <a href="#/settings">personal prompt defaults</a> apply to
-        each request. Add instructions below for this dish.
+        each request. Include any instructions for this dish in its description.
       </p>
       {!promptOwner && (
         <p>Sign in to your backend account to use your personal prompts.</p>
@@ -129,15 +127,6 @@ export function RecipeGeneration({
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             required
-            maxLength={8000}
-            disabled={busy}
-          />
-        </label>
-        <label>
-          Instructions for this request
-          <textarea
-            value={instructions}
-            onChange={(event) => setInstructions(event.target.value)}
             maxLength={8000}
             disabled={busy}
           />

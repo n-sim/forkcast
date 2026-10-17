@@ -7,6 +7,7 @@ import {
 import type { Page } from '@playwright/test';
 import { mergeTests } from '@playwright/test';
 import { test as backendTest } from './backend-fixture';
+import pumpkinRisotto from './fixtures/pumpkin-risotto.json' with { type: 'json' };
 
 const test = mergeTests(aiTest, backendTest);
 
@@ -118,8 +119,9 @@ test('accept streamed recipe text only after completion when the terminal respon
     basePortions: 4,
   });
   await page.goto('/#/recipes/generate');
-  await page.getByLabel('Describe your dish').fill('Kürbisrisotto');
-  await page.getByLabel('Instructions for this request').fill('4 portionen');
+  await page
+    .getByLabel('Describe your dish')
+    .fill('Kürbisrisotto, 4 portionen');
   await page
     .getByRole('button', { name: 'Generate recipe', exact: true })
     .click();
@@ -142,7 +144,108 @@ test('accept streamed recipe text only after completion when the terminal respon
   ).toBeVisible();
 });
 
+test('generate a recipe that mentions an already allocated ingredient with a zero allocation', async ({
+  page,
+  companion,
+}) => {
+  companion.reply({
+    ...generatedRecipe,
+    steps: [
+      ...generatedRecipe.steps,
+      {
+        id: 'serve',
+        instruction: 'Serve the cooked tomatoes.',
+        allocations: [{ ingredientId: 'tomatoes', quantity: 0, unit: 'g' }],
+      },
+    ],
+  });
+  await connectChatGpt(page, companion.url);
+  await page.goto('/#/recipes/generate');
+  await page.getByLabel('Describe your dish').fill('Tomato soup');
+  await page
+    .getByRole('button', { name: 'Generate recipe', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Tomato soup', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Cooking steps' })).toContainText(
+    'Serve the cooked tomatoes.',
+  );
+  await expect(
+    page
+      .getByRole('list', { name: 'Cooking steps' })
+      .getByRole('listitem')
+      .last(),
+  ).not.toContainText('Tomatoes');
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'Tomato soup', exact: true }),
+  ).toBeVisible();
+});
+
+test('save the reported pumpkin risotto response while preserving totals and instructions', async ({
+  page,
+  companion,
+}) => {
+  companion.reply(pumpkinRisotto);
+  await connectChatGpt(page, companion.url);
+  await page.goto('/#/recipes/generate');
+  await page.getByLabel('Describe your dish').fill('Veggie Kürbisrisotto');
+  await page
+    .getByRole('button', { name: 'Generate recipe', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: pumpkinRisotto.name, exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('list', { name: 'Ingredients', exact: true }),
+  ).toContainText('600 g Kürbis, gewürfelt');
+  const steps = page.getByRole('list', { name: 'Cooking steps' });
+  await expect(steps).toContainText('600 g Kürbis, gewürfelt');
+  await expect(steps).toContainText(pumpkinRisotto.steps[3]!.instruction);
+  await expect(steps.getByRole('listitem').last()).not.toContainText(
+    'g Kürbis',
+  );
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: pumpkinRisotto.name, exact: true }),
+  ).toBeVisible();
+});
+
 const invalidRecipes: [string, unknown][] = [
+  ...[
+    ['negative allocation', -1, 'tomatoes', 'g'],
+    ['null allocation', null, 'tomatoes', 'g'],
+    ['non-numeric zero allocation', '0', 'tomatoes', 'g'],
+    ['zero allocation with unknown ingredient', 0, 'missing', 'g'],
+    ['zero allocation with incompatible units', 0, 'tomatoes', 'ml'],
+    ['zero allocation with unknown units', 0, 'tomatoes', 'pinch'],
+  ].map(([label, quantity, ingredientId, unit]): [string, unknown] => [
+    String(label),
+    {
+      ...generatedRecipe,
+      steps: [
+        ...generatedRecipe.steps,
+        {
+          id: 'serve',
+          instruction: 'Serve.',
+          allocations: [{ ingredientId, quantity, unit }],
+        },
+      ],
+    },
+  ]),
+  [
+    'only zero allocations',
+    {
+      ...generatedRecipe,
+      steps: [
+        {
+          ...generatedRecipe.steps[0],
+          allocations: [{ ingredientId: 'tomatoes', quantity: 0, unit: 'g' }],
+        },
+      ],
+    },
+  ],
   ['missing name', { ...generatedRecipe, name: '' }],
   ['no ingredients', { ...generatedRecipe, ingredients: [] }],
   [
@@ -271,10 +374,9 @@ for (const failure of [
     await connectChatGpt(page, companion.url);
     companion.fail(failure);
     await page.goto('/#/recipes/generate');
-    await page.getByLabel('Describe your dish').fill('Tomato soup');
     await page
-      .getByLabel('Instructions for this request')
-      .fill('Keep it simple.');
+      .getByLabel('Describe your dish')
+      .fill('Tomato soup. Keep it simple.');
     await page
       .getByRole('button', { name: 'Generate recipe', exact: true })
       .click();
@@ -282,8 +384,8 @@ for (const failure of [
     await expect(
       page.getByRole('heading', { name: 'Generate recipe', exact: true }),
     ).toBeVisible();
-    await expect(page.getByLabel('Instructions for this request')).toHaveValue(
-      'Keep it simple.',
+    await expect(page.getByLabel('Describe your dish')).toHaveValue(
+      'Tomato soup. Keep it simple.',
     );
     await expect(page.getByRole('alert')).not.toContainText(
       'DO_NOT_EXPOSE_PROVIDER_ERRORS',
@@ -530,7 +632,7 @@ test('share generated recipes through the household backend while personal promp
   ).toHaveValue('Avoid dairy.');
 });
 
-test('save and revise personal prompt defaults locally and apply request-specific instructions without retaining them as defaults', async ({
+test('save and revise personal prompt defaults locally and apply dish descriptions without retaining them as defaults', async ({
   page,
   companion,
 }) => {
@@ -556,8 +658,7 @@ test('save and revise personal prompt defaults locally and apply request-specifi
     prompts.getByLabel('Recipe generation system prompt'),
   ).toHaveValue('Avoid dairy.');
   await page.goto('/#/recipes/generate');
-  await page.getByLabel('Describe your dish').fill('A soup');
-  await page.getByLabel('Instructions for this request').fill('Use chickpeas.');
+  await page.getByLabel('Describe your dish').fill('A soup. Use chickpeas.');
   await page
     .getByRole('button', { name: 'Generate recipe', exact: true })
     .click();
@@ -568,9 +669,7 @@ test('save and revise personal prompt defaults locally and apply request-specifi
     }),
   ).toBeVisible();
   await page.goto('/#/recipes/generate');
-  await expect(page.getByLabel('Instructions for this request')).toHaveValue(
-    '',
-  );
+  await expect(page.getByLabel('Describe your dish')).toHaveValue('');
   await page.goto('/#/settings');
   await expect(
     prompts.getByLabel('Recipe generation system prompt'),

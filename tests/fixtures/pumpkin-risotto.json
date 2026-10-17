@@ -1,0 +1,111 @@
+{
+  "id": "veggie-pumpkin-risotto",
+  "name": "Veggie Kürbisrisotto",
+  "basePortions": 4,
+  "ingredients": [
+    {
+      "id": "pumpkin",
+      "name": "Kürbis, gewürfelt",
+      "quantity": 600,
+      "unit": "g"
+    },
+    {
+      "id": "risotto-rice",
+      "name": "Risottoreis",
+      "quantity": 320,
+      "unit": "g"
+    },
+    {
+      "id": "onion",
+      "name": "Zwiebel, fein gehackt",
+      "quantity": 120,
+      "unit": "g"
+    },
+    {
+      "id": "garlic",
+      "name": "Knoblauch, fein gehackt",
+      "quantity": 8,
+      "unit": "g"
+    },
+    {
+      "id": "vegetable-stock",
+      "name": "Gemüsebrühe",
+      "quantity": 1000,
+      "unit": "ml"
+    },
+    {
+      "id": "white-wine",
+      "name": "Trockener Weißwein",
+      "quantity": 150,
+      "unit": "ml"
+    },
+    { "id": "olive-oil", "name": "Olivenöl", "quantity": 30, "unit": "ml" },
+    { "id": "butter", "name": "Butter", "quantity": 30, "unit": "g" },
+    {
+      "id": "vegetarian-hard-cheese",
+      "name": "Vegetarischer Hartkäse, gerieben",
+      "quantity": 60,
+      "unit": "g"
+    },
+    {
+      "id": "sage",
+      "name": "Salbei, fein gehackt",
+      "quantity": 6,
+      "unit": "g"
+    },
+    { "id": "salt", "name": "Salz", "quantity": 5, "unit": "g" },
+    {
+      "id": "black-pepper",
+      "name": "Schwarzer Pfeffer, gemahlen",
+      "quantity": 1,
+      "unit": "g"
+    }
+  ],
+  "steps": [
+    {
+      "id": "step-1",
+      "instruction": "Gemüsebrühe in einem Topf erhitzen und bei niedriger Hitze warm halten. Kürbis mit der Hälfte des Olivenöls in einer großen Pfanne bei mittlerer Hitze etwa 8 Minuten anbraten, bis er weich und leicht gebräunt ist. Herausnehmen und beiseitestellen.",
+      "allocations": [
+        { "ingredientId": "vegetable-stock", "quantity": 1000, "unit": "ml" },
+        { "ingredientId": "pumpkin", "quantity": 600, "unit": "g" },
+        { "ingredientId": "olive-oil", "quantity": 15, "unit": "ml" }
+      ]
+    },
+    {
+      "id": "step-2",
+      "instruction": "Das übrige Olivenöl in der Pfanne erhitzen. Zwiebel darin etwa 4 Minuten glasig dünsten, Knoblauch und Salbei zugeben und kurz mitdünsten. Reis einrühren und 1–2 Minuten unter Rühren anrösten.",
+      "allocations": [
+        { "ingredientId": "olive-oil", "quantity": 15, "unit": "ml" },
+        { "ingredientId": "onion", "quantity": 120, "unit": "g" },
+        { "ingredientId": "garlic", "quantity": 8, "unit": "g" },
+        { "ingredientId": "sage", "quantity": 6, "unit": "g" },
+        { "ingredientId": "risotto-rice", "quantity": 320, "unit": "g" }
+      ]
+    },
+    {
+      "id": "step-3",
+      "instruction": "Weißwein zugießen und unter Rühren einkochen lassen. Dann die warme Brühe schöpflöffelweise zugeben und regelmäßig rühren. Erst die nächste Portion hinzufügen, wenn die Flüssigkeit weitgehend aufgenommen ist. Nach etwa 18–20 Minuten sollte der Reis cremig und bissfest sein.",
+      "allocations": [
+        { "ingredientId": "white-wine", "quantity": 150, "unit": "ml" }
+      ]
+    },
+    {
+      "id": "step-4",
+      "instruction": "Den angebratenen Kürbis unterheben und 2–3 Minuten erwärmen. Pfanne vom Herd nehmen, Butter und geriebenen Hartkäse einrühren. Mit Salz und Pfeffer abschmecken und sofort servieren.",
+      "allocations": [
+        { "ingredientId": "pumpkin", "quantity": 0, "unit": "g" },
+        { "ingredientId": "butter", "quantity": 30, "unit": "g" },
+        {
+          "ingredientId": "vegetarian-hard-cheese",
+          "quantity": 60,
+          "unit": "g"
+        },
+        { "ingredientId": "salt", "quantity": 5, "unit": "g" },
+        { "ingredientId": "black-pepper", "quantity": 1, "unit": "g" }
+      ]
+    }
+  ],
+  "difficulty": "medium",
+  "activeMinutes": 20,
+  "totalMinutes": 40
+}
