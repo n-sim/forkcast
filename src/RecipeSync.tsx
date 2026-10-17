@@ -176,7 +176,7 @@ export function RecipeSync({
   }
   return (
     <section className="panel account-form" aria-labelledby="data-sync-heading">
-      <h3 id="data-sync-heading">Data synchronization</h3>
+      <h2 id="data-sync-heading">Data synchronization</h2>
       <p>
         Share your recipe collection, cover photos, and retained nutrition with
         your household, including the shared meal plan and shopping list. Your
