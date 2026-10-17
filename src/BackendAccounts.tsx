@@ -91,7 +91,7 @@ function HouseholdAccounts({ config }: { config: BackendConfig }) {
   }
 
   return (
-    <section className="panel account-form">
+    <section className="account-form">
       <h3>Household accounts</h3>
       {error && (
         <p role="alert" className="error-banner">
@@ -434,9 +434,12 @@ export function BackendAccounts({
   }
 
   return (
-    <section aria-labelledby="backend-accounts-heading">
+    <section
+      className="panel account-form"
+      aria-labelledby="backend-accounts-heading"
+    >
       <h2 id="backend-accounts-heading">Backend &amp; accounts</h2>
-      <section className="panel">
+      <section>
         <h3>Standalone records stay on this device</h3>
         <p>
           Connecting an account keeps your local records. Enable recipe
@@ -454,7 +457,7 @@ export function BackendAccounts({
       )}
       {!connection.config ? (
         <form
-          className="panel account-form"
+          className="account-form"
           onSubmit={(event) => {
             event.preventDefault();
             void run(() => connection.connect(url));
@@ -475,7 +478,7 @@ export function BackendAccounts({
           </button>
         </form>
       ) : (
-        <section className="panel account-form">
+        <section className="account-form">
           <p>Backend: {connection.config.url}</p>
           {connection.checking ? (
             <p role="status">Checking connection…</p>
