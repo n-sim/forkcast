@@ -4,7 +4,9 @@ on: [push, pull_request]
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # The desktop app is tested through its packaged window (WebView2), so the
+    # whole suite runs on Windows.
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,13 +17,16 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
           components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install chromium
       - run: npm run check:format
       - run: npm run check:rust
+      - run: cargo test --workspace
+      - run: npm run test:prepare
       - run: npm test
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: browser-test-results
+          name: test-results
           path: test-results/

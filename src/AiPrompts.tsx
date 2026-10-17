@@ -34,7 +34,7 @@ export function AiPrompts({ enabled }: { enabled: boolean }) {
     try {
       await saveRecipePrompt(prompt);
       setMessage(
-        'Saved. Future recipe requests will use these defaults. They belong to your personal account and never leave it.',
+        'Saved on this device. Future recipe requests will use these defaults.',
       );
     } catch {
       setError(

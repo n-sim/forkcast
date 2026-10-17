@@ -1,44 +1,49 @@
 # Forkcast
 
-The target architecture is now an installed desktop/Android app with an embedded Rust
-application core and SQLite, plus an optional self-hosted household server using the same
-core. Installed apps keep local reads and writes when connected and synchronize after
-outages; browser use requires the server. Integrated ChatGPT setup will replace the
-separate companion and manual SSH credential transfer. See [the product specification](https://github.com/n-sim/forkcast/issues/1)
-and [ADR 0015](docs/adr/0015-embed-a-shared-rust-core-and-synchronize.md).
+A recipe collection with household cooking plans and shopping, resumable guided cooking, and a
+personal food log. Create recipes, plan cooking, and record intake without an account, a server,
+or an AI connection. The interface is English with metric defaults.
 
-The shared Rust core now exists in `crates/core` and the backend hosts it as a thin HTTP
-adapter ([interface](docs/core-interface.md)). The browser app has not moved onto it yet:
-the instructions below still describe the browser's local store and the separate companion,
-retained while the rest of the migration is delivered.
+Forkcast is an **installed app** (desktop today, Android in preparation) built from one React
+frontend and one Rust application core with SQLite. Households that want to share recipes, the
+meal plan, and the shopping list add an optional **household server** that hosts the same core.
+The installed app always reads and writes its own embedded core, so cooking, planning, shopping
+checklists, and food logging keep working through server outages, expired sessions, and being
+offline; pending changes are stored durably and deliver when the server returns. A **browser**
+is an online client of the household server, with no offline mode and no database of its own.
+See [ADR 0015](docs/adr/0015-embed-a-shared-rust-core-and-synchronize.md) and
+[the product specification](https://github.com/n-sim/forkcast/issues/1).
 
-A local-first recipe collection with household cooking plans and shopping, resumable guided cooking, and a personal food
-log. Create recipes, plan cooking, and record intake without an account, application backend, or
-AI connection. The interface is English with metric defaults.
+| I want to…                                                              | Read                                                 |
+| ----------------------------------------------------------------------- | ---------------------------------------------------- |
+| install and build the desktop app, understand where data lives, signing | [docs/desktop.md](docs/desktop.md)                   |
+| run a household server (Docker, HTTPS, upgrades)                        | [docs/server.md](docs/server.md)                     |
+| move data from the old browser version                                  | [docs/browser-transfer.md](docs/browser-transfer.md) |
+| build for Android and see its release gates                             | [docs/android.md](docs/android.md)                   |
+| use the core's operations, errors, and change notifications             | [docs/core-interface.md](docs/core-interface.md)     |
 
 ## Run locally
 
-Install Node.js 20.19+ or 22.12+ and a current stable Rust toolchain, then:
+Install Node.js 20.19+ or 22.12+ and a current stable Rust toolchain (with the MSVC build tools on
+Windows), then:
 
 ```sh
 rustup target add wasm32-unknown-unknown
 npm ci
-npm run dev
+npm run desktop:dev      # the app window with a Vite dev server
+npm run desktop:build    # the installer (see docs/desktop.md)
 ```
 
-Open the local URL printed by Vite. `wasm-pack` is installed as a project development
-dependency; the first build also downloads the matching `wasm-bindgen` tool.
-
-For a production build:
+`wasm-pack` is installed as a project development dependency; the first build also downloads the
+matching `wasm-bindgen` tool. To try the browser experience against a local server:
 
 ```sh
 npm run build
-npm run preview
+FORKCAST_STATIC_DIR=dist npm run backend:dev    # then open http://127.0.0.1:8787
 ```
 
-Deploy `dist/` to a static host over HTTPS (or serve it on localhost). Standalone use
-needs no application server. Hash URLs let recipe links reopen on static hosts
-without route rewrites. Keep the same origin to retain access to this device's data.
+The frontend has no service worker and no browser storage of its own. Packaged assets change only
+with application releases.
 
 ## Optional local ChatGPT companion
 
@@ -55,9 +60,8 @@ backend, SQLite database, backend account, or API key is needed.
 
 Open **Settings → ChatGPT**, enter `http://127.0.0.1:8788`, and choose
 **Connect companion**, then **Continue with ChatGPT**. Complete authorization in
-the new browser window and return to Settings to see the connected account.
-Allow popups and local network access for your Forkcast frontend if the browser
-requests them. The companion runs on the same device as that browser.
+your own browser, which Forkcast opens for you, and return to Settings to see the connected
+account. The companion runs on the same device as the app.
 
 The native listener is started before sign-in and receives the callback at
 `http://127.0.0.1:8788/auth/callback`. It follows OpenAI's
@@ -123,151 +127,60 @@ alone accept `FORKCAST_AI_TEST_ISSUER` for an HTTP `127.0.0.1` authorization/inf
 with an explicitly isolated credential directory; stored credentials cannot be
 reused with another issuer.
 
-## Optional self-hosted backend and accounts
+## Household server and synchronization
 
-In a separate terminal, run:
+The household server hosts the same Rust core as the app, with HTTP, first-administrator setup,
+and account administration (`npm run backend:dev`, or the Docker setup in
+[docs/server.md](docs/server.md)). One instance has one household. An empty instance offers **Set
+up your household**: a household name, and the administrator's username and password. Setup is
+atomic: concurrent requests cannot create a second administrator or household. The administrator
+creates member accounts under **Settings → Household accounts** and shares credentials directly;
+no email or external identity provider is involved. Usernames use 3–32 ASCII letters, numbers,
+dots, underscores, or hyphens (case insensitive); passwords use 12–128 characters. Disabling a
+member or resetting their password ends all of their sessions. Passwords use salted Argon2id
+hashes, the database stores only hashes of random bearer tokens, sessions last 30 days, and five
+failed sign-ins for a username block further attempts for a minute (surviving restarts).
 
-```sh
-npm run backend:dev
-```
+**Joining from the app.** In **Settings → Backend & accounts**, enter the server's address, then
+set up or sign in. **Enable data synchronization** opens a review before anything is published or
+replaced:
 
-The Rust backend listens at `http://127.0.0.1:8787` and creates `forkcast.sqlite3`
-in the working directory. SQLite is bundled; no database server is needed. Use
-**Settings** at the bottom of the sidebar, then use its **Backend & accounts** section
-to enter that URL and choose **Connect backend**.
-An empty instance offers **Set up your household**: enter a household name, username,
-and password to create its administrator. Each instance has one household. Setup
-is atomic: concurrent requests cannot create another administrator or household.
-Complete initial setup before making a new instance available to others.
+- choose which local recipes to contribute (recipes whose IDs the household already has join as
+  competing alternatives and never overwrite each other; recipes you leave out stay on the device,
+  hidden and unpublished);
+- select planned cookings to add (possible duplicates are flagged) and keep the household shopping
+  list or replace it with the device's;
+- optionally move this device's ratings, food log, cooking sessions, and AI settings to the
+  signed-in account — personal records never become household records.
 
-The administrator creates local member accounts with **Create household account**
-and shares their credentials and backend URL directly. No email or external identity
-provider is involved. Usernames use 3–32 ASCII letters, numbers, dots, underscores,
-or hyphens and are case insensitive; passwords use 12–128 characters. The administrator
-can disable or re-enable members and reset their passwords. Disabling or resetting
-ends all sessions for that member. This interface cannot disable or reset the
-instance administrator.
+**Continue with household data** replaces the device's meal plan and shopping list with the
+household's (the explanation says so) and publishes nothing; **Cancel** changes neither side.
 
-Connection and authenticated account state appear in the top bar and are rechecked
-every 30 seconds, when the application regains focus, and when connectivity changes. Sessions survive
-browser and backend restarts, expire after 30 days, and are revoked by **Sign out**.
-Passwords use salted Argon2id hashes; SQLite stores only hashes of random bearer
-session tokens. The browser stores the connection URL and bearer token in its local
-storage, never the password. Five failed sign-ins for a username temporarily block
-further attempts for one minute; this survives backend restarts. API responses are
-marked `no-store` and are not added to the offline cache.
+**Afterwards.** The app keeps reading and writing its embedded core. Every change commits together
+with its pending synchronization work, and delivery retries after restart, on focus or resume, on
+reconnect, and with **Sync now**; Settings shows pending work, errors, and completion. Independent
+or identical edits combine, including different fields of the same planned cooking or shopping
+item. Competing changes to one field, deletion versus editing, regeneration alternatives, and
+competing recipe revisions are kept for explicit resolution (**Review planning conflicts**,
+**Review recipe conflicts**); a choice made against alternatives that have since changed is
+refused. Saving from an older view of the plan never overwrites newer changes.
 
-Connecting an account alone leaves standalone records on this device. After signing
-in, choose **Enable data synchronization** in Settings to share existing and future
-recipes, cover photos, ingredients, step allocations, base yield, difficulty, labels,
-times, and current/retained nutrition versions with the household. The first enable
-also adopts this device's standalone ratings into the signed-in account. Ratings
-remain personal: switching accounts displays that account's ratings, and another
-device signed into the same account receives them. Removing a photo or rating also
-synchronizes. The household meal plan and single active shopping list also synchronize,
-with equal editing rights for administrators and members. Food logs and cooking sessions
-retain their existing device-local personal identity.
+**Accounts.** **Sign out** pauses synchronization and hides that account's private records;
+household records stay usable and the account's pending changes stay with it. Another account of
+the same household gets its own private records on the same device. **Disconnect backend** keeps
+local records and the household link; rejoining the same household resumes. A different household
+needs a separate local profile. Server session tokens live in protected storage (Windows DPAPI),
+never in the synchronized data.
 
-Devices with existing meal plans or shopping lists receive **Review device planning
-data** before adopting shared planning, including devices already synchronizing
-recipes. Select planned cookings to add; possible duplicates in the household plan are
-highlighted. Keep the household shopping list or replace it with the device's list.
-**Continue with household data** discards the device's local plan and shopping list.
-**Cancel** leaves both sides untouched and keeps the review available to reopen.
-Devices without existing planning data adopt the shared household data directly.
+**Releases.** The app and server declare a synchronization protocol version; a mismatch is shown
+in Settings and every pending change is kept.
 
-Planned cookings can be added, edited, or removed by any member. Shopping quantities,
-manual items, and removals are shared. Independent or identical changes
-combine automatically, including edits to different fields of the same entry. Competing
-changes to one field, or deletion versus editing, retain alternatives for explicit
-resolution through **Review planning conflicts**. Unsaved quantity drafts and open
-planning forms retain their starting version while incoming changes appear.
-Regeneration replaces generated shopping requirements; competing edits to those
-requirements require resolution, while independent manual groceries combine and
-survive. There is one active shopping list and no shopping-list history.
-
-Local reads and saves continue during backend outages and offline reopening. Recipe,
-photo, rating, meal-plan, and shopping-list changes are saved durably before
-synchronization and survive reloads.
-Synchronization retries every five seconds, on focus, and when connectivity returns;
-**Sync now** in Settings retries immediately. Settings shows pending work, connection
-errors, and completion. Signing out pauses synchronization and hides account ratings;
-pending personal changes retain their original account owner until that account signs
-in again. **Disconnect backend** forgets the connection and keeps local work. When a
-backend is unavailable, an existing server session expires normally; use **Sign out**
-while connected to revoke it immediately.
-
-Each browser profile links its collection to one backend household. Another backend
-or a replacement household needs a separate browser profile, preventing pending work
-from being uploaded to an unrelated collection. Reconnecting to the original household
-resumes synchronization without importing standalone ratings again.
-
-Competing recipe edits retain both revisions and display an unresolved-edit notice.
-Only a direct successor advances the current shared recipe; another branch never
-silently replaces it. Choose **Review recipe conflicts** in the notice to inspect
-competing contents, photos, and nutrition, then **Make current** on the alternative
-your household wants to use. Choosing requires a connection to the backend. If the
-alternatives change during review, review the latest edits and choose again. The
-choice synchronizes across connected devices. Resolved alternatives leave the review
-view; ordinary recipe views always show current contents, without a history browser.
-Retained nutrition identities are immutable, so old food-log entries keep their
-original quantities and nutrition through synchronization and conflict resolution.
-
-For a release binary, run `npm run backend:build`, then run
-`target/release/forkcast-backend` (`.exe` on Windows). Configuration uses environment
-variables:
-
-| Variable                   | Default                                       | Purpose                                                 |
-| -------------------------- | --------------------------------------------- | ------------------------------------------------------- |
-| `FORKCAST_BIND`            | `127.0.0.1:8787`                              | Listening address and port                              |
-| `FORKCAST_DATABASE`        | `forkcast.sqlite3`                            | Persistent SQLite file; its parent directory must exist |
-| `FORKCAST_ALLOWED_ORIGINS` | `http://127.0.0.1:5173,http://127.0.0.1:4173` | Comma-separated frontend origins allowed by CORS        |
-
-For remote access, put the backend behind an HTTPS reverse proxy and set the allowed
-origin to the frontend's exact origin (scheme, hostname, and port). The frontend
-accepts HTTPS backend URLs and HTTP on localhost only. The API uses `/api/` paths;
-a proxy can expose it under a URL prefix if it strips that prefix before forwarding.
-Keep the SQLite file on persistent storage and restrict filesystem access to the
-backend service account.
-
-The authenticated session supplies the account and household identities. Shared
-records must authorize their stored household owner; personal records must authorize
-their stored account owner, including when the caller is the administrator. The
-Rust `Authenticated::require` boundary implements both scopes. The initial API proves
-them through `GET /api/households/{id}` and `GET /api/accounts/{id}`; the latter permits
-only the account itself. Separate administrator-only `GET/POST /api/accounts` and
-`PATCH /api/accounts/{id}` operations manage safe account metadata and credentials,
-without granting access to another person's records. Synchronization
-endpoints apply these same owner checks. Client-supplied roles or household
-identities are not accepted when creating accounts.
-
-The recipe synchronization API exposes household-scoped
-`GET /api/households/{id}/recipes` and
-`POST /api/households/{id}/recipe-revisions`. Revisions carry stable identities,
-their parent, validated recipe contents, the shared cover photo, and retained nutrition
-versions. Retrying an accepted revision is idempotent; reusing an identity with different
-contents is rejected. The current-recipe pointers and retained revisions are read from
-one SQLite snapshot. Account-scoped `GET/POST /api/accounts/{id}/recipe-ratings`
-never returns another person's ratings, including to an administrator. Rating removals
-and retried mutations retain identities so replay cannot resurrect an older rating.
-Recipe validation and nutrition calculations use the same Rust domain crate as the
-browser. SQLite transactions retain shared revisions, nutrition, and personal ratings
-across backend restarts. API responses and photo contents are never added to the
-service-worker cache; synchronized data is read from IndexedDB when offline.
-
-Household planning uses authenticated `GET/POST /api/households/{id}/planning`
-and `POST /api/households/{id}/planning/resolve`. Changes carry immutable mutation
-identities, a known base revision or preceding mutation, and the contents seen
-when the edit began. These expected contents keep an unrelated queued edit from
-republishing fields previously merged into the device's view. Retries are idempotent;
-field merging and validation use the shared Rust domain crate in the browser and
-backend. Resolution checks the reviewed alternatives and rejects stale choices.
-SQLite retains the synchronization bases and unresolved alternatives needed to
-reconcile offline work; these do not expose a shopping-list history.
+Configuration, HTTPS, reverse proxies, and upgrades are in [docs/server.md](docs/server.md). The
+authorization model and HTTP/native operations are in [docs/core-interface.md](docs/core-interface.md).
 
 ## Data and offline use
 
-Recipes are stored in this browser's IndexedDB. Each recipe, ingredient, and cooking
+Recipes are stored by the application core in SQLite on this device. Each recipe, ingredient, and cooking
 step has a stable identity. Saving an edit updates that recipe after the database
 transaction completes. Active time means dedicated work or attention; total time
 means elapsed preparation time until the dish is ready. Difficulty and times may be
@@ -402,8 +315,8 @@ refresh the displayed recipe information. Times left blank are identified as
 unspecified. Dates and optional times keep their entered local calendar values.
 
 Plans belong to the persistent local person, even when their portions feed other
-household members. They save to IndexedDB, survive reopening offline, and remain
-independent of backend account connections until record synchronization is added.
+household members. They save to the core, survive reopening offline, and remain
+shared with the household once the device has joined one.
 Scheduling creates no food-log entries, consumption times, or portion stock.
 Cards show a per-portion recipe nutrition brief when at least one value is known,
 otherwise **Recipe nutrition not available**. Daily intake totals remain in **Food log**.
@@ -473,46 +386,38 @@ Planned cookings, cooking sessions, and food-log entries are separate personal r
 belonging to that local identity; upgrading storage preserves the identity,
 recipes, cover photos, ratings, plans, shopping lists, cooking sessions, and existing food-log entries.
 
-The production build caches the application and WebAssembly assets using a service
-worker. After the first online visit and cache installation, it can reopen offline.
-The development server does not install an offline cache. Manual recipe and
-food-log actions need no AI provider or external food service.
+Manual recipe and food-log actions need no AI provider or external food service.
 
-Browser data belongs to the browser profile and origin. Clearing site data removes
-recipes, photos, ratings, plans, shopping lists, cooking sessions, and the food log; private browsing may discard them when the session ends. Cross-device
-synchronization requires the optional backend; backups are subsequent work.
+Data belongs to the installed app's data folder (see [docs/desktop.md](docs/desktop.md)). Deleting
+that folder removes recipes, photos, ratings, plans, shopping lists, cooking sessions, and the food
+log; backups beyond the household server's copy are later work. Older browser data moves with the
+explicit [browser transfer](docs/browser-transfer.md).
 
 ## Development and verification
 
 ```sh
-npx playwright install chromium
-npm run wasm:build
+npm run test:prepare      # frontend, desktop app, server, companion
 npm run typecheck
 npm run check:rust
-npm test
+npm test                  # installed-app (desktop, tablet) and browser journeys
+cargo test --workspace    # core, sync engine, server (real SQLite and HTTP)
 ```
 
-The Playwright suite builds and serves the production application, including the
-actual Rust/WebAssembly module and offline cache. It exercises visible workflows
-with real IndexedDB in isolated browser contexts at desktop and tablet sizes.
-Account workflows start a real Rust backend with a fresh temporary SQLite database
-per test and clean up the process and files afterward. They cover setup, separate
-devices, administration, reload/restart, invalid credentials, and preservation of
-standalone records while disconnected or offline. Synchronization workflows cover
-shared photos and metadata, private ratings across devices and account switches,
-retained food-log nutrition, backend outages, durable pending changes, removals,
-and competing edits retained through backend restarts. Focused HTTP tests cover ownership,
-unauthorized requests, session revocation, setup races, and sign-in throttling. No
-external provider credentials are needed. Companion workflows use the real native
-process and protected runtime persistence with a deterministic local OAuth/JWKS
-provider fixture, plus streamed inference fixtures for generation, prompt application,
-validation, failures, and retry. Narrow connector checks cover callback validation,
-execution access controls, and credential secrecy; live ChatGPT sign-in and generation
-are manual checks.
+The Playwright suite drives the **packaged desktop app**: it launches the real executable with an
+isolated data folder and WebView2 profile, attaches over the DevTools protocol, and exercises real
+SQLite through the real native bridge. A restart is a real process restart. Synchronization
+journeys run two app processes against a real household server. Browser journeys run a real browser
+against a real server that serves the built frontend (server downtime, expired logins, failed
+saves, cross-account denial, and concurrent installed/browser editing). Rust integration tests
+cover the same behavior without a UI: workflows and rollback against real SQLite, versioned
+migrations from an unversioned server database, the browser-profile import, and two embedded cores
+synchronizing with a real server over HTTP. No external provider credentials are needed; companion
+workflows use the real native process with a deterministic local OAuth/JWKS provider fixture, and
+live ChatGPT sign-in and generation are manual checks.
 To run one workflow:
 
 ```sh
-npm test -- tests/recipes.spec.ts --project=desktop --grep "create a recipe"
+npx playwright test tests/recipes.spec.ts --project=desktop --grep "create a recipe"
 ```
 
 `npm run typecheck` checks application, build configuration, and browser tests. Run
@@ -521,13 +426,13 @@ Rust changes need a new WebAssembly build; restart `npm run dev` or build it aga
 
 ## Layout
 
-- `src/`: React screens, typed WebAssembly boundary, and local recipe storage.
-- `crates/recipe-domain/`: Rust recipe types, normalization, validation, scaling, conversions, shopping aggregation, and step timers, also
-  usable by native Rust code. Generated WebAssembly is not committed.
-- `crates/backend/`: optional Rust HTTP service, SQLite accounts, recipe synchronization, authentication, and ownership boundaries.
-- `crates/ai-companion/`: optional native ChatGPT authorization, protected credentials, model discovery, and reusable AI execution; independent of synchronization.
-- `tests/`: browser workflow specifications, the confirmed main testing seam.
-- `docs/adr/` and `GLOSSARY.md`: accepted decisions and domain vocabulary.
+- `src/`: React screens, the typed boundary to the core (`core.ts`), and presentation-only previews.
+- `crates/core/`: the application core: workflows, validation, SQLite and migrations, synchronization, browser-transfer import.
+- `crates/recipe-domain/`: Rust domain rules (recipes, scaling, shopping, merge), also compiled to WebAssembly for previews.
+- `crates/desktop/`: the Tauri desktop host; `crates/secure-store/`: Android Keystore plugin.
+- `crates/backend/`: the household server's HTTP adapter over the core.
+- `crates/ai-companion/`: optional native ChatGPT authorization and execution, until the integrated flow lands.
+- `tests/`: installed-app and browser journeys; `docs/`: guides, ADRs; `GLOSSARY.md`: domain vocabulary.
 
 The application implements standalone recipes ([issue #2](https://github.com/n-sim/forkcast/issues/2))
 and recipe cover photos and personal ratings ([issue #3](https://github.com/n-sim/forkcast/issues/3)),

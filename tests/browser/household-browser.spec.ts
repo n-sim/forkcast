@@ -1,3 +1,5 @@
+import { launchApp } from '../app-fixture';
+import { connect } from '../household-planning-fixture';
 import {
   PASSWORD,
   createMember,
@@ -93,20 +95,20 @@ test('a save that did not reach the server is shown as failed, never as saved', 
   await expect(page.getByRole('link', { name: /Unsent pasta/ })).toHaveCount(0);
 });
 
-test('an unreachable server is explained instead of showing stale data', async ({
+test('a disconnected browser shows failures instead of stale or invented data', async ({
   page,
   backend,
 }) => {
   await setUpHousehold(page, backend.url);
   await createRecipe(page, 'Cached? No');
   await backend.stop();
-  await page.reload();
-  await expect(
-    page.getByRole('heading', { name: 'Forkcast can’t reach its server' }),
-  ).toBeVisible();
-  await expect(page.getByText('Cached? No')).toHaveCount(0);
+  // Moving around the open page cannot reach the server: nothing is
+  // fabricated from a local copy, and the failure is shown.
+  await page.goto('#/food-log');
+  await expect(page.getByRole('alert')).toBeVisible();
   await backend.restart();
-  await page.getByRole('button', { name: 'Try again' }).click();
+  await page.reload();
+  await page.goto('#/');
   await expect(page.getByRole('link', { name: /Cached\? No/ })).toBeVisible();
 });
 
@@ -172,4 +174,55 @@ test('the old standalone address offers the data transfer and a server sign-in',
   // With nothing stored, the exporter says so and changes nothing.
   await page.getByRole('button', { name: 'Create transfer file' }).click();
   await expect(page.getByRole('alert')).toContainText('no Forkcast data');
+});
+
+test('edits made in the browser and in an installed app while it was signed out meet as competing alternatives', async ({
+  page,
+  backend,
+}) => {
+  await setUpHousehold(page, backend.url);
+  await createRecipe(page, 'Soup');
+  const app = await launchApp();
+  try {
+    const device = app.page;
+    await connect(device, backend.url, false, 'admin', false);
+    await device.goto('/#/');
+    await expect(device.getByRole('link', { name: /Soup/ })).toBeVisible();
+
+    async function rename(target: typeof page, name: string) {
+      await target.goto('#/');
+      await target.getByRole('link', { name: /Soup/ }).first().click();
+      await target
+        .getByRole('link', { name: 'Edit recipe', exact: true })
+        .click();
+      await target.getByLabel('Recipe name').fill(name);
+      await target
+        .getByRole('button', { name: 'Save recipe', exact: true })
+        .click();
+      await expect(
+        target.getByRole('heading', { name, exact: true }),
+      ).toBeVisible();
+    }
+    // The installed app works on its own copy while signed out.
+    await device.goto('/#/settings');
+    await device.getByRole('button', { name: 'Sign out', exact: true }).click();
+    await rename(device, 'App soup');
+    await rename(page, 'Browser soup');
+
+    await device.goto('/#/settings');
+    await device.getByLabel('Username', { exact: true }).fill('admin');
+    await device.getByLabel('Password', { exact: true }).fill(PASSWORD);
+    await device.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await device.goto('/#/');
+    await expect(
+      device.getByRole('status', { name: 'Recipe edit conflicts' }),
+    ).toContainText('1 unresolved competing edit', { timeout: 30_000 });
+    await page.reload();
+    await page.goto('#/');
+    await expect(
+      page.getByRole('status', { name: 'Recipe edit conflicts' }),
+    ).toContainText('1 unresolved competing edit');
+  } finally {
+    await app.stop();
+  }
 });

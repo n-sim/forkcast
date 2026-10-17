@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Session tokens never travel with backups or device transfers; a restored
+     profile keeps its data and household link and asks to sign in again. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="forkcast_secrets.xml" />
+</full-backup-content>

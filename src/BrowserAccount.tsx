@@ -47,7 +47,9 @@ export function useBrowserSession(enabled: boolean) {
             setState({
               phase: 'signed-out',
               setupRequired: status.setupRequired,
-              message: takeSessionEnded() ? 'Your session ended. Sign in again.' : '',
+              message: takeSessionEnded()
+                ? 'Your session ended. Sign in again.'
+                : '',
             });
           return;
         }

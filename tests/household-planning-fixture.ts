@@ -2,11 +2,14 @@ import type { Page } from './app-fixture';
 import { expect } from './backend-fixture';
 export { test, expect } from './backend-fixture';
 
-export async function connect(
+export const PASSWORD = 'a long local password';
+
+/** Connects to a server and authenticates, stopping before the join review. */
+export async function authenticate(
   page: Page,
   url: string,
-  setup = false,
-  username = 'noah',
+  setup: boolean,
+  username: string,
 ) {
   await page.goto('/#/settings');
   await page.getByLabel('Backend URL').fill(url);
@@ -15,9 +18,7 @@ export async function connect(
     .click();
   if (setup) await page.getByLabel('Household name').fill('Our kitchen');
   await page.getByLabel('Username', { exact: true }).fill(username);
-  await page
-    .getByLabel('Password', { exact: true })
-    .fill('a long local password');
+  await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
   await page
     .getByRole('button', {
       name: setup ? 'Create administrator' : 'Sign in',
@@ -27,7 +28,38 @@ export async function connect(
   await page
     .getByRole('button', { name: 'Enable data synchronization', exact: true })
     .click();
+  await expect(
+    page.getByRole('heading', { name: 'Review before joining' }),
+  ).toBeVisible();
+}
+
+/** Joins a household, contributing everything on this device unless told otherwise. */
+export async function connect(
+  page: Page,
+  url: string,
+  setup = false,
+  username = 'noah',
+  adopt = true,
+) {
+  await authenticate(page, url, setup, username);
+  if (adopt)
+    await page.getByRole('checkbox', { name: /Move this device/ }).check();
+  await page
+    .getByRole('button', { name: 'Join and share selected data', exact: true })
+    .click();
   await synced(page);
+}
+
+export async function createAccount(page: Page, username: string) {
+  await page.goto('/#/settings');
+  await page.getByLabel('New username').fill(username);
+  await page.getByLabel('New password').fill(PASSWORD);
+  await page
+    .getByRole('button', { name: 'Create household account', exact: true })
+    .click();
+  await expect(
+    page.getByRole('status', { name: 'Account administration' }),
+  ).toContainText(`Account created for ${username}`);
 }
 
 export async function synced(page: Page) {

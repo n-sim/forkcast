@@ -7,6 +7,9 @@ export type { Page };
 // A real browser against a real household server, which serves the built
 // frontend. There is no installed app in these journeys unless a test starts one.
 export const test = base.extend<{ backend: Backend }>({
+  baseURL: async ({ backend }, use) => {
+    await use(backend.url);
+  },
   backend: async ({}, use) => {
     const backend = await startBackend();
     try {
