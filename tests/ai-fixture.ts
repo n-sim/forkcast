@@ -246,9 +246,22 @@ export const test = base.extend<{
         const text = JSON.stringify(
           typeof reply === 'function' ? reply(input) : reply,
         );
-        response.write(
-          `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: text })}\r\n\r\n`,
+        const characters = [...text];
+        const middle = Math.floor(characters.length / 2);
+        const delta = Buffer.from(
+          [
+            characters.slice(0, middle).join(''),
+            characters.slice(middle).join(''),
+          ]
+            .map(
+              (part) =>
+                `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: part })}\r\n\r\n`,
+            )
+            .join(''),
         );
+        const split = Math.max(1, delta.indexOf(Buffer.from('🍲')) + 1);
+        response.write(delta.subarray(0, split));
+        response.write(delta.subarray(split));
         if (gate) await gate;
         if (failure === 'interrupted') {
           response.end();
@@ -264,13 +277,15 @@ export const test = base.extend<{
           response.end('data: invalid-json\n\n');
           return;
         }
+        if (failure === 'refusal') {
+          response.write(
+            `data: ${JSON.stringify({ type: 'response.refusal.delta', delta: 'Cannot help.' })}\n\n`,
+          );
+        }
         const completed = Buffer.from(
-          `data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output: [{ type: 'message', content: [failure === 'refusal' ? { type: 'refusal', refusal: 'Cannot help.' } : { type: 'output_text', text }] }] } })}\n\n`,
+          `data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output: failure === 'refusal' ? [{ type: 'message', content: [{ type: 'refusal', refusal: 'Cannot help.' }] }] : [] } })}\n\n`,
         );
-        // Exercise byte/chunk boundaries, including multibyte recipe names.
-        const split = completed.indexOf(Buffer.from('🍲')) + 1;
-        response.write(completed.subarray(0, split));
-        response.end(completed.subarray(split));
+        response.end(completed);
       } else if (url.pathname === '/api/accounts/oauth/revoke') {
         if (mode === 'revocation') response.statusCode = 503;
         response.end();
