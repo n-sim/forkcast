@@ -24,7 +24,8 @@
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
     "server:build": "npm run build && cargo build --release -p forkcast-backend",
-    "test:prepare": "npm run build && cargo build -p forkcast-desktop -p forkcast-backend -p forkcast-ai-companion --features forkcast-desktop/custom-protocol"
+    "test:prepare": "npm run build && cargo build -p forkcast-desktop -p forkcast-backend -p forkcast-ai-companion --features forkcast-desktop/custom-protocol",
+    "android:build": "tauri android build --debug --apk"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",
