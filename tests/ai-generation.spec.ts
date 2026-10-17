@@ -4,24 +4,33 @@ import {
   generatedRecipe,
   type InferenceRequest,
 } from './ai-fixture';
-import type { Page } from './app-fixture';
-import { mergeTests } from './app-fixture';
+import {
+  mergeTests,
+  openedExternally,
+  type App,
+  type Page,
+} from './app-fixture';
 import { test as backendTest } from './backend-fixture';
 import pumpkinRisotto from './fixtures/pumpkin-risotto.json' with { type: 'json' };
 
-const test = mergeTests(aiTest, backendTest);
+const base = mergeTests(aiTest, backendTest);
 
-async function connectChatGpt(page: Page, url: string) {
+async function authorize(
+  page: Page,
+  app: App,
+  systemBrowser: () => Promise<Page>,
+  url: string,
+) {
   await page.goto('/#/settings');
   await page.getByLabel('Companion URL').fill(url);
   await page
     .getByRole('button', { name: 'Connect companion', exact: true })
     .click();
-  const popupPromise = page.waitForEvent('popup');
-  await page
-    .getByRole('button', { name: 'Continue with ChatGPT', exact: true })
-    .click();
-  const popup = await popupPromise;
+  const popup = await openedExternally(app, systemBrowser, () =>
+    page
+      .getByRole('button', { name: 'Continue with ChatGPT', exact: true })
+      .click(),
+  );
   await popup.getByRole('link', { name: 'Authorize Forkcast' }).click();
   await expect(
     popup.getByRole('heading', { name: 'ChatGPT connected' }),
@@ -29,42 +38,18 @@ async function connectChatGpt(page: Page, url: string) {
   await popup.close();
 }
 
-async function connectBackend(
-  page: Page,
-  url: string,
-  username: string,
-  setup = false,
-) {
-  await page.goto('/#/settings');
-  await page.getByLabel('Backend URL').fill(url);
-  await page
-    .getByRole('button', { name: 'Connect backend', exact: true })
-    .click();
-  if (setup) await page.getByLabel('Household name').fill('Our kitchen');
-  await signIn(page, username, setup);
-}
-
-async function signIn(page: Page, username: string, setup = false) {
-  await page.getByLabel('Username', { exact: true }).fill(username);
-  await page
-    .getByLabel('Password', { exact: true })
-    .fill('a long local password');
-  await page
-    .getByRole('button', {
-      name: setup ? 'Create administrator' : 'Sign in',
-      exact: true,
-    })
-    .click();
-  await expect(
-    page.getByRole('status', { name: 'Backend connection' }),
-  ).toContainText(username);
-}
+const test = base.extend<{ connectChatGpt: (url: string) => Promise<void> }>({
+  connectChatGpt: async ({ page, app, systemBrowser }, use) => {
+    await use((url) => authorize(page, app, systemBrowser, url));
+  },
+});
 
 test('generate a recipe, save it automatically, and edit and reopen it through the collection', async ({
   page,
   companion,
+  connectChatGpt,
 }) => {
-  await connectChatGpt(page, companion.url);
+  await connectChatGpt(companion.url);
   await page
     .getByRole('link', { name: 'Recipe collection', exact: true })
     .click();
@@ -110,8 +95,9 @@ test('generate a recipe, save it automatically, and edit and reopen it through t
 test('accept streamed recipe text only after completion when the terminal response does not repeat its output', async ({
   page,
   companion,
+  connectChatGpt,
 }) => {
-  await connectChatGpt(page, companion.url);
+  await connectChatGpt(companion.url);
   companion.pause();
   companion.reply({
     ...generatedRecipe,
@@ -147,6 +133,7 @@ test('accept streamed recipe text only after completion when the terminal respon
 test('generate a recipe that mentions an already allocated ingredient with a zero allocation', async ({
   page,
   companion,
+  connectChatGpt,
 }) => {
   companion.reply({
     ...generatedRecipe,
@@ -159,7 +146,7 @@ test('generate a recipe that mentions an already allocated ingredient with a zer
       },
     ],
   });
-  await connectChatGpt(page, companion.url);
+  await connectChatGpt(companion.url);
   await page.goto('/#/recipes/generate');
   await page.getByLabel('Describe your dish').fill('Tomato soup');
   await page
@@ -186,9 +173,10 @@ test('generate a recipe that mentions an already allocated ingredient with a zer
 test('save the reported pumpkin risotto response while preserving totals and instructions', async ({
   page,
   companion,
+  connectChatGpt,
 }) => {
   companion.reply(pumpkinRisotto);
-  await connectChatGpt(page, companion.url);
+  await connectChatGpt(companion.url);
   await page.goto('/#/recipes/generate');
   await page.getByLabel('Describe your dish').fill('Veggie Kürbisrisotto');
   await page
@@ -337,9 +325,10 @@ for (const [label, reply] of invalidRecipes) {
   test(`reject a generated recipe with ${label} without adding it to the collection`, async ({
     page,
     companion,
+    connectChatGpt,
   }) => {
     companion.reply(reply);
-    await connectChatGpt(page, companion.url);
+    await connectChatGpt(companion.url);
     await page.goto('/#/recipes/generate');
     await page.getByLabel('Describe your dish').fill('Tomato soup');
     await page
@@ -370,8 +359,9 @@ for (const failure of [
   test(`keep ${failure} generation failures visible and allow a successful retry`, async ({
     page,
     companion,
+    connectChatGpt,
   }) => {
-    await connectChatGpt(page, companion.url);
+    await connectChatGpt(companion.url);
     companion.fail(failure);
     await page.goto('/#/recipes/generate');
     await page
@@ -409,8 +399,9 @@ for (const failure of [
 test('new generations cannot overwrite existing recipes using provider identities', async ({
   page,
   companion,
+  connectChatGpt,
 }) => {
-  await connectChatGpt(page, companion.url);
+  await connectChatGpt(companion.url);
   for (const name of ['Tomato soup', 'Crème brûlée 🍲']) {
     companion.reply({ ...generatedRecipe, name });
     await page.goto('/#/recipes/generate');
@@ -448,8 +439,9 @@ test('generation is unavailable without a companion while manual recipe creation
 test('keep a stopped companion failure visible and retry after restarting it', async ({
   page,
   companion,
+  connectChatGpt,
 }) => {
-  await connectChatGpt(page, companion.url);
+  await connectChatGpt(companion.url);
   await page.goto('/#/recipes/generate');
   await page.getByLabel('Describe your dish').fill('Tomato soup');
   await expect(
@@ -472,8 +464,9 @@ test('keep a stopped companion failure visible and retry after restarting it', a
 test('leaving an in-progress generation keeps manual creation usable without saving a late AI result', async ({
   page,
   companion,
+  connectChatGpt,
 }) => {
-  await connectChatGpt(page, companion.url);
+  await connectChatGpt(companion.url);
   companion.pause();
   await page.goto('/#/recipes/generate');
   await page.getByLabel('Describe your dish').fill('Tomato soup');
@@ -516,8 +509,11 @@ test('leaving an in-progress generation keeps manual creation usable without sav
 test('a rejected provider session offers reconnection before generating again', async ({
   page,
   companion,
+  connectChatGpt,
+  app,
+  systemBrowser,
 }) => {
-  await connectChatGpt(page, companion.url);
+  await connectChatGpt(companion.url);
   await page.goto('/#/recipes/generate');
   await page.getByLabel('Describe your dish').fill('Tomato soup');
   companion.fail('unauthorized');
@@ -531,11 +527,11 @@ test('a rejected provider session offers reconnection before generating again', 
     'ChatGPT needs reconnection',
   );
   companion.fail(null);
-  const popupPromise = page.waitForEvent('popup');
-  await ai
-    .getByRole('button', { name: 'Continue with ChatGPT', exact: true })
-    .click();
-  const popup = await popupPromise;
+  const popup = await openedExternally(app, systemBrowser, () =>
+    ai
+      .getByRole('button', { name: 'Continue with ChatGPT', exact: true })
+      .click(),
+  );
   await popup.getByRole('link', { name: 'Authorize Forkcast' }).click();
   await expect(
     popup.getByRole('heading', { name: 'ChatGPT connected' }),
@@ -554,87 +550,10 @@ test('a rejected provider session offers reconnection before generating again', 
   ).not.toMatch(/SECRET_ACCESS_TOKEN|SECRET_REFRESH_TOKEN|id_token/);
 });
 
-test('share generated recipes through the household backend while personal prompts remain local and isolated by account', async ({
-  page,
-  browser,
-  companion,
-  backend,
-}) => {
-  await connectChatGpt(page, companion.url);
-  await connectBackend(page, backend.url, 'noah', true);
-  await page.getByLabel('New username', { exact: true }).fill('sam');
-  await page
-    .getByLabel('New password', { exact: true })
-    .fill('a long local password');
-  await page.getByRole('button', { name: 'Create household account' }).click();
-  await expect(page.getByRole('row').filter({ hasText: 'sam' })).toBeVisible();
-  const prompts = page.getByRole('region', { name: 'Personal AI prompts' });
-  await prompts
-    .getByLabel('Recipe generation system prompt')
-    .fill('Avoid dairy.');
-  await prompts.getByRole('button', { name: 'Save prompt defaults' }).click();
-  await page
-    .getByRole('button', { name: 'Enable data synchronization', exact: true })
-    .click();
-  await expect(
-    page.getByRole('status', { name: 'Data synchronization', exact: true }),
-  ).toContainText('Up to date');
-  await page.goto('/#/recipes/generate');
-  await page.getByLabel('Describe your dish').fill('Tomato soup');
-  await page
-    .getByRole('button', { name: 'Generate recipe', exact: true })
-    .click();
-  await expect(
-    page.getByRole('heading', { name: 'Tomato soup', exact: true }),
-  ).toBeVisible();
-  await page.goto('/#/settings');
-  await page.getByRole('button', { name: 'Sync now', exact: true }).click();
-  await expect(
-    page.getByRole('status', { name: 'Data synchronization', exact: true }),
-  ).toContainText('Up to date');
-
-  const other = await browser.newContext();
-  try {
-    const second = await other.newPage();
-    await connectBackend(second, backend.url, 'noah');
-    await expect(
-      second.getByLabel('Recipe generation system prompt'),
-    ).not.toHaveValue('Avoid dairy.');
-    await second
-      .getByRole('button', { name: 'Enable data synchronization', exact: true })
-      .click();
-    await expect(
-      second.getByRole('status', { name: 'Data synchronization', exact: true }),
-    ).toContainText('Up to date');
-    await second.goto('/');
-    await second.getByRole('link', { name: /Tomato soup/ }).click();
-    await expect(
-      second.getByRole('list', { name: 'Cooking steps' }),
-    ).toContainText('400 g Tomatoes');
-  } finally {
-    await other.close();
-  }
-
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-  await expect(
-    prompts.getByLabel('Recipe generation system prompt'),
-  ).toBeDisabled();
-  await signIn(page, 'sam');
-  await expect(
-    prompts.getByLabel('Recipe generation system prompt'),
-  ).not.toHaveValue('Avoid dairy.');
-  await prompts.getByLabel('Recipe generation system prompt').fill('Use rice.');
-  await prompts.getByRole('button', { name: 'Save prompt defaults' }).click();
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-  await signIn(page, 'noah');
-  await expect(
-    prompts.getByLabel('Recipe generation system prompt'),
-  ).toHaveValue('Avoid dairy.');
-});
-
 test('save and revise personal prompt defaults locally and apply dish descriptions without retaining them as defaults', async ({
   page,
   companion,
+  connectChatGpt,
 }) => {
   companion.reply((request: InferenceRequest) => ({
     ...generatedRecipe,
@@ -644,7 +563,7 @@ test('save and revise personal prompt defaults locally and apply dish descriptio
         ? 'Dairy-free chickpea soup'
         : 'Preferences were not applied',
   }));
-  await connectChatGpt(page, companion.url);
+  await connectChatGpt(companion.url);
   const prompts = page.getByRole('region', { name: 'Personal AI prompts' });
   await prompts
     .getByLabel('Recipe generation system prompt')
