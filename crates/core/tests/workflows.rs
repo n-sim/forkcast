@@ -1,0 +1,613 @@
+//! Representative workflows through the public interface, against real SQLite.
+
+mod common;
+
+use common::{TempDatabase, cover_photo, risotto};
+use forkcast_core::{
+    CookingOutcome, Core, Credentials, CurrentChoice, ErrorKind, JoinServer, LogManualFood,
+    LogRecipeFood, Operation, Principal, SaveRecipe, SetCoverPhoto, SetupServer, ShoppingItemKind,
+    SourceStatus, StartCooking, Topic,
+};
+use forkcast_recipe_domain::{planning::PlannedCooking, shopping::ShoppingItem};
+use serde_json::{Value, json};
+use std::time::Duration;
+
+fn save(core: &Core, who: &Principal, recipe: Value) -> forkcast_core::SavedRecipe {
+    core.save_recipe(
+        who,
+        SaveRecipe {
+            recipe,
+            base_revision_id: None,
+        },
+    )
+    .expect("save recipe")
+}
+
+fn cooking(id: &str, date: &str, portions: f64) -> PlannedCooking {
+    serde_json::from_value(json!({
+        "id": id, "recipeId": "veggie-pumpkin-risotto", "cookingDate": date,
+        "portions": portions, "cookingTime": "18:30",
+    }))
+    .unwrap()
+}
+
+fn manual_food(id: &str) -> LogManualFood {
+    serde_json::from_value(json!({
+        "id": id, "description": "Soup", "consumedAt": "2030-05-06T12:00",
+        "nutrition": {"calories": 100.0, "protein": null, "fat": null, "carbohydrates": null},
+    }))
+    .unwrap()
+}
+
+fn join() -> JoinServer {
+    JoinServer {
+        server_url: "https://forkcast.example".into(),
+        remote_household_id: "household-1".into(),
+        remote_account_id: "account-1".into(),
+    }
+}
+
+#[test]
+fn standalone_person_is_created_once_and_survives_restart() {
+    let database = TempDatabase::new();
+    let first = database.open().standalone().unwrap();
+    let again = database.open().standalone().unwrap();
+    assert_eq!(first.person_id(), again.person_id());
+    assert_eq!(first.household_id(), again.household_id());
+}
+
+#[test]
+fn a_server_database_is_not_a_standalone_profile() {
+    let database = TempDatabase::new();
+    let core = database.open();
+    core.setup_server(SetupServer {
+        household_name: "Home".into(),
+        username: "admin".into(),
+        password: "correct horse battery".into(),
+    })
+    .unwrap();
+    assert_eq!(core.standalone().err().unwrap().kind, ErrorKind::Conflict);
+}
+
+#[test]
+fn recipes_keep_versions_photos_and_ratings_across_restart() {
+    let database = TempDatabase::new();
+    let core = database.open();
+    let me = core.standalone().unwrap();
+
+    let first = save(&core, &me, risotto());
+    let version = first.current.recipe["nutritionVersionId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    // Unchanged nutrition keeps its retained version; a change mints a new one.
+    let renamed = {
+        let mut recipe = risotto();
+        recipe["name"] = json!("Pumpkin risotto");
+        save(&core, &me, recipe)
+    };
+    assert_eq!(
+        renamed.current.recipe["nutritionVersionId"],
+        version.as_str()
+    );
+    let richer = {
+        let mut recipe = risotto();
+        recipe["name"] = json!("Pumpkin risotto");
+        recipe["nutrition"]["calories"] = json!(2400.0);
+        save(&core, &me, recipe)
+    };
+    let newer = richer.current.recipe["nutritionVersionId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_ne!(newer, version);
+
+    core.set_recipe_cover_photo(
+        &me,
+        SetCoverPhoto {
+            recipe_id: "veggie-pumpkin-risotto".into(),
+            cover_photo: Some(cover_photo()),
+            base_revision_id: None,
+        },
+    )
+    .unwrap();
+    core.rate_recipe(&me, "veggie-pumpkin-risotto", Some(4))
+        .unwrap();
+    assert_eq!(
+        core.rate_recipe(&me, "veggie-pumpkin-risotto", Some(9))
+            .err()
+            .unwrap()
+            .kind,
+        ErrorKind::Invalid
+    );
+    assert_eq!(
+        core.rate_recipe(&me, "unknown", Some(3))
+            .err()
+            .unwrap()
+            .kind,
+        ErrorKind::NotFound
+    );
+
+    drop(core);
+    let core = database.open();
+    let recipes = core.recipes(&me).unwrap();
+    assert_eq!(recipes.len(), 1);
+    assert_eq!(recipes[0].recipe["name"], "Pumpkin risotto");
+    assert_eq!(recipes[0].recipe["nutritionVersionId"], newer.as_str());
+    assert!(recipes[0].cover_photo.is_some());
+    assert_eq!(core.ratings(&me).unwrap()[0].value, Some(4));
+    // Both nutrition versions stay available to food-log entries.
+    let collection = core.recipe_collection(&me).unwrap();
+    let versions: Vec<String> = collection
+        .revisions
+        .iter()
+        .flat_map(|revision| revision["nutritionVersions"].as_array().unwrap().clone())
+        .map(|version| version["id"].as_str().unwrap().to_owned())
+        .collect();
+    assert!(versions.contains(&version));
+    assert!(versions.contains(&newer));
+}
+
+#[test]
+fn an_edit_from_a_stale_revision_is_kept_as_a_competing_alternative() {
+    let database = TempDatabase::new();
+    let core = database.open();
+    let me = core.standalone().unwrap();
+    let base = save(&core, &me, risotto()).saved_revision_id;
+    let mut ours = risotto();
+    ours["name"] = json!("Ours");
+    let current = save(&core, &me, ours).current;
+    assert_eq!(current.unresolved, 0);
+
+    let mut theirs = risotto();
+    theirs["name"] = json!("Theirs");
+    let stale = core
+        .save_recipe(
+            &me,
+            SaveRecipe {
+                recipe: theirs,
+                base_revision_id: Some(base),
+            },
+        )
+        .unwrap();
+    // The competing edit did not replace the current recipe.
+    assert_eq!(stale.current.recipe["name"], "Ours");
+    assert_eq!(stale.current.unresolved, 1);
+
+    let head = serde_json::to_value(&core.recipe_collection(&me).unwrap().current[0]).unwrap();
+    let mut expected: Vec<String> = head["competingRevisionIds"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|id| id.as_str().unwrap().to_owned())
+        .collect();
+    expected.sort();
+    core.choose_current_recipe(
+        &me,
+        "veggie-pumpkin-risotto",
+        CurrentChoice {
+            revision_id: stale.saved_revision_id.clone(),
+            expected_revision_ids: expected,
+        },
+    )
+    .unwrap();
+    let chosen = &core.recipes(&me).unwrap()[0];
+    assert_eq!(chosen.recipe["name"], "Theirs");
+    assert_eq!(chosen.unresolved, 0);
+}
+
+#[test]
+fn planning_shopping_cooking_and_food_log_work_end_to_end() {
+    let database = TempDatabase::new();
+    let core = database.open();
+    let me = core.standalone().unwrap();
+    let saved = save(&core, &me, risotto()).current;
+    let version = saved.recipe["nutritionVersionId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    // Planning needs a household recipe.
+    let mut unknown = cooking("c0", "2030-05-06", 2.0);
+    unknown.recipe_id = "missing".into();
+    assert_eq!(
+        core.plan_cooking(&me, unknown).err().unwrap().kind,
+        ErrorKind::Invalid
+    );
+    core.plan_cooking(&me, cooking("c1", "2030-05-06", 8.0))
+        .unwrap();
+    core.plan_cooking(&me, cooking("c2", "2030-05-07", 4.0))
+        .unwrap();
+    assert_eq!(core.meal_plan(&me).unwrap().len(), 2);
+
+    // Shopping totals come from the shared domain calculation: 12 portions
+    // of a 4-portion recipe needs 3x the 600 g pumpkin, shown as 1.8 kg.
+    let list = core
+        .generate_shopping_list(&me, "2030-05-06", "2030-05-07", None)
+        .unwrap();
+    let items = list.list["items"].as_array().unwrap();
+    let pumpkin = items
+        .iter()
+        .find(|item| item["name"].as_str().unwrap().starts_with("Kürbis"))
+        .unwrap();
+    assert_eq!(pumpkin["quantity"], 1.8);
+    assert_eq!(pumpkin["unit"], "kg");
+    assert_eq!(list.source_status, SourceStatus::Unchanged);
+    let list_id = list.list["id"].as_str().unwrap().to_owned();
+    let item_id = pumpkin["id"].as_str().unwrap().to_owned();
+
+    // A list changed elsewhere is never replaced unseen.
+    assert_eq!(
+        core.generate_shopping_list(&me, "2030-05-06", "2030-05-07", None)
+            .err()
+            .unwrap()
+            .kind,
+        ErrorKind::Conflict
+    );
+    core.check_shopping_item(&me, &list_id, &item_id, true)
+        .unwrap();
+    core.save_shopping_item(
+        &me,
+        &list_id,
+        ShoppingItemKind::Manual,
+        serde_json::from_value::<ShoppingItem>(
+            json!({"id": "m1", "name": "Coffee", "quantity": 1.0, "unit": "piece"}),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    // Changing the plan marks the reviewed list's sources as changed.
+    core.plan_cooking(&me, cooking("c2", "2030-05-07", 6.0))
+        .unwrap();
+    let view = core.shopping_list(&me).unwrap().unwrap();
+    assert_eq!(view.source_status, SourceStatus::Changed);
+    let regenerated = core
+        .generate_shopping_list(&me, "2030-05-06", "2030-05-07", Some(&list_id))
+        .unwrap();
+    assert_eq!(regenerated.list["manualItems"][0]["name"], "Coffee");
+    assert_eq!(regenerated.list["manualItems"][0]["checked"], false);
+    let new_id = regenerated.list["id"].as_str().unwrap().to_owned();
+    let done = core.complete_shopping_list(&me, &new_id).unwrap();
+    assert_eq!(done.list["completed"], true);
+    assert_eq!(
+        core.check_shopping_item(&me, &list_id, &item_id, true)
+            .err()
+            .unwrap()
+            .kind,
+        ErrorKind::Conflict
+    );
+
+    // One unfinished cooking session per person; the person decides.
+    let start = || StartCooking {
+        recipe_id: "veggie-pumpkin-risotto".into(),
+        portions: 6.0,
+        display_units: Some("metric".into()),
+        cancel_session_ids: vec![],
+    };
+    let begun = core.start_cooking(&me, start()).unwrap().session.unwrap();
+    let id = begun["id"].as_str().unwrap().to_owned();
+    let blocked = core.start_cooking(&me, start()).unwrap();
+    assert!(blocked.session.is_none());
+    assert_eq!(blocked.conflicts[0]["id"], id.as_str());
+    assert_eq!(
+        core.end_cooking(&me, &id, CookingOutcome::Finished)
+            .err()
+            .unwrap()
+            .kind,
+        ErrorKind::Invalid,
+        "finishing needs the last step"
+    );
+    let timer = json!({"durationMs": 60000.0, "remainingMs": 60000.0, "endsAt": null});
+    core.save_cooking_progress(&me, &id, 3, json!({"step-3": timer}))
+        .unwrap();
+    assert_eq!(
+        core.save_cooking_progress(&me, &id, 9, json!({}))
+            .err()
+            .unwrap()
+            .kind,
+        ErrorKind::Invalid
+    );
+
+    // The session resumes after a restart, captured from when it started.
+    drop(core);
+    let core = database.open();
+    let resumed = core.cooking_sessions(&me).unwrap();
+    assert_eq!(resumed[0]["currentStep"], 3);
+    assert_eq!(resumed[0]["timers"]["step-3"]["durationMs"], 60000.0);
+    core.end_cooking(&me, &id, CookingOutcome::Finished)
+        .unwrap();
+    assert!(core.cooking_sessions(&me).unwrap().is_empty());
+
+    // Food log: entries keep the retained nutrition version they referenced.
+    let entry = || LogRecipeFood {
+        id: Some("e1".into()),
+        recipe_id: "veggie-pumpkin-risotto".into(),
+        nutrition_version_id: version.clone(),
+        consumed_at: "2030-05-06T19:00".into(),
+        portions: Some(2.0),
+    };
+    core.log_recipe_food(&me, entry()).unwrap();
+    // A retry of the same entry changes nothing.
+    core.log_recipe_food(&me, entry()).unwrap();
+    core.log_manual_food(
+        &me,
+        serde_json::from_value::<LogManualFood>(json!({
+            "description": "Coffee", "consumedAt": "2030-05-06T08:00",
+            "nutrition": {"calories": 5.0, "protein": null, "fat": null, "carbohydrates": null},
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        core.food_log_date(&me).unwrap().as_deref(),
+        Some("2030-05-06")
+    );
+    let day = serde_json::to_value(core.food_log(&me, "2030-05-06").unwrap()).unwrap();
+    assert_eq!(day["entries"].as_array().unwrap().len(), 2);
+    // 2000 kcal for 4 portions, 2 portions eaten, plus the coffee.
+    assert_eq!(day["totals"]["calories"]["knownValue"], 1005.0);
+    assert_eq!(day["totals"]["protein"]["unknownEntries"], 1);
+    assert_eq!(day["incomplete"], true);
+
+    // The serializable contract reaches the same implementation.
+    let operation = |value: Value| -> Operation { serde_json::from_value(value).unwrap() };
+    let prompt = core
+        .execute(&me, operation(json!({"operation": "aiPreferences"})))
+        .unwrap();
+    assert!(prompt["recipePrompt"].as_str().unwrap().contains("metric"));
+    core.execute(
+        &me,
+        operation(json!({"operation": "setRecipePrompt", "prompt": "Vegan only"})),
+    )
+    .unwrap();
+    let via_operation = core
+        .execute(
+            &me,
+            operation(json!({"operation": "foodLog", "date": "2030-05-06"})),
+        )
+        .unwrap();
+    assert_eq!(via_operation, day);
+    assert_eq!(
+        core.ai_preferences(&me).unwrap().recipe_prompt,
+        "Vegan only"
+    );
+}
+
+#[test]
+fn failed_operations_roll_back_everything_including_pending_sync() {
+    let database = TempDatabase::new();
+    let core = database.open();
+    let me = core.standalone().unwrap();
+    core.join_server(&me, join()).unwrap();
+    save(&core, &me, risotto());
+    let pending = core.sync_state(&me).unwrap().pending.len();
+    assert_eq!(pending, 1);
+
+    // A planning edit naming a missing recipe fails after the document was
+    // loaded; neither the plan nor the outbox may change.
+    let mut missing = cooking("c1", "2030-05-06", 2.0);
+    missing.recipe_id = "missing".into();
+    assert!(core.plan_cooking(&me, missing).is_err());
+    assert!(core.meal_plan(&me).unwrap().is_empty());
+    assert_eq!(core.sync_state(&me).unwrap().pending.len(), pending);
+
+    // A revision that reuses another recipe's nutrition identity is refused
+    // as a whole: no half-created recipe remains.
+    let mut revision = core.recipe_collection(&me).unwrap().revisions[0].clone();
+    revision["id"] = json!("hijack");
+    revision["parentId"] = Value::Null;
+    revision["recipe"]["id"] = json!("another");
+    for version in revision["nutritionVersions"].as_array_mut().unwrap() {
+        version["recipeId"] = json!("another");
+    }
+    let revision = serde_json::from_value(revision).unwrap();
+    assert_eq!(
+        core.ingest_recipe_revision(&me, revision)
+            .err()
+            .unwrap()
+            .kind,
+        ErrorKind::Conflict
+    );
+    assert_eq!(core.recipe_collection(&me).unwrap().current.len(), 1);
+}
+
+#[test]
+fn pending_sync_state_survives_restart_and_keeps_its_owner() {
+    let database = TempDatabase::new();
+    let core = database.open();
+    let me = core.standalone().unwrap();
+    // Nothing is queued before the profile joins a server.
+    save(&core, &me, risotto());
+    assert!(core.sync_state(&me).unwrap().pending.is_empty());
+    core.join_server(&me, join()).unwrap();
+
+    core.rate_recipe(&me, "veggie-pumpkin-risotto", Some(5))
+        .unwrap();
+    core.plan_cooking(&me, cooking("c1", "2030-05-06", 2.0))
+        .unwrap();
+    drop(core);
+
+    let core = database.open();
+    let state = core.sync_state(&me).unwrap();
+    let kinds: Vec<_> = state
+        .pending
+        .iter()
+        .map(|change| change.kind.as_str())
+        .collect();
+    assert_eq!(kinds, ["rating", "planning"]);
+    assert!(state.pending.iter().all(
+        |change| change.person_id == me.person_id() && change.household_id == me.household_id()
+    ));
+    // Rejoining the same household resumes; another needs a separate profile.
+    core.join_server(&me, join()).unwrap();
+    let mut other = join();
+    other.remote_household_id = "household-2".into();
+    assert_eq!(
+        core.join_server(&me, other).err().unwrap().kind,
+        ErrorKind::Conflict
+    );
+
+    let first = state.pending[0].id.clone();
+    let after = core.acknowledge_sync(&me, &[first.clone(), first]).unwrap();
+    assert_eq!(after.pending.len(), 1);
+    assert_eq!(after.pending[0].kind, "planning");
+}
+
+fn server(database: &TempDatabase) -> (Core, Principal, Principal) {
+    let core = database.open();
+    let admin = core
+        .setup_server(SetupServer {
+            household_name: "Home".into(),
+            username: "admin".into(),
+            password: "correct horse battery".into(),
+        })
+        .unwrap();
+    let admin = core.authenticate(&admin.token).unwrap().principal;
+    let member = core
+        .create_account(
+            &admin,
+            Credentials {
+                username: "sam".into(),
+                password: "another long passphrase".into(),
+            },
+        )
+        .unwrap();
+    let signed_in = core
+        .sign_in(Credentials {
+            username: member.username,
+            password: "another long passphrase".into(),
+        })
+        .unwrap();
+    let member = core.authenticate(&signed_in.token).unwrap().principal;
+    (core, admin, member)
+}
+
+#[test]
+fn household_records_are_shared_and_personal_records_are_not() {
+    let database = TempDatabase::new();
+    let (core, admin, member) = server(&database);
+    assert_eq!(admin.household_id(), member.household_id());
+    save(&core, &admin, risotto());
+    assert_eq!(core.recipes(&member).unwrap().len(), 1);
+    core.plan_cooking(&member, cooking("c1", "2030-05-06", 2.0))
+        .unwrap();
+    assert_eq!(core.meal_plan(&admin).unwrap().len(), 1);
+
+    // Ratings, cooking sessions, food logs, and AI preferences stay personal.
+    core.rate_recipe(&admin, "veggie-pumpkin-risotto", Some(5))
+        .unwrap();
+    assert!(core.ratings(&member).unwrap().is_empty());
+    let begun = core
+        .start_cooking(
+            &admin,
+            StartCooking {
+                recipe_id: "veggie-pumpkin-risotto".into(),
+                portions: 4.0,
+                display_units: None,
+                cancel_session_ids: vec![],
+            },
+        )
+        .unwrap()
+        .session
+        .unwrap();
+    assert!(core.cooking_sessions(&member).unwrap().is_empty());
+    let id = begun["id"].as_str().unwrap();
+    assert_eq!(
+        core.end_cooking(&member, id, CookingOutcome::Canceled)
+            .err()
+            .unwrap()
+            .kind,
+        ErrorKind::NotFound
+    );
+    core.log_manual_food(&admin, manual_food("shared-id"))
+        .unwrap();
+    assert!(
+        core.food_log(&member, "2030-05-06")
+            .unwrap()
+            .entries
+            .is_empty()
+    );
+    assert_eq!(
+        core.log_manual_food(&member, manual_food("shared-id"))
+            .err()
+            .unwrap()
+            .kind,
+        ErrorKind::Forbidden
+    );
+    core.set_recipe_prompt(&admin, "Admin only").unwrap();
+    assert_ne!(
+        core.ai_preferences(&member).unwrap().recipe_prompt,
+        "Admin only"
+    );
+
+    // Server entry points authorize the owner named by a request path, and
+    // administration never grants access to another person's records.
+    assert_eq!(
+        member.require_person(admin.person_id()).err().unwrap().kind,
+        ErrorKind::Forbidden
+    );
+    assert_eq!(
+        member.require_household("elsewhere").err().unwrap().kind,
+        ErrorKind::Forbidden
+    );
+    assert_eq!(
+        core.accounts(&member).err().unwrap().kind,
+        ErrorKind::Forbidden
+    );
+    assert_eq!(core.accounts(&admin).unwrap().len(), 2);
+    // Joining a server is for standalone profiles only.
+    assert_eq!(
+        core.join_server(&admin, join()).err().unwrap().kind,
+        ErrorKind::Forbidden
+    );
+}
+
+#[test]
+fn committed_changes_are_published_to_those_who_may_see_them() {
+    let database = TempDatabase::new();
+    let (core, admin, member) = server(&database);
+    let for_admin = core.subscribe(&admin);
+    let for_member = core.subscribe(&member);
+
+    save(&core, &admin, risotto());
+    core.rate_recipe(&admin, "veggie-pumpkin-risotto", Some(3))
+        .unwrap();
+    // A rolled-back operation announces nothing.
+    assert!(core.rate_recipe(&admin, "unknown", Some(3)).is_err());
+
+    let wait = Duration::from_millis(200);
+    let mut admin_topics = vec![];
+    while let Some(change) = for_admin.next_timeout(wait) {
+        admin_topics.push(change.topic);
+    }
+    assert_eq!(admin_topics, [Topic::Recipes, Topic::Ratings]);
+    // The member sees the shared recipe change, never the admin's rating.
+    let change = for_member.next_timeout(wait).unwrap();
+    assert_eq!(change.topic, Topic::Recipes);
+    assert!(for_member.next_timeout(wait).is_none());
+}
+
+#[test]
+fn every_operation_shape_parses_from_the_serialized_contract() {
+    let shapes = [
+        json!({"operation": "startCooking", "recipeId": "r", "portions": 2.0, "cancelSessionIds": []}),
+        json!({"operation": "logRecipeFood", "recipeId": "r", "nutritionVersionId": "v",
+               "consumedAt": "2030-05-06T19:00", "portions": 1.0}),
+        json!({"operation": "logManualFood", "description": "Tea", "consumedAt": "2030-05-06T19:00",
+               "nutrition": {"calories": null, "protein": null, "fat": null, "carbohydrates": null}}),
+        json!({"operation": "joinServer", "serverUrl": "https://x.example",
+               "remoteHouseholdId": "h", "remoteAccountId": "a"}),
+        json!({"operation": "resolvePlanningConflict",
+               "conflict": {"path": ["cookings"], "values": [1, 2]}, "value": 1}),
+        json!({"operation": "saveShoppingItem", "listId": "l", "kind": "manual",
+               "item": {"id": "i", "name": "Tea", "quantity": 1.0, "unit": "piece"}}),
+        json!({"operation": "chooseCurrentRecipe", "recipeId": "r", "revisionId": "a",
+               "expectedRevisionIds": ["a", "b"]}),
+    ];
+    for shape in shapes {
+        serde_json::from_value::<Operation>(shape.clone())
+            .unwrap_or_else(|error| panic!("{shape} does not parse: {error}"));
+    }
+    assert!(serde_json::from_value::<Operation>(json!({"operation": "dropEverything"})).is_err());
+}
