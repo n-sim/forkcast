@@ -103,7 +103,16 @@ export const signInToHousehold = (username: string, password: string) =>
   execute<SyncStatus>('signIn', { username, password });
 export const signOutOfHousehold = () => execute<SyncStatus>('signOut');
 export const disconnectFromHousehold = () => execute<SyncStatus>('disconnect');
-export const listAccounts = () => execute<HouseholdAccount[]>('accounts');
+export async function listAccounts(): Promise<HouseholdAccount[]> {
+  const accounts = await execute<HouseholdAccount[]>('accounts');
+  // A server that answers with something else is reported, not rendered.
+  if (!Array.isArray(accounts))
+    throw new CoreError(
+      'The server sent an answer this version of Forkcast cannot read. Update the app or the server.',
+      'protocol_mismatch',
+    );
+  return accounts;
+}
 export const createAccount = (username: string, password: string) =>
   execute<HouseholdAccount>('createAccount', { username, password });
 export const changeAccount = (
