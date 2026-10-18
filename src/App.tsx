@@ -238,6 +238,18 @@ function RecipeDetails({
   );
 }
 
+function currentRoute() {
+  return window.location.hash || '#/';
+}
+
+/**
+ * Moves on after an action that took a moment, unless the person has already
+ * gone somewhere else; a finished save must not pull them back.
+ */
+function moveOn(startedAt: string, target: string) {
+  if (currentRoute() === startedAt) window.location.hash = target;
+}
+
 export function App({
   initialRecipes,
   initialCoverPhotos,
@@ -403,32 +415,36 @@ export function App({
     ]);
   }
 
-  function leaveCooking(session: CookingSession) {
-    window.location.hash = recipes.some(
-      (recipe) => recipe.id === session.recipe.id,
-    )
-      ? recipeUrl(session.recipe.id)
-      : '#/';
+  function leaveCooking(session: CookingSession, startedAt: string) {
+    moveOn(
+      startedAt,
+      recipes.some((recipe) => recipe.id === session.recipe.id)
+        ? recipeUrl(session.recipe.id)
+        : '#/',
+    );
   }
 
   async function endSession(
     session: CookingSession,
     outcome: 'finished' | 'canceled',
   ) {
+    const startedAt = currentRoute();
     await endCookingSession(session.id, outcome);
     setSessions((current) => current.filter((item) => item.id !== session.id));
-    leaveCooking(session);
+    leaveCooking(session, startedAt);
   }
 
   async function suspendSession(session: CookingSession) {
+    const startedAt = currentRoute();
     await saveSession(session);
-    leaveCooking(session);
+    leaveCooking(session, startedAt);
   }
 
   async function beginSession(
     proposed: CookingSession,
     cancelSessionIds: string[] = [],
   ) {
+    const startedAt = currentRoute();
     const result = await beginCookingSession(proposed, cancelSessionIds);
     if (!result.session) {
       setSessions(result.conflicts);
@@ -437,16 +453,17 @@ export function App({
     }
     setCookingConflict(null);
     setSessions([result.session]);
-    window.location.hash = cookingUrl(result.session.id);
+    moveOn(startedAt, cookingUrl(result.session.id));
   }
 
   async function save(recipe: Recipe) {
+    const startedAt = currentRoute();
     const saved = await saveRecipe(recipe);
     setRecipes((current) => [
       ...current.filter((item) => item.id !== recipe.id),
       saved,
     ]);
-    window.location.hash = recipeUrl(recipe.id);
+    moveOn(startedAt, recipeUrl(recipe.id));
   }
 
   return (
