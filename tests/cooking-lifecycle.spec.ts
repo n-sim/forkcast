@@ -25,7 +25,8 @@ test('suspend cooking with saved progress and timers, then cancel it without fin
 }) => {
   const now = new Date('2026-10-15T12:00:00Z');
   await page.clock.install({ time: now });
-  await page.clock.pauseAt(now);
+  // Pause slightly ahead: the clock runs between install and pause.
+  await page.clock.pauseAt(new Date(now.getTime() + 60_000));
   await createRecipe(page);
   await page
     .getByRole('button', { name: 'Start cooking', exact: true })
@@ -83,7 +84,8 @@ test('confirm cancellation or keep cooking with progress and timers intact', asy
 }) => {
   const now = new Date('2026-10-15T12:00:00Z');
   await page.clock.install({ time: now });
-  await page.clock.pauseAt(now);
+  // Pause slightly ahead: the clock runs between install and pause.
+  await page.clock.pauseAt(new Date(now.getTime() + 60_000));
   await createRecipe(page);
   await page
     .getByRole('button', { name: 'Start cooking', exact: true })
