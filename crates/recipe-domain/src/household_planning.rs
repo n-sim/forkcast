@@ -15,7 +15,7 @@ fn fields(value: &Value, allowed: &[&str]) -> Result<(), String> {
 
 pub fn validate(data: &Value) -> Result<(), String> {
     use crate::{
-        calendar::{valid_date, valid_time},
+        calendar::{valid_cooking_time, valid_date},
         planning::{PlannedCooking, validate_planned_cooking},
         shopping::{ShoppingItem, validate_shopping_item},
     };
@@ -90,9 +90,9 @@ pub fn validate(data: &Value) -> Result<(), String> {
         if !contribution_ids.insert(contribution["cookingId"].as_str().ok_or_else(invalid)?)
             || !contribution["cookingDate"].as_str().is_some_and(valid_date)
             || !contribution["portions"].as_f64().is_some_and(|n| n > 0.0)
-            || contribution
-                .get("cookingTime")
-                .is_some_and(|time| !time.is_null() && !time.as_str().is_some_and(valid_time))
+            || contribution.get("cookingTime").is_some_and(|time| {
+                !time.is_null() && !time.as_str().is_some_and(valid_cooking_time)
+            })
         {
             return Err(invalid());
         }

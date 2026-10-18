@@ -48,7 +48,7 @@ async function planCooking(
   if (time)
     await page
       .getByLabel('Cooking time (optional)', { exact: true })
-      .fill(time);
+      .selectOption({ label: time });
   await page
     .getByRole('button', { name: 'Save planned cooking', exact: true })
     .click();
@@ -64,7 +64,7 @@ test('plan household quantities and multiple cookings per day in week and today 
   await createRecipe(page, 'Tomato pasta', '2', 'Weeknight dinner');
   await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
   await expect(
-    page.getByRole('heading', { name: 'Your weekly meal plan', exact: true }),
+    page.getByRole('heading', { name: 'Your meal plan', exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole('region', { name: 'Monday, 12 October 2026', exact: true }),
@@ -72,7 +72,7 @@ test('plan household quantities and multiple cookings per day in week and today 
   await expect(
     page.getByRole('region', { name: 'Sunday, 18 October 2026', exact: true }),
   ).toBeVisible();
-  await planCooking(page, { time: '18:30' });
+  await planCooking(page, { time: 'Evening' });
   await planCooking(page, { portions: '2' });
   await planCooking(page, { date: '2026-10-14', portions: '3' });
   const tuesday = page.getByRole('region', {
@@ -82,28 +82,32 @@ test('plan household quantities and multiple cookings per day in week and today 
   await expect(tuesday.getByRole('article')).toHaveCount(2);
   await expect(tuesday).toContainText('4 portions');
   await expect(tuesday).toContainText('2 portions');
-  await expect(tuesday).toContainText('18:30');
+  await expect(tuesday).toContainText('Evening');
   await expect(tuesday).toContainText('Weeknight dinner');
   await expect(tuesday).toContainText('15 min active');
   await expect(tuesday).toContainText('30 min total');
   await expect(tuesday).toContainText('Recipe nutrition not available');
-  await page.getByRole('link', { name: 'Today', exact: true }).click();
+  const today = page.getByRole('region', { name: 'Today', exact: true });
   await expect(
-    page.getByRole('heading', { name: 'Today’s cooking', exact: true }),
+    page.getByRole('heading', { name: 'Today', exact: true, level: 2 }),
   ).toBeVisible();
   await expect(
-    page.getByRole('article', { name: 'Tomato pasta', exact: true }),
+    page.getByRole('heading', { name: 'This week', exact: true, level: 2 }),
+  ).toBeVisible();
+  await expect(
+    today.getByRole('article', { name: 'Tomato pasta', exact: true }),
   ).toHaveCount(2);
-  await expect(page.getByRole('main')).not.toContainText('3 portions');
+  await expect(today).not.toContainText('3 portions');
   const url = page.url();
   const reopened = await app.restart();
   await reopened.clock.setFixedTime(new Date('2026-10-13T10:00:00+02:00'));
   await reopened.goto(url);
   await expect(
-    reopened.getByRole('article', { name: 'Tomato pasta', exact: true }),
+    reopened
+      .getByRole('region', { name: 'Today', exact: true })
+      .getByRole('article', { name: 'Tomato pasta', exact: true }),
   ).toHaveCount(2);
   await expect(reopened.getByRole('main')).toContainText('4 portions');
-  await reopened.getByRole('link', { name: 'Meal plan', exact: true }).click();
   await expect(
     reopened.getByRole('region', {
       name: 'Wednesday, 14 October 2026',
@@ -112,16 +116,59 @@ test('plan household quantities and multiple cookings per day in week and today 
   ).toContainText('3 portions');
 });
 
+test('add a cooking from a day of the meal plan with its date prefilled', async ({
+  page,
+}) => {
+  await createRecipe(page);
+  await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
+  await page
+    .getByRole('button', {
+      name: 'Plan cooking on Thursday, 15 October 2026',
+      exact: true,
+    })
+    .click();
+  await expect(page.getByLabel('Cooking date', { exact: true })).toHaveValue(
+    '2026-10-15',
+  );
+  await expect(
+    page.getByLabel('Cooking time (optional)', { exact: true }),
+  ).toHaveValue('');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page
+    .getByRole('button', {
+      name: 'Plan cooking on Tuesday, 13 October 2026',
+      exact: true,
+    })
+    .click();
+  await expect(page.getByLabel('Cooking date', { exact: true })).toHaveValue(
+    '2026-10-13',
+  );
+  await page
+    .getByLabel('Recipe', { exact: true })
+    .selectOption({ label: 'Tomato pasta' });
+  await page
+    .getByLabel('Cooking time (optional)', { exact: true })
+    .selectOption({ label: 'Morning' });
+  await page
+    .getByRole('button', { name: 'Save planned cooking', exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole('region', { name: 'Today', exact: true })
+      .getByRole('article', { name: 'Tomato pasta', exact: true }),
+  ).toContainText('Morning');
+});
+
 test('move one planned cooking to another week, edit household quantities, and cancel without changing it', async ({
   page,
 }) => {
   await createRecipe(page);
   await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
-  await planCooking(page, { time: '18:30' });
-  await planCooking(page, { portions: '2', time: '12:00' });
+  await planCooking(page, { time: 'Evening' });
+  await planCooking(page, { portions: '2', time: 'Midday' });
   const dinner = page
     .getByRole('article', { name: 'Tomato pasta', exact: true })
-    .filter({ hasText: '18:30' });
+    .filter({ hasText: 'Evening' });
   await dinner
     .getByRole('button', { name: 'Edit planned cooking', exact: true })
     .click();
@@ -130,7 +177,9 @@ test('move one planned cooking to another week, edit household quantities, and c
   ).toHaveValue('4');
   await page.getByLabel('Cooking date', { exact: true }).fill('2026-10-20');
   await page.getByLabel('Portions to cook', { exact: true }).fill('6.5');
-  await page.getByLabel('Cooking time (optional)', { exact: true }).fill('');
+  await page
+    .getByLabel('Cooking time (optional)', { exact: true })
+    .selectOption({ label: 'Not specified' });
   await page
     .getByRole('button', { name: 'Save planned cooking', exact: true })
     .click();
@@ -140,17 +189,17 @@ test('move one planned cooking to another week, edit household quantities, and c
   });
   await expect(nextTuesday.getByRole('article')).toHaveCount(1);
   await expect(nextTuesday).toContainText('6.5 portions');
-  await expect(nextTuesday).not.toContainText('18:30');
+  await expect(nextTuesday).not.toContainText('Evening');
   await nextTuesday
     .getByRole('button', { name: 'Edit planned cooking', exact: true })
     .click();
   await page.getByLabel('Portions to cook', { exact: true }).fill('20');
   await page
     .getByLabel('Cooking time (optional)', { exact: true })
-    .fill('09:00');
+    .selectOption({ label: 'Morning' });
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(nextTuesday).toContainText('6.5 portions');
-  await expect(nextTuesday).not.toContainText('09:00');
+  await expect(nextTuesday).not.toContainText('Morning');
   await page
     .getByRole('button', { name: 'Previous week', exact: true })
     .click();
@@ -159,17 +208,18 @@ test('move one planned cooking to another week, edit household quantities, and c
     exact: true,
   });
   await expect(tuesday.getByRole('article')).toHaveCount(1);
-  await expect(tuesday).toContainText('12:00');
+  await expect(tuesday).toContainText('Midday');
   await page.reload();
   await expect(tuesday).toContainText('2 portions');
   await page.getByRole('button', { name: 'Next week', exact: true }).click();
   await expect(nextTuesday).toContainText('6.5 portions');
   await expect(nextTuesday.getByRole('article')).toHaveCount(1);
-  await page.getByRole('link', { name: 'Today', exact: true }).click();
   await expect(
-    page.getByRole('article', { name: 'Tomato pasta', exact: true }),
+    page
+      .getByRole('region', { name: 'Today', exact: true })
+      .getByRole('article', { name: 'Tomato pasta', exact: true }),
   ).toHaveCount(1);
-  await expect(page.getByRole('main')).toContainText('12:00');
+  await expect(page.getByRole('main')).toContainText('Midday');
 });
 
 test('require a current recipe, a cooking date, and positive portions before saving', async ({
@@ -234,7 +284,7 @@ test('keep cooking four household portions independent of actual intake on two d
 }) => {
   await createRecipe(page);
   await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
-  await planCooking(page, { time: '18:30' });
+  await planCooking(page, { time: 'Evening' });
   await page.getByRole('link', { name: 'Food log', exact: true }).click();
   for (const date of ['2026-10-13', '2026-10-14']) {
     await page.getByLabel('Food log date', { exact: true }).fill(date);
@@ -267,13 +317,13 @@ test('keep cooking four household portions independent of actual intake on two d
       page.getByRole('group', { name: 'Calories total', exact: true }),
     ).toContainText(`${calories} kcal`);
   }
-  await page.getByRole('link', { name: 'Today', exact: true }).click();
+  await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
   const entry = page.getByRole('article', {
     name: 'Tomato pasta',
     exact: true,
   });
   await expect(entry).toContainText('4 portions to cook');
-  await expect(entry).toContainText('18:30');
+  await expect(entry).toContainText('Evening');
   await expect(
     page.getByRole('region', { name: 'Daily nutrition', exact: true }),
   ).toHaveCount(0);
@@ -296,24 +346,24 @@ test('show planning changes and current recipe contents across tabs', async ({
 }) => {
   await createRecipe(page);
   const recipeUrl = page.url();
-  await page.getByRole('link', { name: 'Today', exact: true }).click();
+  await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
   const other = await app.newWindow();
   await other.clock.setFixedTime(new Date('2026-10-13T10:00:00+02:00'));
   await other.goto('/#/meal-plan');
-  await planCooking(other, { time: '17:00' });
+  await planCooking(other, { time: 'Evening' });
   await expect(
     page.getByRole('article', { name: 'Tomato pasta', exact: true }),
-  ).toContainText('17:00');
+  ).toContainText('Evening');
   await planCooking(other, {
     portions: '2',
-    time: '12:00',
+    time: 'Midday',
   });
   const entries = page.getByRole('article', {
     name: 'Tomato pasta',
     exact: true,
   });
   await expect(entries).toHaveCount(2);
-  await expect(entries.first()).toContainText('12:00');
+  await expect(entries.first()).toContainText('Midday');
   await other.goto(recipeUrl);
   await other.getByRole('link', { name: 'Edit recipe', exact: true }).click();
   await other.getByLabel('Recipe name', { exact: true }).fill('Current pasta');
@@ -339,7 +389,7 @@ test('show planning changes and current recipe contents across tabs', async ({
   await expect(
     other
       .getByRole('article', { name: 'Current pasta', exact: true })
-      .filter({ hasText: '12:00' }),
+      .filter({ hasText: 'Midday' }),
   ).toContainText('5 portions');
   await current
     .first()
@@ -359,11 +409,11 @@ test('navigate calendar weeks over daylight saving and update today after midnig
   await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
   await planCooking(page, {
     date: '2026-10-25',
-    time: '18:30',
+    time: 'Evening',
   });
   await expect(
     page.getByRole('region', { name: 'Sunday, 25 October 2026', exact: true }),
-  ).toContainText('18:30');
+  ).toContainText('Evening');
   await page.getByRole('button', { name: 'Next week', exact: true }).click();
   await expect(
     page.getByRole('region', { name: 'Monday, 26 October 2026', exact: true }),
@@ -373,12 +423,11 @@ test('navigate calendar weeks over daylight saving and update today after midnig
     .click();
   await expect(
     page.getByRole('region', { name: 'Sunday, 25 October 2026', exact: true }),
-  ).toContainText('18:30');
+  ).toContainText('Evening');
   await page.getByRole('button', { name: 'This week', exact: true }).click();
-  await planCooking(page, { time: '12:00' });
-  await planCooking(page, { date: '2026-10-14', time: '13:00' });
-  await page.getByRole('link', { name: 'Today', exact: true }).click();
-  await expect(page.getByRole('main')).toContainText('12:00');
+  await planCooking(page, { time: 'Morning' });
+  await planCooking(page, { date: '2026-10-14', time: 'Evening' });
+  await expect(page.getByRole('main')).toContainText('Morning');
   await page.clock.setFixedTime(new Date('2026-10-14T00:05:00+02:00'));
   await page.clock.fastForward(30_001);
   await expect(
@@ -386,10 +435,10 @@ test('navigate calendar weeks over daylight saving and update today after midnig
       name: 'Wednesday, 14 October 2026',
       exact: true,
     }),
-  ).toContainText('13:00');
-  await expect(page.getByRole('main')).not.toContainText('12:00');
+  ).toContainText('Evening');
+  await expect(page.getByRole('main')).not.toContainText('Morning');
   await page.reload();
-  await expect(page.getByRole('main')).toContainText('13:00');
+  await expect(page.getByRole('main')).toContainText('Evening');
 });
 
 test('assign labels in the recipe editor and show the current recipe label for every planned cooking', async ({
@@ -405,8 +454,8 @@ test('assign labels in the recipe editor and show the current recipe label for e
   await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
   await expect(page.getByRole('main')).toContainText('Quick dinner');
   await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
-  await planCooking(page, { time: '12:00' });
-  await planCooking(page, { time: '18:30', portions: '2' });
+  await planCooking(page, { time: 'Midday' });
+  await planCooking(page, { time: 'Evening', portions: '2' });
   const entries = page.getByRole('article', {
     name: 'Tomato pasta',
     exact: true,
@@ -435,7 +484,7 @@ test('assign labels in the recipe editor and show the current recipe label for e
     await expect(entry).toContainText('Weekend favourite');
     await expect(entry).not.toContainText('Quick dinner');
   }
-  await page.getByRole('link', { name: 'Today', exact: true }).click();
+  await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
   await expect(
     page.getByRole('article', { name: 'Tomato pasta', exact: true }),
   ).toHaveCount(2);
@@ -558,7 +607,7 @@ test('reopen recipes, planned cookings, and cooking snapshots saved before recip
     exact: true,
   });
   await expect(entry).toContainText('4 portions');
-  await expect(entry).toContainText('18:30');
+  await expect(entry).toContainText('Evening');
   await expect(entry).not.toContainText('Former per-cooking label');
   await entry
     .getByRole('link', { name: 'Existing pasta', exact: true })
@@ -613,7 +662,7 @@ test('keep the planner usable at the supported calendar boundaries', async ({
   await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
   await page.getByLabel('Week containing', { exact: true }).fill('10000-01-01');
   await expect(
-    page.getByRole('heading', { name: 'Your weekly meal plan', exact: true }),
+    page.getByRole('heading', { name: 'Your meal plan', exact: true }),
   ).toBeVisible();
   await expect(page.getByLabel('Week containing', { exact: true })).toHaveValue(
     '2026-10-12',

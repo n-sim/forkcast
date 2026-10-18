@@ -1,5 +1,5 @@
 use crate::{
-    calendar::valid_date,
+    calendar::{cooking_time_rank, valid_date},
     planning::{PlannedCooking, validate_planned_cooking},
     quantities::{DisplayUnits, convert_quantity, scale_quantity},
     recipe::{Ingredient, RecipeDraft, Unit, validate_recipe},
@@ -155,10 +155,8 @@ pub fn generate_shopping_requirements(
         a.cooking_date
             .cmp(&b.cooking_date)
             .then_with(|| {
-                a.cooking_time
-                    .as_deref()
-                    .unwrap_or("99:99")
-                    .cmp(b.cooking_time.as_deref().unwrap_or("99:99"))
+                cooking_time_rank(a.cooking_time.as_deref())
+                    .cmp(&cooking_time_rank(b.cooking_time.as_deref()))
             })
             .then_with(|| a.id.cmp(&b.id))
     });

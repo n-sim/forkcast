@@ -600,7 +600,7 @@ test('track only changes within the saved cooking period, including time, recipe
     await other.getByLabel('Portions to cook', { exact: true }).fill('6');
     await other
       .getByLabel('Cooking time (optional)', { exact: true })
-      .fill('18:30');
+      .selectOption({ label: 'Evening' });
   });
   await remove(thursday);
   await plan(other, 'Bean salad', '2026-10-16', '8');
@@ -611,13 +611,17 @@ test('track only changes within the saved cooking period, including time, recipe
   await page.getByLabel('Shopping from', { exact: true }).fill('2026-11-01');
   await page.getByLabel('Shopping through', { exact: true }).fill('2026-11-02');
   await edit(tuesday, () =>
-    other.getByLabel('Cooking time (optional)', { exact: true }).fill('19:00'),
+    other
+      .getByLabel('Cooking time (optional)', { exact: true })
+      .selectOption({ label: 'Evening' }),
   );
   await expect(status).toContainText(
     'The meal plan changed within this cooking period.',
   );
   await edit(tuesday, () =>
-    other.getByLabel('Cooking time (optional)', { exact: true }).fill(''),
+    other
+      .getByLabel('Cooking time (optional)', { exact: true })
+      .selectOption({ label: 'Not specified' }),
   );
   await expect(status).toContainText('unchanged within this cooking period');
   await edit(tuesday, () =>
@@ -693,7 +697,7 @@ test('keep older reviewed lists with unknown source times and establish a source
       .click();
     await page
       .getByLabel('Cooking time (optional)', { exact: true })
-      .fill(time);
+      .selectOption({ label: time });
     await page
       .getByRole('button', { name: 'Save planned cooking', exact: true })
       .click();
@@ -707,7 +711,7 @@ test('keep older reviewed lists with unknown source times and establish a source
       .getByRole('link', { name: 'Shopping list', exact: true })
       .click();
   }
-  await setCookingTime('18:00');
+  await setCookingTime('Morning');
   await generate(page);
   const reviewed = page.getByRole('article', { name: 'Lentils', exact: true });
   await reviewed.getByLabel('Quantity', { exact: true }).fill('150');
@@ -763,7 +767,7 @@ test('keep older reviewed lists with unknown source times and establish a source
     'The source status of this saved list is unavailable.',
   );
   await expect(lentils).toContainText('150 g');
-  await setCookingTime('19:00');
+  await setCookingTime('Midday');
   await expect(status).toContainText(
     'The source status of this saved list is unavailable.',
   );
@@ -776,7 +780,7 @@ test('keep older reviewed lists with unknown source times and establish a source
     .click();
   await expect(status).toContainText('unchanged within this cooking period');
   await expect(lentils).toContainText('250 g');
-  await setCookingTime('20:00');
+  await setCookingTime('Evening');
   await expect(status).toContainText(
     'The meal plan changed within this cooking period.',
   );

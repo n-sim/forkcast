@@ -68,10 +68,10 @@ test('show a bottom navigation bar only on phone-sized screens', async ({
   await expect(
     page.getByRole('navigation', { name: 'Main navigation' }),
   ).toBeHidden();
-  await bottomNav.getByRole('link', { name: 'Today', exact: true }).click();
-  await expect(page).toHaveURL(/#\/today/);
+  await bottomNav.getByRole('link', { name: 'Plan', exact: true }).click();
+  await expect(page).toHaveURL(/#\/meal-plan/);
   await expect(
-    bottomNav.getByRole('link', { name: 'Today', exact: true }),
+    bottomNav.getByRole('link', { name: 'Plan', exact: true }),
   ).toHaveAttribute('aria-current', 'page');
 
   await page.setViewportSize({ width: 820, height: 1180 });

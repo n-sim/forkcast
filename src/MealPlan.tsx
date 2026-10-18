@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import { localDateTime } from './food-log';
-import { type PlannedCooking, type PlanningRecipe } from './planning';
+import {
+  cookingPeriodLabels,
+  cookingPeriodOf,
+  cookingTimeRank,
+  type PlannedCooking,
+  type PlanningRecipe,
+} from './planning';
 import {
   loadPlannedCookings,
   savePlannedCooking,
@@ -75,18 +81,18 @@ function PlannedCookingCard({
     >
       {cooking.cookingTime && (
         <p className="eyebrow">
-          <time dateTime={`${cooking.cookingDate}T${cooking.cookingTime}`}>
-            {cooking.cookingTime}
-          </time>
+          {cookingPeriodOf(cooking.cookingTime)
+            ? cookingPeriodLabels[cookingPeriodOf(cooking.cookingTime)!]
+            : cooking.cookingTime}
         </p>
       )}
-      <h3>
+      <h4>
         {recipe ? (
           <a href={`#/recipes/${recipe.id}`}>{recipe.name}</a>
         ) : (
           'Recipe unavailable'
         )}
-      </h3>
+      </h4>
       {recipe?.label && <p className="recipe-label">{recipe.label}</p>}
       <p>
         <strong>
@@ -132,18 +138,13 @@ function PlannedCookingCard({
   );
 }
 
-export function MealPlan({
-  recipes,
-  view,
-}: {
-  recipes: PlanningRecipe[];
-  view: 'week' | 'today';
-}) {
+export function MealPlan({ recipes }: { recipes: PlanningRecipe[] }) {
   const today = useToday();
   const [week, setWeek] = useState(() => monday(today));
   const [cookings, setCookings] = useState<EditablePlannedCooking[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [addDate, setAddDate] = useState<string>();
   const [removing, setRemoving] = useState(false);
   const [editingCooking, setEditingCooking] =
     useState<EditablePlannedCooking>();
@@ -199,20 +200,75 @@ export function MealPlan({
     }
   }
 
-  const dates =
-    view === 'today'
-      ? [today]
-      : Array.from({ length: 7 }, (_, index) => shiftDate(week, index)).filter(
-          (date) => date.length === 10 && date >= firstDate && date <= lastDate,
-        );
+  const dates = Array.from({ length: 7 }, (_, index) =>
+    shiftDate(week, index),
+  ).filter(
+    (date) => date.length === 10 && date >= firstDate && date <= lastDate,
+  );
+
+  function startAdding(date?: string) {
+    setEditingCooking(undefined);
+    setAddDate(date);
+    setAdding(true);
+    setMessage('');
+  }
+
+  function renderDay(date: string) {
+    const entries = cookings
+      .filter((cooking) => cooking.cookingDate === date)
+      .sort(
+        (a, b) =>
+          cookingTimeRank(a.cookingTime) - cookingTimeRank(b.cookingTime) ||
+          a.id.localeCompare(b.id),
+      );
+    return (
+      <section
+        className="panel meal-plan-day"
+        key={date}
+        aria-label={dateLabel(date)}
+      >
+        <div className="meal-plan-day-heading">
+          <h3>
+            <time dateTime={date}>{dateLabel(date)}</time>
+            {date === today && <small> · Today</small>}
+          </h3>
+          <button
+            className="button secondary"
+            aria-label={`Plan cooking on ${dateLabel(date)}`}
+            disabled={!loaded || !recipes.length || adding || removing}
+            onClick={() => startAdding(date)}
+          >
+            <span aria-hidden="true">+</span> Add
+          </button>
+        </div>
+        {entries.length ? (
+          entries.map((cooking) => (
+            <PlannedCookingCard
+              key={cooking.id}
+              cooking={cooking}
+              recipe={recipes.find((recipe) => recipe.id === cooking.recipeId)}
+              editing={adding || removing}
+              onRemove={() => void remove(cooking)}
+              onEdit={() => {
+                setEditingCooking(cooking);
+                setAdding(true);
+                setMessage('');
+              }}
+            />
+          ))
+        ) : (
+          <p className="section-note">No cooking planned.</p>
+        )}
+      </section>
+    );
+  }
+
   return (
     <article>
       <div className="page-heading">
         <div>
           <p className="eyebrow">Your household’s cooking schedule</p>
-          <h1>
-            {view === 'today' ? 'Today’s cooking' : 'Your weekly meal plan'}
-          </h1>
+          <h1>Your meal plan</h1>
           <p>
             Plan portions for yourself and your household. Record what you eat
             separately in the food log.
@@ -221,11 +277,7 @@ export function MealPlan({
         <button
           className="button primary"
           disabled={!loaded || !recipes.length || adding || removing}
-          onClick={() => {
-            setEditingCooking(undefined);
-            setAdding(true);
-            setMessage('');
-          }}
+          onClick={() => startAdding()}
         >
           Plan cooking
         </button>
@@ -245,7 +297,26 @@ export function MealPlan({
           planning.
         </p>
       )}
-      {view === 'week' && (
+      {adding && (
+        <PlannedCookingForm
+          key={editingCooking?.id ?? `new-${addDate ?? ''}`}
+          recipes={recipes}
+          cooking={editingCooking}
+          date={addDate ?? (dates.includes(today) ? today : week)}
+          onSave={save}
+          onCancel={() => setAdding(false)}
+        />
+      )}
+      {loaded && (
+        <section aria-labelledby="meal-plan-today-heading">
+          <h2 id="meal-plan-today-heading">Today</h2>
+          <div className="meal-plan-days">{renderDay(today)}</div>
+        </section>
+      )}
+      <section aria-labelledby="meal-plan-week-heading">
+        <h2 id="meal-plan-week-heading">
+          {week === monday(today) ? 'This week' : 'Week of ' + dateLabel(week)}
+        </h2>
         <section
           className="panel quantity-controls"
           aria-label="Week navigation"
@@ -286,65 +357,14 @@ export function MealPlan({
             This week
           </button>
         </section>
-      )}
-      {adding && (
-        <PlannedCookingForm
-          key={editingCooking?.id ?? 'new'}
-          recipes={recipes}
-          cooking={editingCooking}
-          date={view === 'today' || dates.includes(today) ? today : week}
-          onSave={save}
-          onCancel={() => setAdding(false)}
-        />
-      )}
-      {loaded && (
-        <div
-          className={`meal-plan-days ${view === 'week' ? 'meal-plan-week' : ''}`}
-        >
-          {dates.map((date) => {
-            const entries = cookings
-              .filter((cooking) => cooking.cookingDate === date)
-              .sort(
-                (a, b) =>
-                  (a.cookingTime ?? '99:99').localeCompare(
-                    b.cookingTime ?? '99:99',
-                  ) || a.id.localeCompare(b.id),
-              );
-            return (
-              <section
-                className="panel meal-plan-day"
-                key={date}
-                aria-label={dateLabel(date)}
-              >
-                <h2>
-                  <time dateTime={date}>{dateLabel(date)}</time>
-                  {date === today && <small> · Today</small>}
-                </h2>
-                {entries.length ? (
-                  entries.map((cooking) => (
-                    <PlannedCookingCard
-                      key={cooking.id}
-                      cooking={cooking}
-                      recipe={recipes.find(
-                        (recipe) => recipe.id === cooking.recipeId,
-                      )}
-                      editing={adding || removing}
-                      onRemove={() => void remove(cooking)}
-                      onEdit={() => {
-                        setEditingCooking(cooking);
-                        setAdding(true);
-                        setMessage('');
-                      }}
-                    />
-                  ))
-                ) : (
-                  <p className="section-note">No cooking planned.</p>
-                )}
-              </section>
-            );
-          })}
-        </div>
-      )}
+        {loaded && (
+          <div className="meal-plan-days meal-plan-week">
+            {dates
+              .filter((date) => date !== today)
+              .map((date) => renderDay(date))}
+          </div>
+        )}
+      </section>
     </article>
   );
 }
