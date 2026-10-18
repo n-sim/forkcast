@@ -915,6 +915,9 @@ dialog .form-actions {
 .skip-link:focus {
   top: 12px;
 }
+.bottom-nav {
+  display: none;
+}
 @media (max-width: 1100px) {
   :root {
     --sidebar-width: 205px;
@@ -1050,5 +1053,51 @@ dialog .form-actions {
   }
   .page-footer {
     margin-inline: 18px;
+  }
+}
+@media (max-width: 640px) {
+  .sidebar nav,
+  .sidebar-footer {
+    display: none;
+  }
+  .bottom-nav {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: #f1f2e9;
+    border-top: 1px solid var(--line);
+  }
+  .bottom-nav a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 9px 2px 8px;
+    min-width: 0;
+    font-size: 10px;
+    font-weight: 600;
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bottom-nav a span {
+    font-size: 18px;
+    line-height: 1;
+  }
+  .bottom-nav a[aria-current='page'] {
+    color: var(--accent);
+    box-shadow: inset 0 2px 0 var(--accent);
+  }
+  .app-shell {
+    padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+  }
+  .suspended-cooking-bar {
+    bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 16px;
   }
 }
