@@ -8,6 +8,7 @@ export type Topic =
   | 'ratings'
   | 'planning'
   | 'cookingSessions'
+  | 'cookingHistory'
   | 'foodLog'
   | 'preferences'
   | 'sync'

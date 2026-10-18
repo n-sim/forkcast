@@ -18,6 +18,8 @@ pub enum Topic {
     /// The meal plan and the shopping list.
     Planning,
     CookingSessions,
+    /// Household cooking occurrences and the history derived from them.
+    CookingHistory,
     FoodLog,
     /// A person's AI preferences. Never includes credentials.
     Preferences,

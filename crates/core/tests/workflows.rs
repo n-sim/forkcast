@@ -5,8 +5,8 @@ mod common;
 use common::{TempDatabase, cover_photo, risotto};
 use forkcast_core::{
     CookingOutcome, Core, Credentials, CurrentChoice, ErrorKind, LogManualFood, LogRecipeFood,
-    Operation, Principal, SaveRecipe, SetCoverPhoto, SetupServer, ShoppingItemKind, SourceStatus,
-    StartCooking, Topic,
+    MarkCooked, Operation, Principal, SaveRecipe, SetCoverPhoto, SetupServer, ShoppingItemKind,
+    SourceStatus, StartCooking, Topic,
 };
 use forkcast_recipe_domain::{planning::PlannedCooking, shopping::ShoppingItem};
 use serde_json::{Value, json};
@@ -500,6 +500,8 @@ fn committed_changes_are_published_to_those_who_may_see_them() {
 fn every_operation_shape_parses_from_the_serialized_contract() {
     let shapes = [
         json!({"operation": "startCooking", "recipeId": "r", "portions": 2.0, "cancelSessionIds": []}),
+        json!({"operation": "markCooked", "recipeId": "r", "id": "i", "sessionId": "s"}),
+        json!({"operation": "cookingHistory"}),
         json!({"operation": "logRecipeFood", "recipeId": "r", "nutritionVersionId": "v",
                "consumedAt": "2030-05-06T19:00", "portions": 1.0}),
         json!({"operation": "logManualFood", "description": "Tea", "consumedAt": "2030-05-06T19:00",
@@ -519,4 +521,134 @@ fn every_operation_shape_parses_from_the_serialized_contract() {
             .unwrap_or_else(|error| panic!("{shape} does not parse: {error}"));
     }
     assert!(serde_json::from_value::<Operation>(json!({"operation": "dropEverything"})).is_err());
+}
+
+fn start(core: &Core, me: &Principal) -> Value {
+    core.start_cooking(
+        me,
+        StartCooking {
+            recipe_id: "veggie-pumpkin-risotto".into(),
+            portions: 4.0,
+            display_units: None,
+            cancel_session_ids: vec![],
+        },
+    )
+    .unwrap()
+    .session
+    .unwrap()
+}
+
+fn finish(core: &Core, me: &Principal, session: &Value) -> forkcast_core::Result<()> {
+    let id = session["id"].as_str().unwrap();
+    let last = session["recipe"]["steps"].as_array().unwrap().len() - 1;
+    core.save_cooking_progress(me, id, last, json!({})).unwrap();
+    core.end_cooking(me, id, CookingOutcome::Finished)
+}
+
+fn mark(recipe: &str, id: Option<&str>, session: Option<&str>) -> MarkCooked {
+    MarkCooked {
+        id: id.map(str::to_owned),
+        recipe_id: recipe.into(),
+        session_id: session.map(str::to_owned),
+    }
+}
+
+#[test]
+fn cooking_occurrences_update_household_history_once_per_cook() {
+    let database = TempDatabase::new();
+    let core = database.open();
+    let me = core.standalone().unwrap();
+    save(&core, &me, risotto());
+    let recipe = "veggie-pumpkin-risotto";
+    assert!(core.cooking_history(&me).unwrap().is_empty());
+    let id = "4f8f1c0e-6a3d-4a6e-9a43-1d2c3b4a5f60";
+
+    // Explicit marking; an identical retry does not count again.
+    assert_eq!(
+        core.mark_cooked(&me, mark(recipe, Some(id), None))
+            .unwrap()
+            .count,
+        1
+    );
+    assert_eq!(
+        core.mark_cooked(&me, mark(recipe, Some(id), None))
+            .unwrap()
+            .count,
+        1
+    );
+    // A genuinely separate cook counts.
+    assert_eq!(
+        core.mark_cooked(&me, mark(recipe, None, None))
+            .unwrap()
+            .count,
+        2
+    );
+
+    // Guided completion records once, even when completion is retried.
+    let session = start(&core, &me);
+    finish(&core, &me, &session).unwrap();
+    core.end_cooking(
+        &me,
+        session["id"].as_str().unwrap(),
+        CookingOutcome::Finished,
+    )
+    .unwrap();
+    assert_eq!(core.cooking_history(&me).unwrap()[0].count, 3);
+
+    // Marking cooked during a session and then finishing it is one cook.
+    let session = start(&core, &me);
+    let sid = session["id"].as_str().unwrap();
+    core.mark_cooked(&me, mark(recipe, None, Some(sid)))
+        .unwrap();
+    core.mark_cooked(&me, mark(recipe, None, Some(sid)))
+        .unwrap();
+    finish(&core, &me, &session).unwrap();
+    // Canceling records nothing.
+    let canceled = start(&core, &me);
+    core.end_cooking(
+        &me,
+        canceled["id"].as_str().unwrap(),
+        CookingOutcome::Canceled,
+    )
+    .unwrap();
+    let history = core.cooking_history(&me).unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].count, 4);
+    assert!(history[0].last_cooked_at > 0);
+
+    // Unknown recipes and another recipe's session are refused.
+    assert_eq!(
+        core.mark_cooked(&me, mark("missing", None, None))
+            .err()
+            .unwrap()
+            .kind,
+        ErrorKind::NotFound
+    );
+    let other = start(&core, &me);
+    assert!(
+        core.mark_cooked(&me, mark("missing", None, other["id"].as_str()))
+            .is_err()
+    );
+
+    // No food log or other side effect, and history survives a restart.
+    let today = "2030-05-06";
+    assert!(core.food_log(&me, today).unwrap().entries.is_empty());
+    drop(core);
+    let reopened = database.open();
+    let me = reopened.standalone().unwrap();
+    assert_eq!(reopened.cooking_history(&me).unwrap()[0].count, 4);
+}
+
+#[test]
+fn cooking_history_belongs_to_the_household_not_the_person() {
+    let database = TempDatabase::new();
+    let (core, admin, member) = server(&database);
+    save(&core, &admin, risotto());
+    core.mark_cooked(&admin, mark("veggie-pumpkin-risotto", None, None))
+        .unwrap();
+    core.mark_cooked(&member, mark("veggie-pumpkin-risotto", None, None))
+        .unwrap();
+    for who in [&admin, &member] {
+        assert_eq!(core.cooking_history(who).unwrap()[0].count, 2);
+    }
 }
