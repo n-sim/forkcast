@@ -102,22 +102,40 @@ export async function launchApp(options: AppOptions = {}): Promise<App> {
   let context: BrowserContext;
 
   async function open(env: Record<string, string> = {}) {
-    const port = await freePort();
-    child = spawn(binary(), [], {
-      env: {
-        ...process.env,
-        FORKCAST_DATA_DIR: join(profile, 'data'),
-        FORKCAST_SAVE_DIRECTORY: files,
-        FORKCAST_EXTERNAL_URL_FILE: join(profile, 'external-urls.txt'),
-        WEBVIEW2_USER_DATA_FOLDER: join(profile, 'webview'),
-        WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
-        ...options.env,
-        ...env,
-      },
-      stdio: 'ignore',
-      windowsHide: false,
-    });
-    await waitForDebugger(port, child);
+    // A relaunch can start before WebView2 has released the profile, which
+    // ends the app at startup; that is the runner being slow, so try again.
+    let port = 0;
+    for (let attempt = 1; ; attempt++) {
+      port = await freePort();
+      child = spawn(binary(), [], {
+        env: {
+          ...process.env,
+          FORKCAST_DATA_DIR: join(profile, 'data'),
+          FORKCAST_SAVE_DIRECTORY: files,
+          FORKCAST_EXTERNAL_URL_FILE: join(profile, 'external-urls.txt'),
+          WEBVIEW2_USER_DATA_FOLDER: join(profile, 'webview'),
+          WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
+          ...options.env,
+          ...env,
+        },
+        stdio: ['ignore', 'ignore', 'pipe'],
+        windowsHide: false,
+      });
+      let errors = '';
+      child.stderr?.on('data', (chunk) => {
+        errors = (errors + chunk).slice(-2000);
+      });
+      try {
+        await waitForDebugger(port, child);
+        break;
+      } catch (failure) {
+        kill(child);
+        if (attempt >= 3 || child.exitCode === null)
+          throw new Error(`${(failure as Error).message}
+${errors}`);
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    }
     browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
     context = browser.contexts()[0]!;
     const deadline = Date.now() + 15_000;
