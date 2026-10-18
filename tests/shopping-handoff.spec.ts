@@ -93,6 +93,9 @@ test('download the reviewed quantities and manual groceries as a PDF without com
   await page.getByLabel('Ingredient 2 name', { exact: true }).fill('Oil');
   await page.getByLabel('Ingredient 2 quantity', { exact: true }).fill('20');
   await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: '豆腐 Käsespätzle 🥑', exact: true }),
+  ).toBeVisible();
   await plan(page, '2026-10-13', '2', '豆腐 Käsespätzle 🥑');
   await generate(page);
   const pasta = page.getByRole('article', { name: 'Pasta', exact: true });
