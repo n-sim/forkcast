@@ -1,0 +1,45 @@
+name: Diagnose desktop launch
+
+on:
+  push:
+    branches: [feat/core-desktop-sync-49-53]
+
+jobs:
+  diagnose:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - run: npm run test:prepare
+      - name: WebView2 runtime
+        shell: pwsh
+        run: |
+          Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' -ErrorAction SilentlyContinue | Select-Object pv
+          Get-ItemProperty 'HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' -ErrorAction SilentlyContinue | Select-Object pv
+          Get-ChildItem 'C:\Program Files (x86)\Microsoft\EdgeWebView' -ErrorAction SilentlyContinue
+      - name: Launch the app and capture its output
+        shell: pwsh
+        run: |
+          $env:FORKCAST_DATA_DIR = "$env:RUNNER_TEMP\fc-data"
+          $env:WEBVIEW2_USER_DATA_FOLDER = "$env:RUNNER_TEMP\fc-webview"
+          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9333'
+          $p = Start-Process -FilePath target\debug\forkcast-desktop.exe -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          for ($i = 0; $i -lt 20; $i++) {
+            Start-Sleep -Seconds 2
+            if ($p.HasExited) { "exited with $($p.ExitCode)"; break }
+            try { (Invoke-WebRequest http://127.0.0.1:9333/json/version -UseBasicParsing).Content; break } catch { "waiting: $($_.Exception.Message)" }
+          }
+          "--- stdout"; Get-Content out.txt
+          "--- stderr"; Get-Content err.txt
+          "--- processes"; Get-Process | Where-Object { $_.ProcessName -match 'forkcast|msedge' } | Select-Object ProcessName, Id, MainWindowTitle
+          "--- data"; Get-ChildItem $env:FORKCAST_DATA_DIR -ErrorAction SilentlyContinue
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
