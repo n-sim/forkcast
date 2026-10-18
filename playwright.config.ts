@@ -13,6 +13,9 @@ export default defineConfig({
   maxFailures: process.env.CI ? 10 : 0,
   reporter: 'list',
   timeout: 60_000,
+  // The Windows runners are slow under two workers; 5s is too tight for UI
+  // state changes that follow a save or a synchronization.
+  expect: { timeout: process.env.CI ? 15_000 : 5_000 },
   use: {
     actionTimeout: 10_000,
     trace: 'retain-on-failure',

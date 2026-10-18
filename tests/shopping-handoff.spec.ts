@@ -181,6 +181,8 @@ test('a long shopping PDF wraps names and retains every grocery across pages', a
   page,
   app,
 }) => {
+  // Adding 36 groceries through the UI takes most of the default budget on CI.
+  test.slow();
   await page.goto('/');
   await generate(page);
   const names = Array.from(
