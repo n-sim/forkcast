@@ -759,6 +759,7 @@ export function App({
             <RecipeForm
               key={selected?.id ?? 'new'}
               recipe={selected}
+              aiAvailable={personalAvailable}
               onSave={save}
               onCancel={() => {
                 window.location.hash = selected ? recipeUrl(selected.id) : '#/';

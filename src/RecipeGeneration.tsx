@@ -8,6 +8,7 @@ import {
   type AiStatus,
 } from './ai-client';
 import { generateRecipe } from './recipe-generation';
+import { estimateNutrition } from './recipe-estimation';
 import { loadRecipePrompt } from './ai-prompts';
 import type { Recipe } from './domain';
 
@@ -95,7 +96,19 @@ export function RecipeGeneration({
     setError('');
     try {
       const preferences = await loadRecipePrompt();
-      const recipe = await generateRecipe(model, description, preferences);
+      let recipe = await generateRecipe(model, description, preferences);
+      if (canceled.current) return;
+      // Generated recipes use the same estimation as edited ones, so their
+      // nutrition is saved as an ordinary nutrition version. A failed
+      // estimate leaves nutrition unknown and never blocks the recipe.
+      try {
+        recipe = {
+          ...recipe,
+          nutrition: await estimateNutrition(model, recipe),
+        };
+      } catch {
+        /* Nutrition can be estimated or entered later. */
+      }
       if (canceled.current) return;
       try {
         await onSave(recipe);
