@@ -36,7 +36,7 @@ The recipes shared by a household.
 A household's shared schedule of recipes to cook, specifying the cooking day and number of portions. It is separate from each person's food log.
 
 **Planned cooking**:
-A recipe scheduled to be cooked on a given day in a specified number of portions, optionally with a cooking time.
+A recipe scheduled to be cooked on a given day in a specified number of portions, optionally in the morning, midday, or evening.
 
 **Portion**:
 A share of a recipe's yield, used to express how much to cook or how much was eaten.

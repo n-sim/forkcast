@@ -424,8 +424,7 @@ export function App({
     shoppingChecklist;
   const conflictsOpen = route === '#/recipe-conflicts';
   const planningConflictsOpen = route === '#/planning-conflicts';
-  const planningView =
-    route === '#/meal-plan' ? 'week' : route === '#/today' ? 'today' : null;
+  const planningView = route === '#/meal-plan' || route === '#/today';
   const editing = recipeRoute.endsWith('/edit');
   const selected = recipes.find(
     (recipe) =>
@@ -448,7 +447,7 @@ export function App({
       : undefined;
 
   useEffect(() => {
-    document.title = `${selectedSession?.recipe.name ?? selected?.name ?? (settingsOpen ? 'Settings' : planningConflictsOpen ? 'Review planning conflicts' : conflictsOpen ? 'Review recipe conflicts' : foodLogOpen ? 'Food log' : shoppingOpen ? 'Shopping list' : planningView === 'today' ? 'Today’s cooking' : planningView ? 'Your weekly meal plan' : route === '#/recipes/generate' ? 'Generate recipe' : route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
+    document.title = `${selectedSession?.recipe.name ?? selected?.name ?? (settingsOpen ? 'Settings' : planningConflictsOpen ? 'Review planning conflicts' : conflictsOpen ? 'Review recipe conflicts' : foodLogOpen ? 'Food log' : shoppingOpen ? 'Shopping list' : planningView ? 'Your meal plan' : route === '#/recipes/generate' ? 'Generate recipe' : route === '#/recipes/new' ? 'New recipe' : 'Your recipe collection')} · Forkcast`;
   }, [
     route,
     selected,
@@ -554,16 +553,9 @@ export function App({
           <a
             className="nav-link"
             href="#/meal-plan"
-            aria-current={planningView === 'week' ? 'page' : undefined}
+            aria-current={planningView ? 'page' : undefined}
           >
             <span aria-hidden="true">▦</span> Meal plan
-          </a>
-          <a
-            className="nav-link"
-            href="#/today"
-            aria-current={planningView === 'today' ? 'page' : undefined}
-          >
-            <span aria-hidden="true">☀</span> Today
           </a>
           <a
             className="nav-link"
@@ -620,13 +612,7 @@ export function App({
             href: '#/meal-plan',
             icon: '▦',
             label: 'Plan',
-            current: planningView === 'week',
-          },
-          {
-            href: '#/today',
-            icon: '☀',
-            label: 'Today',
-            current: planningView === 'today',
+            current: planningView,
           },
           {
             href: '#/food-log',
@@ -725,11 +711,7 @@ export function App({
               onRefresh={() => void refreshSync()}
             />
           ) : planningView ? (
-            <MealPlan
-              key={planningView}
-              recipes={recipes}
-              view={planningView}
-            />
+            <MealPlan recipes={recipes} />
           ) : shoppingOpen ? (
             shoppingChecklist ? (
               <ShoppingChecklistView />

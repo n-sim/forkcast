@@ -1,5 +1,5 @@
 use crate::{
-    calendar::{valid_date, valid_time},
+    calendar::{valid_cooking_time, valid_date},
     recipe::FieldError,
 };
 use serde::{Deserialize, Serialize};
@@ -45,8 +45,8 @@ pub fn validate_planned_cooking(
             cooking
                 .cooking_time
                 .as_ref()
-                .is_none_or(|time| time.is_empty() || valid_time(time)),
-            "Enter a valid cooking time or leave it blank.",
+                .is_none_or(|time| time.is_empty() || valid_cooking_time(time)),
+            "Choose morning, midday or evening, or leave the cooking time blank.",
         ),
     ] {
         if !valid {

@@ -11,6 +11,7 @@ use crate::{
     sync,
 };
 use forkcast_recipe_domain::{
+    calendar::cooking_time_rank,
     household_planning::{self, Conflict, GenerationAlias},
     planning::{PlannedCooking, validate_planned_cooking},
     recipe::RecipeDraft,
@@ -458,11 +459,16 @@ impl Core {
             let data = snapshot(db, principal.household_id())?["data"].clone();
             let mut plan = cookings(&data)?;
             plan.sort_by(|a, b| {
-                (&a.cooking_date, &a.cooking_time, &a.id).cmp(&(
-                    &b.cooking_date,
-                    &b.cooking_time,
-                    &b.id,
-                ))
+                (
+                    &a.cooking_date,
+                    cooking_time_rank(a.cooking_time.as_deref()),
+                    &a.id,
+                )
+                    .cmp(&(
+                        &b.cooking_date,
+                        cooking_time_rank(b.cooking_time.as_deref()),
+                        &b.id,
+                    ))
             });
             Ok(MealPlanView {
                 cookings: plan,

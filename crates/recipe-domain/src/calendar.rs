@@ -36,3 +36,27 @@ pub fn valid_time(value: &str) -> bool {
         && value[..2].parse::<u32>().is_ok_and(|hour| hour < 24)
         && value[3..].parse::<u32>().is_ok_and(|minute| minute < 60)
 }
+
+/// The coarse parts of the day a cooking can be planned for.
+pub const COOKING_PERIODS: [&str; 3] = ["morning", "midday", "evening"];
+
+/// A planned cooking time is a part of the day. Times of day saved by earlier
+/// releases (`HH:MM`) remain valid so stored plans keep loading.
+pub fn valid_cooking_time(value: &str) -> bool {
+    COOKING_PERIODS.contains(&value) || valid_time(value)
+}
+
+/// Sort position of a planned cooking time within its day; unspecified last.
+pub fn cooking_time_rank(value: Option<&str>) -> u8 {
+    match value {
+        Some("morning") => 1,
+        Some("midday") => 2,
+        Some("evening") => 3,
+        Some(time) if valid_time(time) => match time[..2].parse::<u32>().unwrap_or(0) {
+            0..=10 => 1,
+            11..=15 => 2,
+            _ => 3,
+        },
+        _ => 4,
+    }
+}

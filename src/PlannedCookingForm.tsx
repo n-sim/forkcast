@@ -1,6 +1,9 @@
 import { useRef, useState, type FormEvent } from 'react';
 import type { FieldError, Recipe } from './domain';
 import {
+  cookingPeriodLabels,
+  cookingPeriodOf,
+  cookingPeriods,
   validatePlannedCooking,
   type PlannedCooking,
   type PlannedCookingDraft,
@@ -19,15 +22,16 @@ export function PlannedCookingForm({
   onSave: (cooking: PlannedCooking) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState<PlannedCookingDraft>(
-    () =>
-      cooking ?? {
-        id: crypto.randomUUID(),
-        recipeId: '',
-        cookingDate: date,
-        portions: null,
-        cookingTime: null,
-      },
+  const [draft, setDraft] = useState<PlannedCookingDraft>(() =>
+    cooking
+      ? { ...cooking, cookingTime: cookingPeriodOf(cooking.cookingTime) }
+      : {
+          id: crypto.randomUUID(),
+          recipeId: '',
+          cookingDate: date,
+          portions: null,
+          cookingTime: null,
+        },
   );
   const [errors, setErrors] = useState<FieldError[]>([]);
   const [error, setError] = useState('');
@@ -178,10 +182,8 @@ export function PlannedCookingForm({
             </label>
             <label>
               Cooking time (optional)
-              <input
+              <select
                 {...fieldStatus('cookingTime')}
-                type="time"
-                step="60"
                 value={draft.cookingTime ?? ''}
                 onChange={(event) =>
                   setDraft({
@@ -189,7 +191,14 @@ export function PlannedCookingForm({
                     cookingTime: event.target.value || null,
                   })
                 }
-              />
+              >
+                <option value="">Not specified</option>
+                {cookingPeriods.map((period) => (
+                  <option key={period} value={period}>
+                    {cookingPeriodLabels[period]}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
           <div className="form-actions">
