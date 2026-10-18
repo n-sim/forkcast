@@ -995,6 +995,7 @@ dialog .form-actions {
   }
   .sidebar {
     padding: 16px;
+    padding-top: calc(max(env(safe-area-inset-top, 0px), 24px) + 16px);
     gap: 12px;
   }
   .brand {
