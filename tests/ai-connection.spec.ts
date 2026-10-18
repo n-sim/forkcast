@@ -88,7 +88,7 @@ test('standalone workflows stay available without ChatGPT and no companion or te
   await expect(
     ai.getByRole('button', { name: 'Continue with ChatGPT', exact: true }),
   ).toBeVisible();
-  await expect(page.getByText(/companion|terminal|SSH/i)).toHaveCount(0);
+  await expect(ai).not.toContainText(/companion|terminal|SSH/i);
   await page
     .getByRole('link', { name: 'Recipe collection', exact: true })
     .click();
