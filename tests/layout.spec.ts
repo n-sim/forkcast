@@ -55,3 +55,28 @@ test('keep content aligned when navigating between short and scrolling pages', a
   const returnedBounds = await collectionHeading.boundingBox();
   expect(returnedBounds!.x).toBeCloseTo(foodLogBounds!.x, 1);
 });
+
+test('show a bottom navigation bar only on phone-sized screens', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto('/');
+  const bottomNav = page.getByRole('navigation', {
+    name: 'Primary navigation',
+  });
+  await expect(bottomNav).toBeVisible();
+  await expect(
+    page.getByRole('navigation', { name: 'Main navigation' }),
+  ).toBeHidden();
+  await bottomNav.getByRole('link', { name: 'Today', exact: true }).click();
+  await expect(page).toHaveURL(/#\/today/);
+  await expect(
+    bottomNav.getByRole('link', { name: 'Today', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
+
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await expect(bottomNav).toBeHidden();
+  await expect(
+    page.getByRole('navigation', { name: 'Main navigation' }),
+  ).toBeVisible();
+});

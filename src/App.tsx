@@ -559,6 +559,50 @@ export function App({
           </nav>
         </div>
       </aside>
+      <nav className="bottom-nav" aria-label="Primary navigation">
+        {[
+          { href: '#/', icon: '▤', label: 'Recipes', current: route === '#/' },
+          {
+            href: '#/meal-plan',
+            icon: '▦',
+            label: 'Plan',
+            current: planningView === 'week',
+          },
+          {
+            href: '#/today',
+            icon: '☀',
+            label: 'Today',
+            current: planningView === 'today',
+          },
+          {
+            href: '#/food-log',
+            icon: '◷',
+            label: 'Log',
+            current: foodLogOpen,
+          },
+          {
+            href: '#/shopping-list',
+            icon: '▧',
+            label: 'Shopping',
+            current: shoppingOpen,
+          },
+          {
+            href: '#/settings',
+            icon: '⚙',
+            label: 'Settings',
+            current: settingsOpen,
+          },
+        ].map((item) => (
+          <a
+            key={item.href}
+            href={item.href}
+            aria-current={item.current ? 'page' : undefined}
+          >
+            <span aria-hidden="true">{item.icon}</span>
+            {item.label}
+          </a>
+        ))}
+      </nav>
       <div className="workspace">
         <header className="topbar">
           <span>Your everyday kitchen companion</span>
