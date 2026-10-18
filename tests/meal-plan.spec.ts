@@ -436,9 +436,11 @@ test('navigate calendar weeks over daylight saving and update today after midnig
       exact: true,
     }),
   ).toContainText('Evening');
-  await expect(page.getByRole('main')).not.toContainText('Morning');
+  const todayRegion = page.getByRole('region', { name: 'Today', exact: true });
+  await expect(todayRegion).toContainText('Wednesday, 14 October 2026');
+  await expect(todayRegion).not.toContainText('Morning');
   await page.reload();
-  await expect(page.getByRole('main')).toContainText('Evening');
+  await expect(todayRegion).toContainText('Evening');
 });
 
 test('assign labels in the recipe editor and show the current recipe label for every planned cooking', async ({
