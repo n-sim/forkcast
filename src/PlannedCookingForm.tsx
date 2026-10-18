@@ -184,6 +184,7 @@ export function PlannedCookingForm({
               Cooking time (optional)
               <select
                 {...fieldStatus('cookingTime')}
+                aria-label="Cooking time (optional)"
                 value={draft.cookingTime ?? ''}
                 onChange={(event) =>
                   setDraft({
