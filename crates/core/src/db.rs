@@ -172,6 +172,17 @@ const MIGRATIONS: &[&str] = &[
          applied_at INTEGER NOT NULL
      );
      ALTER TABLE shared_recipes ADD COLUMN held_back INTEGER NOT NULL DEFAULT 0 CHECK (held_back IN (0, 1));",
+    // Version 3: household cooking occurrences. A guided session yields at
+    // most one occurrence, so retrying its completion cannot count twice.
+    "CREATE TABLE cooking_occurrences (
+         id TEXT PRIMARY KEY,
+         household_id TEXT NOT NULL REFERENCES households(id),
+         recipe_id TEXT NOT NULL REFERENCES shared_recipes(id),
+         person_id TEXT NOT NULL REFERENCES people(id),
+         session_id TEXT UNIQUE,
+         cooked_at INTEGER NOT NULL
+     );
+     CREATE INDEX cooking_occurrence_recipe ON cooking_occurrences(household_id, recipe_id);",
 ];
 
 pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;

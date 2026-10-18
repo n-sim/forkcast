@@ -162,3 +162,31 @@ export async function beginCookingSession(
     cancelSessionIds,
   });
 }
+
+export interface RecipeHistory {
+  recipeId: string;
+  count: number;
+  /** Milliseconds since the Unix epoch. */
+  lastCookedAt: number;
+}
+
+/** The household's cooking count and last-cooked time per recipe. */
+export async function loadCookingHistory(): Promise<
+  Record<string, RecipeHistory>
+> {
+  const history = await execute<RecipeHistory[]>('cookingHistory');
+  return Object.fromEntries(history.map((entry) => [entry.recipeId, entry]));
+}
+
+/** Records one cooking occurrence; repeating an `id` counts nothing more. */
+export async function markRecipeCooked(
+  recipeId: string,
+  id: string,
+  sessionId?: string,
+): Promise<RecipeHistory> {
+  return execute<RecipeHistory>('markCooked', { recipeId, id, sessionId });
+}
+
+export function subscribeToCookingHistoryChanges(listener: () => void) {
+  return subscribeToTopics(['cookingHistory'], listener);
+}

@@ -378,3 +378,31 @@ test('serialize simultaneous starts in two tabs and retire a canceled session in
     blocked.getByRole('region', { name: 'Current cooking step' }),
   ).toHaveCount(0);
 });
+
+test('mark cooked and guided completion record household recipe history once per cook', async ({
+  page,
+}) => {
+  await createRecipe(page);
+  const history = page.getByRole('region', { name: 'Cooking history' });
+  await expect(history).toContainText('Not cooked yet');
+
+  await page.getByRole('button', { name: 'Mark cooked', exact: true }).click();
+  await expect(history).toContainText('Cooked 1 time');
+  // A separate cook counts again.
+  await page.getByRole('button', { name: 'Mark cooked', exact: true }).click();
+  await expect(history).toContainText('Cooked 2 times');
+
+  await page
+    .getByRole('button', { name: 'Start cooking', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Next step', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Finish cooking', exact: true })
+    .click();
+  await expect(history).toContainText('Cooked 3 times');
+
+  await page.reload();
+  await expect(
+    page.getByRole('region', { name: 'Cooking history' }),
+  ).toContainText('Cooked 3 times');
+});

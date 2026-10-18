@@ -13,7 +13,7 @@ use forkcast_recipe_domain::{
     quantities::{DisplayUnits, calculate_recipe},
     recipe::{RecipeDraft, validate_recipe},
 };
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -37,6 +37,30 @@ pub struct StartCooking {
 pub enum CookingOutcome {
     Finished,
     Canceled,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MarkCooked {
+    /// Identifies this cooking event; repeating the same id is accepted
+    /// without counting again.
+    #[serde(default)]
+    pub id: Option<String>,
+    pub recipe_id: String,
+    /// The person's unfinished guided session for this cook, if any. Marking
+    /// it cooked and finishing it later are then one occurrence.
+    #[serde(default)]
+    pub session_id: Option<String>,
+}
+
+/// A recipe's household cooking history.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeHistory {
+    pub recipe_id: String,
+    pub count: i64,
+    /// Milliseconds since the Unix epoch.
+    pub last_cooked_at: i64,
 }
 
 /// Either the new session, or the unfinished sessions that need a decision.
@@ -108,7 +132,157 @@ fn store(db: &Connection, session: &Value) -> Result<()> {
     Ok(())
 }
 
+fn history_of(db: &Connection, principal: &Principal, recipe_id: &str) -> Result<RecipeHistory> {
+    let (count, last): (i64, Option<i64>) = db.query_row(
+        "SELECT COUNT(*), MAX(cooked_at) FROM cooking_occurrences WHERE household_id = ? AND recipe_id = ?",
+        params![principal.household_id(), recipe_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    Ok(RecipeHistory {
+        recipe_id: recipe_id.to_owned(),
+        count,
+        last_cooked_at: last.unwrap_or(0),
+    })
+}
+
+/// Records the occurrence for `session_id` unless this cooking event is
+/// already recorded, by its id or by its session.
+fn record_occurrence(
+    db: &Connection,
+    effects: &mut crate::changes::Effects,
+    principal: &Principal,
+    id: &str,
+    recipe_id: &str,
+    session_id: Option<&str>,
+    now: i64,
+) -> Result<()> {
+    let inserted = db.execute(
+        "INSERT OR IGNORE INTO cooking_occurrences (id, household_id, recipe_id, person_id, session_id, cooked_at)
+         VALUES (?, ?, ?, ?, ?, ?)",
+        params![
+            id,
+            principal.household_id(),
+            recipe_id,
+            principal.person_id(),
+            session_id,
+            now
+        ],
+    )?;
+    if inserted == 0 {
+        let owner: Option<(String, String)> = db
+            .query_row(
+                "SELECT household_id, recipe_id FROM cooking_occurrences WHERE id = ?",
+                [id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        if let Some((household, recipe)) = owner {
+            principal.require_household(&household)?;
+            if recipe != recipe_id {
+                return Err(Error::conflict(
+                    "This cooking record belongs to a different recipe.",
+                ));
+            }
+        }
+        return Ok(());
+    }
+    effects.household(principal, Topic::CookingHistory);
+    Ok(())
+}
+
 impl Core {
+    /// Cooking count and last-cooked time for every household recipe that
+    /// has been cooked.
+    pub fn cooking_history(&self, principal: &Principal) -> Result<Vec<RecipeHistory>> {
+        self.read(|db| {
+            let mut query = db.prepare(
+                "SELECT recipe_id, COUNT(*), MAX(cooked_at) FROM cooking_occurrences
+                 WHERE household_id = ? GROUP BY recipe_id ORDER BY recipe_id",
+            )?;
+            let rows = query
+                .query_map([principal.household_id()], |row| {
+                    Ok(RecipeHistory {
+                        recipe_id: row.get(0)?,
+                        count: row.get(1)?,
+                        last_cooked_at: row.get(2)?,
+                    })
+                })?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+    }
+
+    /// Records one cooking occurrence of a household recipe outside guided
+    /// cooking, and returns the recipe's updated history. No food-log entry is
+    /// created and no remaining portions are tracked.
+    pub fn mark_cooked(&self, principal: &Principal, input: MarkCooked) -> Result<RecipeHistory> {
+        principal.require_personal()?;
+        let id = match &input.id {
+            Some(id) if Uuid::parse_str(id).is_ok() => id.clone(),
+            Some(_) => return Err(Error::invalid("The cooking record id could not be read.")),
+            None => Uuid::new_v4().to_string(),
+        };
+        self.write(|db, effects| {
+            let owner: String = db
+                .query_row(
+                    "SELECT household_id FROM shared_recipes WHERE id = ?",
+                    [&input.recipe_id],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .ok_or_else(|| Error::not_found("Recipe not found."))?;
+            principal.require_household(&owner)?;
+            if let Some(session_id) = &input.session_id {
+                // The session may already have finished; its recipe must match.
+                let recipe: Option<String> = db
+                    .query_row(
+                        "SELECT json_extract(payload, '$.recipe.id') FROM cooking_sessions
+                         WHERE id = ? AND person_id = ?",
+                        params![session_id, principal.person_id()],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
+                match recipe {
+                    Some(recipe) if recipe == input.recipe_id => {}
+                    _ => {
+                        return Err(Error::not_found(
+                            "This cooking session belongs to another recipe or person.",
+                        ));
+                    }
+                }
+                let existing: Option<String> = db
+                    .query_row(
+                        "SELECT id FROM cooking_occurrences WHERE session_id = ?",
+                        [session_id],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
+                if existing.is_none() {
+                    record_occurrence(
+                        db,
+                        effects,
+                        principal,
+                        &id,
+                        &input.recipe_id,
+                        Some(session_id),
+                        self.now(),
+                    )?;
+                }
+            } else {
+                record_occurrence(
+                    db,
+                    effects,
+                    principal,
+                    &id,
+                    &input.recipe_id,
+                    None,
+                    self.now(),
+                )?;
+            }
+            history_of(db, principal, &input.recipe_id)
+        })
+    }
+
     /// The person's unfinished cooking sessions.
     pub fn cooking_sessions(&self, principal: &Principal) -> Result<Vec<Value>> {
         principal.require_personal()?;
@@ -228,15 +402,52 @@ impl Core {
     ) -> Result<()> {
         principal.require_personal()?;
         self.write(|db, effects| {
-            let mut session = find_unfinished(db, principal, session_id)?;
+            let mut session = match find_unfinished(db, principal, session_id) {
+                Ok(session) => session,
+                // Retrying a completion that already committed is accepted
+                // and counts nothing more.
+                Err(error) if outcome == CookingOutcome::Finished => {
+                    return if finished_by(db, principal, session_id)? {
+                        Ok(())
+                    } else {
+                        Err(error)
+                    };
+                }
+                Err(error) => return Err(error),
+            };
             let action = match outcome {
                 CookingOutcome::Finished => json!({"type": "finish"}),
                 CookingOutcome::Canceled => json!({"type": "cancel"}),
             };
             progress(&mut session, action, self.now())?;
             store(db, &session)?;
+            if outcome == CookingOutcome::Finished {
+                let recipe = session["recipe"]["id"].as_str().ok_or_else(unreadable)?;
+                record_occurrence(
+                    db,
+                    effects,
+                    principal,
+                    &Uuid::new_v4().to_string(),
+                    recipe,
+                    Some(session_id),
+                    self.now(),
+                )?;
+            }
             effects.person(principal, Topic::CookingSessions);
             Ok(())
         })
     }
+}
+
+/// Whether this person's session already ended as finished.
+fn finished_by(db: &Connection, principal: &Principal, session_id: &str) -> Result<bool> {
+    let completed: Option<bool> = db
+        .query_row(
+            "SELECT json_extract(payload, '$.completedAt') IS NOT NULL FROM cooking_sessions
+             WHERE id = ? AND person_id = ? AND ended = 1",
+            params![session_id, principal.person_id()],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(completed.unwrap_or(false))
 }

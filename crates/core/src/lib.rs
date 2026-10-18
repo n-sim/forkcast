@@ -34,7 +34,7 @@ pub use ai::{
     TransferAck,
 };
 pub use changes::{Change, Scope, Subscription, Topic};
-pub use cooking::{BeginCooking, CookingOutcome, StartCooking};
+pub use cooking::{BeginCooking, CookingOutcome, MarkCooked, RecipeHistory, StartCooking};
 pub use db::SCHEMA_VERSION;
 pub use error::{Error, ErrorKind, Result};
 pub use food_log::{LogManualFood, LogRecipeFood};

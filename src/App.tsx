@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   calculateRecipe,
   formatQuantity,
@@ -17,6 +17,10 @@ import {
   endCookingSession,
   loadCookingSessions,
   subscribeToCookingChanges,
+  loadCookingHistory,
+  markRecipeCooked,
+  subscribeToCookingHistoryChanges,
+  type RecipeHistory,
   loadRecipeCollection,
   loadPersonalRecipeRatings,
   subscribeToRecipeChanges,
@@ -62,6 +66,8 @@ function RecipeDetails({
   rating,
   onSaveRating,
   onStartCooking,
+  history,
+  onMarkCooked,
   loggedNutritionVersionId,
 }: {
   recipe: Recipe;
@@ -70,6 +76,8 @@ function RecipeDetails({
   rating?: RecipeRating;
   onSaveRating: (value: number | null) => Promise<void>;
   loggedNutritionVersionId: string | null;
+  history?: RecipeHistory;
+  onMarkCooked: (id: string) => Promise<void>;
   onStartCooking: (
     portions: number,
     displayUnits: DisplayUnits,
@@ -79,6 +87,10 @@ function RecipeDetails({
   const [displayUnits, setDisplayUnits] = useState<DisplayUnits>('metric');
   const [starting, setStarting] = useState(false);
   const [cookingError, setCookingError] = useState('');
+  const [marking, setMarking] = useState(false);
+  const [markError, setMarkError] = useState('');
+  // A failed attempt is retried under the same id so it cannot count twice.
+  const pendingCook = useRef<string | null>(null);
   let quantities = null;
   let quantityError = '';
   try {
@@ -98,6 +110,19 @@ function RecipeDetails({
       );
     } finally {
       setStarting(false);
+    }
+  }
+  async function markCooked() {
+    setMarking(true);
+    setMarkError('');
+    pendingCook.current ??= crypto.randomUUID();
+    try {
+      await onMarkCooked(pendingCook.current);
+      pendingCook.current = null;
+    } catch {
+      setMarkError('This cook could not be recorded. Please try again.');
+    } finally {
+      setMarking(false);
     }
   }
   return (
@@ -124,6 +149,22 @@ function RecipeDetails({
           </p>
         )}
       <RecipeMetadata recipe={recipe} />
+      <section className="cooking-history" aria-label="Cooking history">
+        <p>
+          {history
+            ? `Cooked ${history.count} ${history.count === 1 ? 'time' : 'times'} · Last cooked ${new Date(history.lastCookedAt).toLocaleDateString()}`
+            : 'Not cooked yet'}
+        </p>
+        <button
+          type="button"
+          className="button secondary"
+          disabled={marking}
+          onClick={() => void markCooked()}
+        >
+          {marking ? 'Recording…' : 'Mark cooked'}
+        </button>
+        {markError && <p role="alert">{markError}</p>}
+      </section>
       <div className="recipe-personalization">
         <RecipePhotoEditor
           recipeName={recipe.name}
@@ -302,6 +343,19 @@ export function App({
     existing: CookingSession[];
   } | null>(null);
   const [refreshError, setRefreshError] = useState('');
+  const [history, setHistory] = useState<Record<string, RecipeHistory>>({});
+  useEffect(() => {
+    const load = () =>
+      void loadCookingHistory()
+        .then(setHistory)
+        .catch(() =>
+          setRefreshError(
+            'Cooking history could not be loaded. Reload to try again.',
+          ),
+        );
+    load();
+    return subscribeToCookingHistoryChanges(load);
+  }, [accountKey]);
   useEffect(
     () =>
       subscribeToCookingChanges(() => {
@@ -733,6 +787,23 @@ export function App({
               key={`${selected.id}:${accountKey}`}
               recipe={selected}
               loggedNutritionVersionId={loggedNutritionVersionId}
+              history={history[selected.id]}
+              onMarkCooked={async (id) => {
+                // Marking a recipe with a guided session in progress is the
+                // same cook as finishing that session.
+                const active = sessions.find(
+                  (session) => session.recipe.id === selected.id,
+                );
+                const updated = await markRecipeCooked(
+                  selected.id,
+                  id,
+                  active?.id,
+                );
+                setHistory((current) => ({
+                  ...current,
+                  [selected.id]: updated,
+                }));
+              }}
               onStartCooking={async (portions, displayUnits) => {
                 const session = startCooking(selected, portions, displayUnits);
                 await beginSession(session);

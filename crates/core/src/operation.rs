@@ -4,8 +4,8 @@
 
 use crate::{
     AccountChange, AiRequest, CookingOutcome, Core, Credentials, CurrentChoice, EditBase,
-    JoinSelection, LogManualFood, LogRecipeFood, Photo, PlanningChoice, Principal, ServerSelection,
-    SetCoverPhoto, ShoppingItemKind, StartCooking,
+    JoinSelection, LogManualFood, LogRecipeFood, MarkCooked, Photo, PlanningChoice, Principal,
+    ServerSelection, SetCoverPhoto, ShoppingItemKind, StartCooking,
     error::{Error, Result},
 };
 use forkcast_recipe_domain::{planning::PlannedCooking, shopping::ShoppingItem};
@@ -96,6 +96,11 @@ pub enum Operation {
     EndCooking {
         session_id: String,
         outcome: CookingOutcome,
+    },
+    CookingHistory,
+    MarkCooked {
+        #[serde(flatten)]
+        cooked: MarkCooked,
     },
     FoodLog {
         date: String,
@@ -302,6 +307,8 @@ impl Core {
                 self.end_cooking(principal, &session_id, outcome)?;
                 Ok(Value::Null)
             }
+            CookingHistory => json(self.cooking_history(principal)?),
+            MarkCooked { cooked } => json(self.mark_cooked(principal, cooked)?),
             FoodLog { date } => json(self.food_log(principal, &date)?),
             LogRecipeFood { entry } => {
                 self.log_recipe_food(principal, entry)?;

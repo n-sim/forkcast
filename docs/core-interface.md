@@ -71,6 +71,8 @@ methods.
 | `startCooking` | `recipeId`, `portions`, `displayUnits?`, `cancelSessionIds?` | `{session, conflicts}`; captures the recipe now; `session` is `null` and `conflicts` lists unfinished sessions unless `cancelSessionIds` names exactly them |
 | `saveCookingProgress` | `sessionId`, `step`, `timers` | the session |
 | `endCooking` | `sessionId`, `outcome` (`finished`/`canceled`) | none; finishing needs the last step |
+| `cookingHistory` | | household cooking count and `lastCookedAt` (ms) per cooked recipe: `{recipeId, count, lastCookedAt}` |
+| `markCooked` | `recipeId`, `id?`, `sessionId?` | the recipe's history. Records one occurrence for the household; an identical `id`, or a `sessionId` that already has one, counts nothing more. Finishing a guided session records its occurrence once (retrying `endCooking` is accepted); canceling records none. Creates no food-log entry |
 | `foodLog` | `date` | `{entries, totals, incomplete}` computed from retained nutrition versions |
 | `logRecipeFood` | `id?`, `recipeId`, `nutritionVersionId`, `consumedAt`, `portions` | none; an identical retry of the same `id` is accepted |
 | `logManualFood` | `id?`, `description`, `consumedAt`, `nutrition` | none |
