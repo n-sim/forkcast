@@ -1,0 +1,221 @@
+name: Release
+
+# Every successful CI run on main (that is, every merged pull request) publishes
+# release 0.0.<n> with the Android app, the Windows desktop app, and the server.
+on:
+  workflow_run:
+    workflows: ['Check application']
+    types: [completed]
+    branches: [main]
+
+# Releases are numbered in order, so only one runs at a time and none is dropped
+# in favor of a newer one that is already running.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+      sha: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+      - id: next
+        run: |
+          last=$(git tag --list 'v0.0.*' | sed 's/^v0\.0\.//' | grep -E '^[0-9]+$' | sort -n | tail -1)
+          echo "version=0.0.$(( ${last:-0} + 1 ))" >> "$GITHUB_OUTPUT"
+
+  android:
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-37 ndk;27.2.12479018
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown,aarch64-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      # 0.0.<n> maps to versionCode <n>, so each release upgrades the previous one.
+      - run: echo "{\"version\":\"$VERSION\"}" > "$RUNNER_TEMP/version.json"
+      - name: Configure signing
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::ANDROID_KEYSTORE_* secrets are not set; the APK is published unsigned and cannot be installed."
+            echo "suffix=-unsigned" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/release.jks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > crates/desktop/gen/android/keystore.properties
+          echo "suffix=" >> "$GITHUB_OUTPUT"
+      - run: npx tauri android build --apk --target aarch64 --target x86_64 --config "$RUNNER_TEMP/version.json"
+        env:
+          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
+      - name: Collect the APK
+        run: |
+          apk=$(find crates/desktop/gen/android/app/build/outputs/apk -name '*.apk' | head -1)
+          mkdir dist-release
+          cp "$apk" "dist-release/forkcast-$VERSION-android${{ steps.signing.outputs.suffix }}.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist-release/*
+
+  desktop:
+    needs: version
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - shell: bash
+        run: echo "{\"version\":\"$VERSION\"}" > "$RUNNER_TEMP/version.json"
+      - run: npx tauri build --config "$env:RUNNER_TEMP/version.json"
+      - shell: bash
+        run: |
+          mkdir dist-release
+          cp target/release/bundle/nsis/*-setup.exe "dist-release/forkcast-$VERSION-windows-x64-setup.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop
+          path: dist-release/*
+
+  backend:
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - name: Stamp the version
+        run: |
+          for manifest in crates/*/Cargo.toml; do
+            sed -i "0,/^version = \".*\"/s//version = \"$VERSION\"/" "$manifest"
+          done
+      - run: npm run server:build
+      - name: Package the server
+        run: |
+          dir="forkcast-server-$VERSION-linux-x64"
+          mkdir -p "$dir/web" dist-release
+          cp target/release/forkcast-backend "$dir/"
+          cp -r dist/. "$dir/web/"
+          cp docs/server.md "$dir/README.md"
+          tar -czf "dist-release/$dir.tar.gz" "$dir"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend
+          path: dist-release/*
+
+  # The server also ships as a container image, which is what docs/server.md
+  # deploys.
+  image:
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image name
+        id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.name.outputs.image }}:${{ needs.version.outputs.version }}
+            ${{ steps.name.outputs.image }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  publish:
+    needs: [version, android, desktop, backend, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-release
+          merge-multiple: true
+      - name: Create the release
+        run: |
+          gh release create "v$VERSION" dist-release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "${{ needs.version.outputs.sha }}" \
+            --title "Forkcast $VERSION" \
+            --generate-notes \
+            --notes "Server image: \`ghcr.io/${GITHUB_REPOSITORY,,}:$VERSION\`"
