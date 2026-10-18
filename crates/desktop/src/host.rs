@@ -154,12 +154,16 @@ pub fn open_data_folder(app: AppHandle, host: State<'_, Host>) -> Result<(), Str
 #[tauri::command]
 pub async fn open_window(app: AppHandle) -> Result<String, String> {
     let label = format!("window-{}", uuid_label());
-    tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App("index.html".into()))
-        .title("Forkcast")
-        .inner_size(1280.0, 860.0)
-        .min_inner_size(360.0, 480.0)
-        .build()
-        .map_err(|error| error.to_string())?;
+    crate::for_automation(tauri::WebviewWindowBuilder::new(
+        &app,
+        &label,
+        tauri::WebviewUrl::App("index.html".into()),
+    ))
+    .title("Forkcast")
+    .inner_size(1280.0, 860.0)
+    .min_inner_size(360.0, 480.0)
+    .build()
+    .map_err(|error| error.to_string())?;
     Ok(label)
 }
 

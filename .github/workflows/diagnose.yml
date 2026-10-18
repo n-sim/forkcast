@@ -26,24 +26,6 @@ jobs:
           Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' -ErrorAction SilentlyContinue | Select-Object pv
           Get-ItemProperty 'HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' -ErrorAction SilentlyContinue | Select-Object pv
           Get-ChildItem 'C:\Program Files (x86)\Microsoft\EdgeWebView' -ErrorAction SilentlyContinue
-      - name: Launch the app and capture its output
-        shell: pwsh
-        run: |
-          $env:FORKCAST_DATA_DIR = "$env:RUNNER_TEMP\fc-data"
-          $env:WEBVIEW2_USER_DATA_FOLDER = "$env:RUNNER_TEMP\fc-webview"
-          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9333'
-          $p = Start-Process -FilePath target\debug\forkcast-desktop.exe -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt
-          for ($i = 0; $i -lt 20; $i++) {
-            Start-Sleep -Seconds 2
-            if ($p.HasExited) { "exited with $($p.ExitCode)"; break }
-            try { (Invoke-WebRequest http://127.0.0.1:9333/json/version -UseBasicParsing).Content; break } catch { "waiting: $($_.Exception.Message)" }
-          }
-          "--- stdout"; Get-Content out.txt
-          "--- stderr"; Get-Content err.txt
-          "--- processes"; Get-Process | Where-Object { $_.ProcessName -match 'forkcast|msedge' } | Select-Object ProcessName, Id, MainWindowTitle
-          "--- command lines"; Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'msedgewebview2|forkcast' -and $_.CommandLine -notmatch '--type=' } | Select-Object ProcessId, Name, CommandLine | Format-List
-          "--- listening"; Get-NetTCPConnection -State Listen | Where-Object { $_.OwningProcess -in (Get-Process msedgewebview2,forkcast-desktop -ErrorAction SilentlyContinue).Id } | Select-Object LocalAddress, LocalPort, OwningProcess
-          "--- webview folder"; Get-ChildItem "$env:RUNNER_TEMP\fc-webview" -ErrorAction SilentlyContinue | Select-Object Name
-          "--- DevToolsActivePort"; Get-ChildItem "$env:RUNNER_TEMP\fc-webview" -Recurse -Filter DevToolsActivePort -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName; Get-Content $_.FullName }
-          "--- data"; Get-ChildItem $env:FORKCAST_DATA_DIR -ErrorAction SilentlyContinue
-          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+      - run: npx playwright install chromium
+      - name: Smoke journeys
+        run: npx playwright test tests/smoke.spec.ts tests/recipes.spec.ts --project=desktop --retries=0 --max-failures=3
