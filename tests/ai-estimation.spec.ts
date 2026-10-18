@@ -131,7 +131,7 @@ test('suggest editable difficulty and times without claiming measured timings', 
   await expect(
     page.getByRole('status', { name: 'Estimate status' }),
   ).toContainText('not measured timings');
-  await expect(page.getByLabel('Difficulty', { exact: true })).toHaveValue(
+  await expect(page.getByRole('combobox', { name: /^Difficulty/ })).toHaveValue(
     'medium',
   );
   await expect(page.getByLabel('Active time (minutes)')).toHaveValue('15');
