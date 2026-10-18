@@ -189,6 +189,9 @@ jobs:
         id: name
         run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
+        env:
+          # The build record would be one more artifact for the publish job.
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: .
           push: true
@@ -209,6 +212,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: '{android,desktop,backend}'
           path: dist-release
           merge-multiple: true
       - name: Create the release
