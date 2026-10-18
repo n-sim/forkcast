@@ -158,27 +158,34 @@ test('competing recipe edits are kept for explicit resolution and a stale choice
       page.getByRole('status', { name: 'Recipe edit conflicts' }),
     ).toContainText('1 unresolved competing edit');
   }
+  // The second app must still show the old alternatives when it chooses, but
+  // its background worker synchronizes every 20 seconds and on focus. Open its
+  // page first and choose right after the first app, keeping that window short.
+  const secondRevision = second
+    .getByRole('region', { name: 'Revision 2', exact: true })
+    .getByRole('button', { name: 'Make current' });
+  await second.goto('/#/recipe-conflicts');
+  await expect(secondRevision).toBeVisible();
   await first.goto('/#/recipe-conflicts');
   await first
     .getByRole('region', { name: 'Revision 1', exact: true })
     .getByRole('button', { name: 'Make current' })
     .click();
-  await first.goto('/#/');
   await expect(
-    first.getByRole('status', { name: 'Recipe edit conflicts' }),
-  ).toHaveCount(0);
-
-  // The second app still shows the old alternatives until it synchronizes.
-  await second.goto('/#/recipe-conflicts');
-  await second
-    .getByRole('region', { name: 'Revision 2', exact: true })
-    .getByRole('button', { name: 'Make current' })
-    .click();
+    first
+      .getByRole('region', { name: 'Revision 1', exact: true })
+      .getByText('Current recipe'),
+  ).toBeVisible();
+  await secondRevision.click();
   await expect(second.getByRole('alert')).toContainText(/changed|Review/);
   await syncNow(second);
   await second.goto('/#/');
   await expect(
     second.getByRole('status', { name: 'Recipe edit conflicts' }),
+  ).toHaveCount(0);
+  await first.goto('/#/');
+  await expect(
+    first.getByRole('status', { name: 'Recipe edit conflicts' }),
   ).toHaveCount(0);
 });
 
