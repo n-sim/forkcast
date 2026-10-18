@@ -1,10 +1,9 @@
-//! Protected storage for remote session tokens. On Windows the whole store is
-//! encrypted with DPAPI, bound to the current Windows user. Platforms without
-//! a protected-storage adapter keep secrets in memory only, so a restart
-//! asks the person to sign in again rather than writing tokens in the clear.
+//! Protected storage for remote session tokens and ChatGPT sessions. On
+//! Windows the whole store is encrypted with DPAPI, bound to the current
+//! Windows user; on Android the Keystore protects it. Other platforms keep an
+//! owner-only file (directory `0700`, file `0600`, replaced atomically) in the
+//! app's data folder, outside the database and outside React or web storage.
 
-#[cfg(not(any(windows, target_os = "android")))]
-use forkcast_core::MemorySecrets;
 use forkcast_core::Secrets;
 use std::{path::PathBuf, sync::Arc};
 #[cfg(windows)]
@@ -26,8 +25,15 @@ pub fn open(directory: PathBuf, app: &tauri::AppHandle) -> Arc<dyn Secrets> {
     }
     #[cfg(not(any(windows, target_os = "android")))]
     {
-        let _ = (directory, app);
-        Arc::new(MemorySecrets::default())
+        let _ = app;
+        match forkcast_core::FileSecrets::open(directory.join("secrets").join("credentials.json")) {
+            Ok(store) => Arc::new(store),
+            Err(error) => {
+                // Never fall back to plaintext elsewhere; sign in again instead.
+                eprintln!("Protected credential storage is unavailable: {error}");
+                Arc::new(forkcast_core::MemorySecrets::default())
+            }
+        }
     }
 }
 

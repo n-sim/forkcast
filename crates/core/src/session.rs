@@ -547,6 +547,7 @@ impl Core {
                 ] {
                     db.execute(sql, params![account.id, local_person])?;
                 }
+                crate::preferences::queue_all(db, effects, &member)?;
                 let ratings: Vec<(String, i64)> = db
                     .prepare("SELECT recipe_id, value FROM recipe_ratings WHERE person_id = ? AND value IS NOT NULL")?
                     .query_map([&account.id], |row| Ok((row.get(0)?, row.get(1)?)))?
@@ -573,6 +574,11 @@ impl Core {
         })?;
         let _ = self.inner.secrets.delete(PENDING_JOIN);
         drop(_guard);
+        // The standalone person's ChatGPT session is not the account's:
+        // retire it rather than let the account reuse it.
+        if let Ok((local_person, _)) = self.read(local_identity) {
+            self.ai_discard_device_session(&local_person);
+        }
         self.nudge_sync();
         self.sync_status()
     }

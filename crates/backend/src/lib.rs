@@ -14,9 +14,9 @@ use axum::{
     routing::{get, post},
 };
 use forkcast_core::{
-    AccountChange, Authenticated, Core, Credentials, CurrentChoice, Error, ErrorKind, Operation,
-    PROTOCOL_VERSION, PlanningChoice, PlanningMutation, Principal, RatingChange, Revision,
-    SetupServer,
+    AccountChange, Authenticated, Core, CredentialTransfer, Credentials, CurrentChoice, Error,
+    ErrorKind, Operation, PROTOCOL_VERSION, PlanningChoice, PlanningMutation, PreferenceChange,
+    Principal, RatingChange, Revision, SetupServer,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -46,6 +46,7 @@ impl IntoResponse for ApiError {
             ErrorKind::Invalid => StatusCode::UNPROCESSABLE_ENTITY,
             ErrorKind::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             ErrorKind::ProtocolMismatch => StatusCode::UPGRADE_REQUIRED,
+            ErrorKind::ConnectionRequired => StatusCode::PRECONDITION_FAILED,
             ErrorKind::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
             ErrorKind::Unsupported | ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         };
@@ -266,6 +267,76 @@ async fn save_ratings(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PreferenceChanges {
+    changes: Vec<PreferenceChange>,
+}
+
+async fn ai_preferences(
+    State(core): State<Core>,
+    auth: Auth,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Value>> {
+    blocking(move || {
+        let principal = auth.principal();
+        principal.require_person(&id)?;
+        Ok(Json(core.stored_ai_preferences(&principal)?))
+    })
+    .await
+}
+
+async fn save_ai_preferences(
+    State(core): State<Core>,
+    auth: Auth,
+    Path(id): Path<String>,
+    Json(input): Json<PreferenceChanges>,
+) -> ApiResult<StatusCode> {
+    blocking(move || {
+        let principal = auth.principal();
+        principal.require_person(&id)?;
+        core.apply_preference_changes(&principal, input.changes)
+    })
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// The server's own provider identity, which a session must be issued to
+/// before the server will accept it.
+async fn ai_host(State(core): State<Core>, auth: Auth) -> ApiResult<Json<Value>> {
+    let host = blocking(move || core.ai_host(&auth.principal())).await?;
+    Ok(Json(json!({ "hostId": host })))
+}
+
+/// Imports a session for the authenticated account. The reply is only an
+/// acknowledgement; no credential is ever returned.
+async fn ai_import(
+    State(core): State<Core>,
+    auth: Auth,
+    Path(transfer): Path<String>,
+    Json(input): Json<Value>,
+) -> ApiResult<Json<forkcast_core::TransferAck>> {
+    // Parsed by hand so a malformed body never echoes credential fragments.
+    let input: CredentialTransfer = serde_json::from_value(input).map_err(|_| {
+        ApiError(Error::invalid(
+            "The ChatGPT transfer was not in the expected format.",
+        ))
+    })?;
+    Ok(Json(
+        blocking(move || core.ai_import_transfer(&auth.principal(), &transfer, input)).await?,
+    ))
+}
+
+async fn ai_cancel_import(
+    State(core): State<Core>,
+    auth: Auth,
+    Path(transfer): Path<String>,
+) -> ApiResult<Json<forkcast_core::TransferAck>> {
+    Ok(Json(
+        blocking(move || core.ai_cancel_import(&auth.principal(), &transfer)).await?,
+    ))
+}
+
 async fn planning(
     State(core): State<Core>,
     auth: Auth,
@@ -399,6 +470,17 @@ pub fn router(core: Core, origins: Vec<HeaderValue>, frontend: Option<PathBuf>) 
         .route(
             "/api/accounts/{id}/recipe-ratings",
             get(ratings).post(save_ratings),
+        )
+        .route(
+            "/api/accounts/{id}/ai-preferences",
+            get(ai_preferences).post(save_ai_preferences),
+        )
+        .route("/api/ai/host", get(ai_host))
+        .route(
+            "/api/ai/transfers/{transfer}",
+            post(ai_import)
+                .delete(ai_cancel_import)
+                .layer(DefaultBodyLimit::max(64 * 1024)),
         )
         .route(
             "/api/households/{id}/planning/resolve",

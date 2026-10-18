@@ -20,6 +20,8 @@ pub enum ErrorKind {
     Unavailable,
     /// Client and server speak different synchronization protocol versions.
     ProtocolMismatch,
+    /// The person's ChatGPT connection is missing or ended; connect again.
+    ConnectionRequired,
 }
 
 #[derive(Debug, Serialize)]

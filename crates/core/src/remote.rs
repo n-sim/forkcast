@@ -51,8 +51,13 @@ pub(crate) fn server_url(value: &str) -> Result<String> {
 
 impl Remote {
     pub(crate) fn new(base: &str, token: Option<String>) -> Self {
+        Self::with_timeout(base, token, Duration::from_secs(8))
+    }
+
+    /// For requests that legitimately take long, such as AI execution.
+    pub(crate) fn with_timeout(base: &str, token: Option<String>, timeout: Duration) -> Self {
         let agent: ureq::Agent = ureq::Agent::config_builder()
-            .timeout_global(Some(Duration::from_secs(8)))
+            .timeout_global(Some(timeout))
             .http_status_as_error(false)
             .max_redirects(0)
             .build()
@@ -102,6 +107,7 @@ impl Remote {
             403 => ErrorKind::Forbidden,
             404 => ErrorKind::NotFound,
             409 => ErrorKind::Conflict,
+            412 => ErrorKind::ConnectionRequired,
             422 => ErrorKind::Invalid,
             426 => ErrorKind::ProtocolMismatch,
             429 => ErrorKind::RateLimited,

@@ -23,6 +23,8 @@ pub enum Topic {
     Preferences,
     /// The server binding or pending synchronization work.
     Sync,
+    /// A person's ChatGPT connection state. Never includes credentials.
+    Ai,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]

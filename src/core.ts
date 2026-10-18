@@ -10,7 +10,8 @@ export type Topic =
   | 'cookingSessions'
   | 'foodLog'
   | 'preferences'
-  | 'sync';
+  | 'sync'
+  | 'ai';
 
 export interface CoreChange {
   scope: { kind: 'household' | 'person'; id: string };
@@ -27,7 +28,8 @@ export type ErrorKind =
   | 'unsupported'
   | 'internal'
   | 'unavailable'
-  | 'protocol_mismatch';
+  | 'protocol_mismatch'
+  | 'connection_required';
 
 export class CoreError extends Error {
   constructor(
@@ -98,6 +100,7 @@ export async function serverRequest<T>(
   method = 'GET',
   body?: unknown,
   token: string | null = browserToken(),
+  timeoutMs = 15_000,
 ): Promise<T> {
   let response: Response;
   try {
@@ -105,7 +108,7 @@ export async function serverRequest<T>(
       method,
       credentials: 'omit',
       cache: 'no-store',
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(timeoutMs),
       headers: {
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -128,6 +131,7 @@ export async function serverRequest<T>(
           404: 'not_found',
           409: 'conflict',
           422: 'invalid',
+          412: 'connection_required',
           426: 'protocol_mismatch',
           429: 'rate_limited',
         } as Record<number, ErrorKind>
@@ -148,6 +152,7 @@ export async function serverRequest<T>(
 export async function execute<T = unknown>(
   operation: string,
   args: object = {},
+  timeoutMs?: number,
 ): Promise<T> {
   if (isNative) {
     const { invoke } = await import('@tauri-apps/api/core');
@@ -159,7 +164,13 @@ export async function execute<T = unknown>(
       throw asCoreError(failure);
     }
   }
-  return serverRequest<T>('/operations', 'POST', { operation, ...args });
+  return serverRequest<T>(
+    '/operations',
+    'POST',
+    { operation, ...args },
+    browserToken(),
+    timeoutMs,
+  );
 }
 
 type Listener = (change: CoreChange) => void;

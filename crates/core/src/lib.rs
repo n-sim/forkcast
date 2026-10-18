@@ -8,6 +8,7 @@
 //! change-notification contracts.
 
 mod accounts;
+mod ai;
 mod changes;
 mod cooking;
 mod db;
@@ -28,6 +29,10 @@ pub use accounts::{
     Account, AccountChange, Authenticated, Credentials, Household, Role, ServerStatus, Session,
     SetupServer, SignedIn,
 };
+pub use ai::{
+    AiConfig, AiModel, AiRequest, AiState, AiStatus, CredentialTransfer, ServerSelection,
+    TransferAck,
+};
 pub use changes::{Change, Scope, Subscription, Topic};
 pub use cooking::{BeginCooking, CookingOutcome, StartCooking};
 pub use db::SCHEMA_VERSION;
@@ -38,13 +43,15 @@ pub use planning::{
     EditBase, MealPlanView, PlanningChoice, PlanningMutation, ShoppingItemKind, ShoppingListView,
     SourceStatus,
 };
-pub use preferences::AiPreferences;
+pub use preferences::{AiPreferences, PreferenceChange};
 pub use principal::{Principal, Standing};
 pub use recipes::{
     Collection, CurrentChoice, Photo, Rating, RatingChange, RecipeView, Revision, SaveRecipe,
     SavedRecipe, SetCoverPhoto,
 };
 pub use remote::PROTOCOL_VERSION;
+#[cfg(unix)]
+pub use secrets::FileSecrets;
 pub use secrets::{MemorySecrets, Secrets};
 pub use session::{
     AccountInfo, JoinReview, JoinSelection, PendingJoin, ServerAuthentication, ServerProbe,
@@ -69,6 +76,9 @@ pub struct Config {
     pub clock: Clock,
     /// Protected storage for remote session tokens. Defaults to memory.
     pub secrets: Arc<dyn Secrets>,
+    /// The ChatGPT authorization service. Production unless a debug host
+    /// points it at a loopback fixture.
+    pub ai: AiConfig,
 }
 
 impl Config {
@@ -76,6 +86,7 @@ impl Config {
         Self {
             database: database.into(),
             secrets: Arc::new(MemorySecrets::default()),
+            ai: AiConfig::production(),
             clock: Arc::new(|| {
                 SystemTime::now()
                     .duration_since(UNIX_EPOCH)
@@ -92,6 +103,8 @@ pub(crate) struct Inner {
     hub: Hub,
     pub(crate) secrets: Arc<dyn Secrets>,
     pub(crate) sync: sync::SyncControl,
+    pub(crate) ai: ai::Runtime,
+    pub(crate) ai_config: AiConfig,
 }
 
 /// Cheap to clone and safe to share between threads. Every operation opens
@@ -115,6 +128,8 @@ impl Core {
                 secrets: config.secrets,
                 hub: Hub::default(),
                 sync: sync::SyncControl::default(),
+                ai: ai::Runtime::default(),
+                ai_config: config.ai,
             }),
         })
     }

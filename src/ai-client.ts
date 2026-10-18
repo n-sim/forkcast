@@ -1,92 +1,91 @@
-export const companionKey = 'forkcast-ai-companion';
+import { execute } from './core';
 
-export interface ChatGptStatus {
-  state: 'unconfigured' | 'authorizing' | 'connected' | 'reconnect_required';
+// ChatGPT is reached only through the application core: the installed app's
+// embedded core, or the household server's core for a browser. Credentials
+// never reach this code; it sees connection state and workflow text.
+
+export type AiState =
+  | 'unconfigured'
+  | 'authorizing'
+  | 'connected'
+  | 'denied'
+  | 'expired'
+  | 'reconnect_required'
+  | 'transferring'
+  | 'transfer_failed'
+  | 'unavailable';
+
+export interface AiStatus {
+  state: AiState;
+  /** `device` runs with a session on this device, `server` on the household server. */
+  target: 'device' | 'server';
   email: string | null;
   message: string | null;
+  serverUrl: string | null;
+  account: string | null;
+  /** Sign-in can start from this host (the installed app). */
+  canAuthorize: boolean;
+  canRetry: boolean;
 }
 
-export function savedCompanion(): string | null {
-  try {
-    const stored = localStorage.getItem(companionKey);
-    return stored ? companionUrl(stored) : null;
-  } catch {
-    return null;
-  }
+export interface AiModel {
+  slug: string;
+  displayName: string;
 }
 
-export async function companionStatus(url: string): Promise<ChatGptStatus> {
-  const result = await companionRequest<ChatGptStatus>(url, '/status');
+export const aiStatus = () => execute<AiStatus>('aiStatus');
+
+export const aiModels = () => execute<AiModel[]>('aiModels', {}, 30_000);
+
+export const aiSignOut = () => execute<AiStatus>('aiSignOut', {}, 40_000);
+
+export const aiRetryTransfer = () => execute<AiStatus>('aiRetryTransfer');
+
+export const aiCancelTransfer = () => execute<AiStatus>('aiCancelTransfer');
+
+export const aiCancelAuthorization = () =>
+  execute<AiStatus>('aiCancelAuthorization');
+
+/**
+ * Starts sign-in and returns the address to open in the person's own
+ * browser. A joined app must name the server and account it is granting.
+ */
+export async function aiAuthorize(selection?: {
+  serverUrl: string;
+  accountId: string;
+}): Promise<string> {
+  const result = await execute<{ authorizationUrl: string }>(
+    'aiAuthorize',
+    selection ?? {},
+  );
+  const destination = new URL(result.authorizationUrl);
   if (
-    ![
-      'unconfigured',
-      'authorizing',
-      'connected',
-      'reconnect_required',
-    ].includes(result.state)
-  ) {
-    throw new Error(
-      'This address is not a Forkcast AI companion. Check the companion URL.',
-    );
-  }
-  return result;
+    !(
+      destination.origin === 'https://auth.openai.com' ||
+      (destination.protocol === 'http:' && destination.hostname === '127.0.0.1')
+    ) ||
+    destination.pathname !== '/api/accounts/authorize'
+  )
+    throw new Error('Forkcast returned an invalid sign-in address.');
+  return destination.href;
 }
 
-export function companionUrl(value: string): string {
-  const url = new URL(value);
-  if (
-    url.protocol !== 'http:' ||
-    url.hostname !== '127.0.0.1' ||
-    url.pathname !== '/' ||
-    url.search ||
-    url.hash ||
-    url.username ||
-    url.password
-  ) {
-    throw new Error(
-      'Use an HTTP companion URL on 127.0.0.1 with no path or credentials.',
-    );
-  }
-  return url.origin;
+/** The one execution interface every AI workflow uses. */
+export async function aiExecute(request: {
+  model: string;
+  instructions: string;
+  input: string;
+}): Promise<string> {
+  // A generation can legitimately take minutes.
+  return (await execute<{ text: string }>('aiExecute', request, 200_000)).text;
 }
 
-export async function companionRequest<T>(
-  url: string,
-  path: string,
-  method = 'GET',
-  body?: unknown,
-  signal?: AbortSignal,
-): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`${url}/api${path}`, {
-      method,
-      headers: {
-        'X-Forkcast-Companion': '1',
-        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      credentials: 'omit',
-      redirect: 'error',
-      cache: 'no-store',
-      signal: AbortSignal.any([
-        AbortSignal.timeout(path === '/execute' ? 190_000 : 8_000),
-        ...(signal ? [signal] : []),
-      ]),
-    });
-  } catch {
-    throw new Error(
-      'Companion unavailable. Start the native AI companion on this device, check its allowed frontend origin, then try again. Manual workflows remain available.',
-    );
-  }
-  if (!response.ok) {
-    const error = (await response.json().catch(() => null)) as {
-      message?: string;
-    } | null;
-    throw new Error(
-      error?.message ??
-        'The companion could not complete this request. Try connecting again.',
-    );
-  }
-  return (await response.json()) as T;
+export interface AiPreferences {
+  recipePrompt: string;
+  recipeModel: string | null;
 }
+
+export const loadAiPreferences = () => execute<AiPreferences>('aiPreferences');
+
+export const saveRecipeModel = (model: string | null) =>
+  execute('setRecipeModel', { model });

@@ -31,8 +31,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let bind = std::env::var("FORKCAST_BIND").unwrap_or_else(|_| "127.0.0.1:8787".into());
     let path = std::env::var("FORKCAST_DATABASE").unwrap_or_else(|_| "forkcast.sqlite3".into());
-    let core = Core::open(Config::new(path))
-        .map_err(|error| format!("Cannot open backend database: {error}"))?;
+    let mut config = Config::new(&path);
+    // ChatGPT sessions live beside the database in an owner-only file, never
+    // in the database itself, so a database backup holds no credentials.
+    #[cfg(unix)]
+    {
+        let secrets = std::env::var_os("FORKCAST_SECRETS_FILE")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::Path::new(&path).with_extension("secrets"));
+        config.secrets =
+            std::sync::Arc::new(forkcast_core::FileSecrets::open(&secrets).map_err(|error| {
+                format!(
+                    "Cannot open protected credential storage {}: {error}",
+                    secrets.display()
+                )
+            })?);
+    }
+    #[cfg(not(unix))]
+    eprintln!(
+        "Protected credential storage is unavailable on this platform; ChatGPT sessions are kept in memory only."
+    );
+    // Debug builds may point sign-in at an isolated loopback fixture.
+    if cfg!(debug_assertions)
+        && let Ok(issuer) = std::env::var("FORKCAST_AI_TEST_ISSUER")
+    {
+        config.ai = forkcast_core::AiConfig::fixture(&issuer)?;
+    }
+    let core =
+        Core::open(config).map_err(|error| format!("Cannot open backend database: {error}"))?;
     let origins = std::env::var("FORKCAST_ALLOWED_ORIGINS")
         .unwrap_or_else(|_| "http://127.0.0.1:5173,http://127.0.0.1:4173".into())
         .split(',')

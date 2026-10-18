@@ -3,8 +3,10 @@
 The household server is a headless host of the same Rust core as the desktop
 app (`crates/backend`). It serves the built frontend and the HTTP application
 interface, owns first-administrator setup and household accounts, and is the
-meeting point for synchronization between installed apps. It needs no companion
-program and no AI process. One instance has one household.
+meeting point for synchronization between installed apps. It runs AI
+for its members itself, using the ChatGPT sessions they hand over from the installed app over
+HTTPS (see `FORKCAST_SECRETS_FILE`); it needs no companion program, SSH setup, or separate AI
+process. One instance has one household.
 
 ## Run it
 
@@ -31,6 +33,7 @@ FORKCAST_BIND=127.0.0.1:8787 target/release/forkcast-backend
 | --- | --- | --- |
 | `FORKCAST_BIND` | `127.0.0.1:8787` | Address to listen on. |
 | `FORKCAST_DATABASE` | `forkcast.sqlite3` | SQLite file. Back it up like any database (stop the server or copy with the `.backup` command). |
+| `FORKCAST_SECRETS_FILE` | the database path with a `.secrets` extension | Owner-only file (`0600`) holding members' ChatGPT sessions. Keep it with the data volume but out of database backups you share; it is what lets the server run AI for its accounts. Members set it up from the installed app (**Settings → ChatGPT**); no SSH or token copying is needed. |
 | `FORKCAST_STATIC_DIR` | unset | A built frontend to serve at `/`. Unset serves the API only. |
 | `FORKCAST_ALLOWED_ORIGINS` | the Vite dev origins | Extra browser origins allowed to call the API cross-origin. Not needed when the frontend is served by the server itself. |
 

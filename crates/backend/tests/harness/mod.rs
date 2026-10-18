@@ -2,6 +2,8 @@
 //! Real installed cores and a real household server, over real HTTP and
 //! SQLite, for the synchronization journeys.
 
+pub mod provider;
+
 use forkcast_backend::router;
 use forkcast_core::{Config, Core, JoinSelection, MemorySecrets, Operation, Principal, SyncStatus};
 use serde_json::{Value, json};
@@ -27,6 +29,8 @@ pub fn remove(path: &Path) {
 /// The household server, restartable on the same address and database.
 pub struct Server {
     pub url: String,
+    secrets: Arc<MemorySecrets>,
+    issuer: Option<String>,
     database: PathBuf,
     address: SocketAddr,
     stop: Option<tokio::sync::oneshot::Sender<()>>,
@@ -36,25 +40,62 @@ pub struct Server {
 impl Server {
     pub fn start() -> Self {
         let database = temp("server");
-        Self::start_on(database, "127.0.0.1:0".parse().unwrap())
+        Self::start_on(
+            database,
+            "127.0.0.1:0".parse().unwrap(),
+            None,
+            Default::default(),
+        )
+    }
+
+    /// A server whose ChatGPT sign-in talks to a fixture provider.
+    pub fn with_provider(issuer: &str) -> Self {
+        Self::start_on(
+            temp("server"),
+            "127.0.0.1:0".parse().unwrap(),
+            Some(issuer.to_owned()),
+            Default::default(),
+        )
     }
 
     /// A brand-new household server answering at `address`.
     pub fn fresh_at(address: SocketAddr) -> Self {
-        Self::start_on(temp("server"), address)
+        Self::start_on(temp("server"), address, None, Default::default())
     }
 
-    fn start_on(database: PathBuf, address: SocketAddr) -> Self {
+    /// The database file's bytes, for leak checks.
+    pub fn stored(&self) -> String {
+        String::from_utf8_lossy(&std::fs::read(&self.database).unwrap()).to_string()
+    }
+
+    /// What the server's protected storage holds, for leak checks.
+    pub fn secret(&self, key: &str) -> Option<String> {
+        use forkcast_core::Secrets;
+        self.secrets.get(key).unwrap()
+    }
+
+    fn start_on(
+        database: PathBuf,
+        address: SocketAddr,
+        issuer: Option<String>,
+        secrets: Arc<MemorySecrets>,
+    ) -> Self {
         let (ready, receive) = std::sync::mpsc::channel();
         let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
         let db = database.clone();
+        let (store, ai) = (secrets.clone(), issuer.clone());
         let thread = std::thread::spawn(move || {
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
                 .unwrap();
             runtime.block_on(async move {
-                let core = Core::open(Config::new(&db)).unwrap();
+                let mut config = Config::new(&db);
+                config.secrets = store;
+                if let Some(issuer) = ai {
+                    config.ai = forkcast_core::AiConfig::fixture(&issuer).unwrap();
+                }
+                let core = Core::open(config).unwrap();
                 let listener = tokio::net::TcpListener::bind(address).await.unwrap();
                 ready.send(listener.local_addr().unwrap()).unwrap();
                 axum::serve(listener, router(core, vec![], None))
@@ -68,6 +109,8 @@ impl Server {
         let address = receive.recv().unwrap();
         Self {
             url: format!("http://{address}"),
+            secrets,
+            issuer,
             database,
             address,
             stop: Some(stop),
@@ -88,7 +131,12 @@ impl Server {
     pub fn restart(&mut self) {
         self.stop();
         Self::wait_for(self.address);
-        let restarted = Self::start_on(self.database.clone(), self.address);
+        let restarted = Self::start_on(
+            self.database.clone(),
+            self.address,
+            self.issuer.clone(),
+            self.secrets.clone(),
+        );
         let mut old = std::mem::replace(self, restarted);
         // The database now belongs to the restarted server.
         old.database = PathBuf::new();
@@ -177,29 +225,60 @@ pub struct Device {
     pub core: Core,
     database: PathBuf,
     secrets: Arc<MemorySecrets>,
+    issuer: Option<String>,
 }
 
 impl Device {
     pub fn new() -> Self {
+        Self::build(None)
+    }
+
+    /// An installed app whose ChatGPT sign-in talks to a fixture provider.
+    pub fn with_provider(issuer: &str) -> Self {
+        Self::build(Some(issuer.to_owned()))
+    }
+
+    fn build(issuer: Option<String>) -> Self {
         let database = temp("device");
         let secrets = Arc::new(MemorySecrets::default());
-        let core = Self::open(&database, &secrets);
+        let core = Self::open(&database, &secrets, issuer.as_deref());
         Self {
             core,
             database,
             secrets,
+            issuer,
         }
     }
 
-    fn open(database: &PathBuf, secrets: &Arc<MemorySecrets>) -> Core {
+    fn open(database: &PathBuf, secrets: &Arc<MemorySecrets>, issuer: Option<&str>) -> Core {
         let mut config = Config::new(database);
         config.secrets = secrets.clone();
+        if let Some(issuer) = issuer {
+            config.ai = forkcast_core::AiConfig::fixture(issuer).unwrap();
+        }
         Core::open(config).unwrap()
     }
 
     /// Closes and reopens the app, as a restart does.
     pub fn restart(&mut self) {
-        self.core = Self::open(&self.database, &self.secrets);
+        self.core = Self::open(&self.database, &self.secrets, self.issuer.as_deref());
+    }
+
+    /// What this app's protected storage holds, for leak checks.
+    pub fn secret(&self, key: &str) -> Option<String> {
+        use forkcast_core::Secrets;
+        self.secrets.get(key).unwrap()
+    }
+
+    /// Every protected value and the database file's bytes, as one string.
+    pub fn everything_stored(&self) -> String {
+        let mut all = String::from_utf8_lossy(&std::fs::read(&self.database).unwrap()).to_string();
+        let mut wal = self.database.clone().into_os_string();
+        wal.push("-wal");
+        if let Ok(bytes) = std::fs::read(wal) {
+            all.push_str(&String::from_utf8_lossy(&bytes));
+        }
+        all
     }
 
     pub fn me(&self) -> Principal {

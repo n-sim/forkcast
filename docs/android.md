@@ -18,7 +18,7 @@ companion is **not** ported as a child process.
 | Credential encryption               | `crates/secure-store`: AES-256-GCM with a non-exportable Android Keystore key; ciphertext in app-private preferences. A plaintext fallback does not exist: if the Keystore is unavailable the person signs in again. |
 | App-private storage                 | The core's SQLite lives in the app's data directory (`app_data_dir`).                                                                                                                                                |
 | Resume                              | `RunEvent::Resumed` calls `Core::nudge_sync`; there is no daemon.                                                                                                                                                    |
-| Browser sign-in (companion-free AI) | Not part of this release; integrated ChatGPT setup is a separate ticket (#28) and must pass its own physical-device proof first.                                                                                     |
+| Browser sign-in (companion-free AI) | Not part of this release; the loopback ChatGPT sign-in is implemented in the shared core (#28) but Android release still needs its own physical-device proof of authorization, Keystore storage, and lifecycle (#52).                                                                                     |
 | Files                               | The webview file input picks cover photos; shopping PDFs go through `save_file`.                                                                                                                                     |
 
 ## Backup and device transfer

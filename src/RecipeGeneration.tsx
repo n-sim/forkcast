@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { companionRequest, savedCompanion } from './ai-client';
+import {
+  aiModels,
+  aiStatus,
+  loadAiPreferences,
+  saveRecipeModel,
+  type AiModel,
+  type AiStatus,
+} from './ai-client';
 import { generateRecipe } from './recipe-generation';
 import { loadRecipePrompt } from './ai-prompts';
 import type { Recipe } from './domain';
-
-interface Model {
-  slug: string;
-  display_name: string;
-}
 
 export function RecipeGeneration({
   onSave,
@@ -16,72 +18,99 @@ export function RecipeGeneration({
   onSave: (recipe: Recipe) => Promise<void>;
   promptsAvailable: boolean;
 }) {
-  const [url] = useState(savedCompanion);
-  const [models, setModels] = useState<Model[]>([]);
+  const [connection, setConnection] = useState<AiStatus | null>(null);
+  const [models, setModels] = useState<AiModel[]>([]);
   const [model, setModel] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const execution = useRef<AbortController | null>(null);
-  useEffect(() => () => execution.current?.abort(), []);
+  const canceled = useRef(false);
+  useEffect(
+    () => () => {
+      canceled.current = true;
+    },
+    [],
+  );
   useEffect(() => {
-    if (!url) return;
-    let canceled = false;
-    void companionRequest<{ models: Model[] }>(url, '/models')
-      .then((result) => {
-        if (canceled) return;
-        setModels(result.models);
-        setModel(result.models[0]?.slug ?? '');
-        if (!result.models.length)
+    if (!promptsAvailable) return;
+    let active = true;
+    void (async () => {
+      try {
+        const status = await aiStatus();
+        if (!active) return;
+        setConnection(status);
+        if (status.state !== 'connected') {
+          setError(status.message ?? '');
+          return;
+        }
+        const [listed, preferences] = await Promise.all([
+          aiModels(),
+          loadAiPreferences(),
+        ]);
+        if (!active) return;
+        setModels(listed);
+        // The model last chosen follows the person across devices.
+        setModel(
+          listed.find((entry) => entry.slug === preferences.recipeModel)
+            ?.slug ??
+            listed[0]?.slug ??
+            '',
+        );
+        if (!listed.length)
           setError(
             'No ChatGPT models are available for this account. Check your connection in Settings.',
           );
-      })
-      .catch((error: unknown) => {
-        if (!canceled)
+      } catch (failure) {
+        if (active)
           setError(
-            error instanceof Error
-              ? error.message
+            failure instanceof Error
+              ? failure.message
               : 'Could not load ChatGPT models.',
           );
-      });
+      }
+    })();
     return () => {
-      canceled = true;
+      active = false;
     };
-  }, [url]);
+  }, [promptsAvailable]);
+
+  const connected = connection?.state === 'connected';
+
+  function choose(slug: string) {
+    setModel(slug);
+    void saveRecipeModel(slug).catch(() => undefined);
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!url || !model || !promptsAvailable || busy || !description.trim())
+    if (
+      !connected ||
+      !model ||
+      !promptsAvailable ||
+      busy ||
+      !description.trim()
+    )
       return;
     setBusy(true);
     setError('');
-    const controller = new AbortController();
-    execution.current = controller;
     try {
       const preferences = await loadRecipePrompt();
-      const recipe = await generateRecipe(
-        url,
-        model,
-        description,
-        preferences,
-        controller.signal,
-      );
-      if (controller.signal.aborted) return;
+      const recipe = await generateRecipe(model, description, preferences);
+      if (canceled.current) return;
       try {
         await onSave(recipe);
       } catch {
         throw new Error('The generated recipe could not be saved. Try again.');
       }
     } catch (error) {
-      if (controller.signal.aborted) return;
+      if (canceled.current) return;
       setError(
         error instanceof Error
           ? error.message
           : 'Recipe generation failed. Try again.',
       );
     } finally {
-      setBusy(false);
+      if (!canceled.current) setBusy(false);
     }
   }
 
@@ -104,7 +133,7 @@ export function RecipeGeneration({
       {!promptsAvailable && (
         <p>Sign in to your backend account to use your personal prompts.</p>
       )}
-      {!url && (
+      {promptsAvailable && connection && !connected && (
         <p>
           Connect ChatGPT in <a href="#/settings">Settings</a> to generate
           recipes. You can also{' '}
@@ -134,12 +163,12 @@ export function RecipeGeneration({
           ChatGPT model
           <select
             value={model}
-            onChange={(event) => setModel(event.target.value)}
+            onChange={(event) => choose(event.target.value)}
             disabled={busy || !models.length}
           >
-            {models.map((model) => (
-              <option key={model.slug} value={model.slug}>
-                {model.display_name}
+            {models.map((entry) => (
+              <option key={entry.slug} value={entry.slug}>
+                {entry.displayName}
               </option>
             ))}
           </select>
@@ -147,7 +176,11 @@ export function RecipeGeneration({
         <button
           className="button primary"
           disabled={
-            !url || !model || !promptsAvailable || !description.trim() || busy
+            !connected ||
+            !model ||
+            !promptsAvailable ||
+            !description.trim() ||
+            busy
           }
         >
           {busy ? 'Generating…' : 'Generate recipe'}

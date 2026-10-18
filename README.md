@@ -45,87 +45,67 @@ FORKCAST_STATIC_DIR=dist npm run backend:dev    # then open http://127.0.0.1:878
 The frontend has no service worker and no browser storage of its own. Packaged assets change only
 with application releases.
 
-## Optional local ChatGPT companion
+## ChatGPT and AI features
 
-For standalone ChatGPT subscription access, start the small native Rust companion
-in a separate terminal:
+AI is optional: every cooking, planning, shopping, and food-log workflow works without it.
+Connect your own ChatGPT subscription under **Settings → ChatGPT**. There is no companion
+program, terminal command, copied token, or account-ID setup.
 
-```sh
-npm run companion:dev
-```
-
-For an installable release binary, run `npm run companion:build` and use
-`target/release/forkcast-ai-companion` (`.exe` on Windows). No synchronization
-backend, SQLite database, backend account, or API key is needed.
-
-Open **Settings → ChatGPT**, enter `http://127.0.0.1:8788`, and choose
-**Connect companion**, then **Continue with ChatGPT**. Complete authorization in
-your own browser, which Forkcast opens for you, and return to Settings to see the connected
-account. The companion runs on the same device as the app.
-
-The native listener is started before sign-in and receives the callback at
-`http://127.0.0.1:8788/auth/callback`. It follows OpenAI's
+**Standalone.** Choose **Continue with ChatGPT**. The app starts its documented loopback listener
+(`http://127.0.0.1:8788/auth/callback`, or another free loopback port) _before_ opening your own
+browser, and follows OpenAI's
 [registration and sign-in flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in):
 dynamic client registration, a stable `urn:uuid:<UUIDv4>` host identity, fresh state/nonce and S256
-PKCE, exact callback matching during code exchange, and signed ID-token checks
-against OpenAI's JWKS, issuer, issued-client audience, expiry, and nonce. ChatGPT
-plan permission must be granted before the account is shown as connected.
+PKCE, exact callback matching during code exchange, signed ID-token checks against OpenAI's JWKS,
+issuer, issued-client audience, expiry and nonce, and the ChatGPT plan permission. Unrelated or
+repeated callbacks never consume a pending attempt. Sessions refresh automatically (rotating
+refresh tokens are serialized and persisted before use); a session that cannot be renewed asks you
+to reconnect, and a provider outage leaves it intact.
 
-Credentials persist only in the native runtime: `%LOCALAPPDATA%/Forkcast/ai/`
-with Windows user-bound DPAPI encryption, or `~/.config/forkcast/ai/` with an
-owner-only directory and atomically replaced `0600` files on Unix. The browser
-remembers only the companion URL and receives connection state and account email.
-Access, refresh, and ID tokens never enter browser storage, recipe records, sync
-payloads, response bodies, or logs. A runtime lock prevents concurrent companions
-from using the same credential directory. Keep that directory private; do not
-commit it or serve it as static content.
+**Joined to a household server.** AI then runs on the server for _your account_, and every device
+and browser signed in to that account uses that one connection. Settings names the server and
+account, and nothing happens until you choose **Set up ChatGPT on this server**. The app signs in
+locally using the _server's_ host identity (`GET /api/ai/host`) and hands the resulting session
+directly to the server over the authenticated HTTPS connection
+(`POST /api/ai/transfers/{id}`). The server binds the import to the authenticated account; a
+user-supplied account ID is never accepted. Ordinary data synchronization never carries tokens.
+The handoff is idempotent by transfer identity and resumable:
 
-Denied, incomplete, or failed authorization has a visible retry state. Closing
-the sign-in window leaves a pending attempt that can be restarted and expires
-after ten minutes. An expired session offers reconnection. **Sign out of ChatGPT**
-clears local tokens and attempts remote session revocation; a warning explains
-when revocation could not be confirmed. Reconnecting reuses the issued registration
-and host identity. Initial companion versions saved an unsupported `forkcast:`
-host ID; restarting the updated companion automatically replaces it with a
-persisted UUID URI while retaining the saved account registration and credentials.
-Manual workflows remain available when AI is unconfigured or
-the companion is stopped. Recipes, plans, food logs, and cooking progress stay in
-the frontend's existing local store; installing this companion adds no backups or
-cross-device synchronization. Backend AI execution is separate work; recipe
-generation currently uses the connected companion, including when recipe sync is enabled.
+- While it is unresolved, the local copy is fenced: it is never used or refreshed, so two runtimes
+  cannot rotate one refresh token. Once the server acknowledges, the local copy is deleted and the
+  server alone refreshes.
+- Upload failure, a lost acknowledgement, or an app or server restart leaves **Setup on your
+  household server did not finish** with **Retry** and **Cancel**. A retry is acknowledged, not
+  duplicated.
+- Cancelling completes only when the server confirms it never imported the session (it then
+  refuses a late retry of that transfer); if it already did, the server keeps the session and
+  **Sign out of ChatGPT** ends it.
+- Joining a household retires the standalone person's device session instead of reusing it, and
+  connections are keyed by person, so accounts never share credentials.
+- Execution never silently falls back from the server to a device credential. If the server or
+  provider is unavailable the status says so and manual workflows remain available.
 
-Choose **Generate recipe** in the recipe collection, include any dish-specific
-instructions in **Describe your dish**, and select an available ChatGPT model.
-**Settings → Personal AI prompts** stores editable recipe-generation system-prompt
-defaults on this device, separately for standalone use and each backend account.
-Defaults are applied to future requests; request-specific instructions are not
-retained as defaults. Prompt synchronization and server-side execution come later.
+A **browser** cannot start sign-in; it shows the server connection and can use it once the
+installed app has set it up.
 
-Generation uses the documented [ChatGPT subscription inference flow](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference):
-the native runtime lists models with its protected access token, calls the public
-Responses API with `store: false` and `stream: true`, and waits for completed inference.
-The browser then validates the result with the shared Rust/WebAssembly recipe and
-quantity contracts, including complete ingredient allocations, before saving it
-through normal local recipe storage. A successful recipe opens automatically and
-can be edited or synchronized like a manually created recipe. Invalid recipes,
-refusals, interrupted streams, provider errors, and failed saves remain visible;
-they do not claim that a recipe was created.
+Credentials live only in native protected storage — Windows DPAPI, the Android Keystore, or an
+owner-only file elsewhere (the household server keeps `forkcast.secrets` beside its database) —
+never in React, browser storage, the database, operation results, change notifications, sync
+records, migration data, logs, or shared recipes. **Sign out of ChatGPT** stops execution, clears
+the runtime's tokens, and attempts revocation; a warning explains when revocation could not be
+confirmed.
 
-Companion environment settings:
+Recipe generation, nutrition and metadata estimation, ad hoc text/image estimation, cooking-plan
+generation, and conversion assistance all use one execution interface (`aiExecute`: model,
+instructions, input → text) so no workflow needs its own provider integration; each validates
+the returned text with the shared Rust/WebAssembly contracts before anything is saved. Today
+**Generate recipe** uses it: describe a dish, choose a model, and a valid recipe is saved through
+the core. **Settings → Personal AI prompts** and your last chosen model are ordinary personal
+settings: they work offline, synchronize with your account across devices, and are never another
+person's. Request-specific instructions are not retained as defaults.
 
-| Variable                      | Default                                       | Purpose                                                                                                  |
-| ----------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `FORKCAST_AI_BIND`            | `127.0.0.1:8788`                              | IPv4 loopback listener; non-loopback binds are rejected. The selected port is used for the callback too. |
-| `FORKCAST_AI_ALLOWED_ORIGINS` | `http://127.0.0.1:5173,http://127.0.0.1:4173` | Comma-separated exact frontend origins. Add your HTTPS static-host origin when needed; no wildcards.     |
-| `FORKCAST_AI_DIRECTORY`       | Native path above                             | Private runtime credential directory, separate from application data.                                    |
-
-Only allowed frontend origins with the companion request header can use its API.
-Host checks also reject DNS rebinding. Callbacks require the one-time pending
-state. Responses are `no-store`, callback pages do not load external resources,
-and they send no referrer. Release builds always use OpenAI's issuer. Debug builds
-alone accept `FORKCAST_AI_TEST_ISSUER` for an HTTP `127.0.0.1` authorization/inference fixture
-with an explicitly isolated credential directory; stored credentials cannot be
-reused with another issuer.
+Release builds always use OpenAI's issuer. Debug builds alone accept `FORKCAST_AI_TEST_ISSUER` (an
+HTTP `127.0.0.1` authorization and inference fixture) for the desktop app and the server.
 
 ## Household server and synchronization
 
@@ -396,7 +376,7 @@ explicit [browser transfer](docs/browser-transfer.md).
 ## Development and verification
 
 ```sh
-npm run test:prepare      # frontend, desktop app, server, companion
+npm run test:prepare      # frontend, desktop app, server
 npm run typecheck
 npm run check:rust
 npm test                  # installed-app (desktop, tablet) and browser journeys
@@ -411,9 +391,10 @@ against a real server that serves the built frontend (server downtime, expired l
 saves, cross-account denial, and concurrent installed/browser editing). Rust integration tests
 cover the same behavior without a UI: workflows and rollback against real SQLite, versioned
 migrations from an unversioned server database, the browser-profile import, and two embedded cores
-synchronizing with a real server over HTTP. No external provider credentials are needed; companion
-workflows use the real native process with a deterministic local OAuth/JWKS provider fixture, and
-live ChatGPT sign-in and generation are manual checks.
+synchronizing with a real server over HTTP. No external provider credentials are needed; ChatGPT
+connection, refresh, handoff, and execution journeys use real cores and a real server with a
+deterministic local OAuth/JWKS/inference provider fixture (`crates/backend/tests/ai.rs` and
+`tests/ai-*.spec.ts`), and live ChatGPT sign-in and generation are manual checks.
 To run one workflow:
 
 ```sh
@@ -427,11 +408,10 @@ Rust changes need a new WebAssembly build; restart `npm run dev` or build it aga
 ## Layout
 
 - `src/`: React screens, the typed boundary to the core (`core.ts`), and presentation-only previews.
-- `crates/core/`: the application core: workflows, validation, SQLite and migrations, synchronization, browser-transfer import.
+- `crates/core/`: the application core: workflows, validation, SQLite and migrations, synchronization, ChatGPT connection and execution, browser-transfer import.
 - `crates/recipe-domain/`: Rust domain rules (recipes, scaling, shopping, merge), also compiled to WebAssembly for previews.
 - `crates/desktop/`: the Tauri desktop host; `crates/secure-store/`: Android Keystore plugin.
 - `crates/backend/`: the household server's HTTP adapter over the core.
-- `crates/ai-companion/`: optional native ChatGPT authorization and execution, until the integrated flow lands.
 - `tests/`: installed-app and browser journeys; `docs/`: guides, ADRs; `GLOSSARY.md`: domain vocabulary.
 
 The application implements standalone recipes ([issue #2](https://github.com/n-sim/forkcast/issues/2))
@@ -450,7 +430,8 @@ Source-period change notices and explicit regeneration with manual groceries pre
 are implemented in [issue #7](https://github.com/n-sim/forkcast/issues/7).
 The separate shopping checklist, shared progress, completion, and PDF downloads are
 implemented in [issue #8](https://github.com/n-sim/forkcast/issues/8).
-Standalone ChatGPT connection setup is implemented in [issue #16](https://github.com/n-sim/forkcast/issues/16).
+Standalone ChatGPT connection setup is implemented in [issue #16](https://github.com/n-sim/forkcast/issues/16),
+and in-app connection with automatic server setup in [issue #28](https://github.com/n-sim/forkcast/issues/28).
 Editable AI recipe generation with personal prompt defaults is implemented in [issue #17](https://github.com/n-sim/forkcast/issues/17).
 Cooking history, other AI workflows, personal plan/log synchronization, explicit conflict resolution,
 and backups are later work.
