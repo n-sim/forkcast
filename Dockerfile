@@ -11,7 +11,9 @@ WORKDIR /src
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
+# The desktop app is not part of the image; wasm-pack still loads the workspace.
+RUN sed -i 's#, "crates/desktop"##' Cargo.toml \
+ && npm run build
 
 FROM rust:1-bookworm AS server
 WORKDIR /src
