@@ -13,13 +13,13 @@ companion is **not** ported as a child process.
 
 ## Platform adapters
 
-| Concern                             | Android adapter                                                                                                                                                                                                      |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Credential encryption               | `crates/secure-store`: AES-256-GCM with a non-exportable Android Keystore key; ciphertext in app-private preferences. A plaintext fallback does not exist: if the Keystore is unavailable the person signs in again. |
-| App-private storage                 | The core's SQLite lives in the app's data directory (`app_data_dir`).                                                                                                                                                |
-| Resume                              | `RunEvent::Resumed` calls `Core::nudge_sync`; there is no daemon.                                                                                                                                                    |
-| Browser sign-in (companion-free AI) | Not part of this release; the loopback ChatGPT sign-in is implemented in the shared core (#28) but Android release still needs its own physical-device proof of authorization, Keystore storage, and lifecycle (#52).                                                                                     |
-| Files                               | The webview file input picks cover photos; shopping PDFs go through `save_file`.                                                                                                                                     |
+| Concern                             | Android adapter                                                                                                                                                                                                       |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Credential encryption               | `crates/secure-store`: AES-256-GCM with a non-exportable Android Keystore key; ciphertext in app-private preferences. A plaintext fallback does not exist: if the Keystore is unavailable the person signs in again.  |
+| App-private storage                 | The core's SQLite lives in the app's data directory (`app_data_dir`).                                                                                                                                                 |
+| Resume                              | `RunEvent::Resumed` calls `Core::nudge_sync`; there is no daemon.                                                                                                                                                     |
+| Browser sign-in (companion-free AI) | Not part of this release; the loopback ChatGPT sign-in is implemented in the shared core (#28) but Android release still needs its own physical-device proof of authorization, Keystore storage, and lifecycle (#52). |
+| Files                               | The webview file input picks cover photos; shopping PDFs go through `save_file`.                                                                                                                                      |
 
 ## Backup and device transfer
 
@@ -43,20 +43,19 @@ its household link and pending changes but asks the person to sign in again.
 
 ## Supported versions
 
-Android 8.0 (API 26) and newer, arm64 and x86_64. `minSdk` is 24 for the
-secure-store module, 26 for the app. Tested: see the table at the end.
+Android 7.0 (API 24) and newer, arm64 and x86_64 (`minSdk` 24). Tested: see the table at the end.
 
 ## Build
 
-Prerequisites: JDK 17, the Android SDK (platform 35, build-tools 35.0.0, NDK
-27.2.12479018), the Rust Android targets, and Node.js.
+Prerequisites: JDK 17, the Android SDK (platform 37, NDK 27.2.12479018), the Rust Android targets, and Node.js.
 
 ```sh
 rustup target add aarch64-linux-android x86_64-linux-android
 export ANDROID_HOME=<sdk>  NDK_HOME=<sdk>/ndk/27.2.12479018  JAVA_HOME=<jdk17>
 npm ci
 npx tauri android init     # once; generated project is committed
-npm run android:build      # a debug APK; add --release for a release build
+npm run android:build      # a debug APK
+npx tauri android build --apk --target aarch64 --target x86_64   # release APK
 ```
 
 Reproducibility: the toolchain versions above, `Cargo.lock`, and
@@ -70,13 +69,26 @@ create and keep in your secret store:
 
 1. Create a keystore (`keytool -genkeypair ...`) and keep it, with its
    passwords, outside the repository.
-2. Provide `keystore.properties` (path, alias, passwords) to the build through
-   CI secrets; `gen/android/app/build.gradle.kts` reads it when present.
+2. Provide `crates/desktop/gen/android/keystore.properties` (`storeFile`,
+   `storePassword`, `keyAlias`, `keyPassword`; git-ignored) to the build;
+   `app/build.gradle.kts` signs the release variant with it when present and
+   otherwise produces an unsigned APK. The release workflow writes it from the
+   `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
+   and `ANDROID_KEY_PASSWORD` repository secrets.
 3. Every release must use the **same signing key** and a higher `versionCode`
    so installs upgrade in place and keep their data. The core migrates its
    database on first launch of the new version; a database from a newer app is
    refused untouched.
 4. Distribute through Google Play (use Play App Signing) or as a signed APK.
+
+## Releases
+
+Every merge to `main` that passes CI is released automatically as `0.0.<n>`
+(`.github/workflows/release.yml`): the Android APK, the Windows installer, the
+server tarball (binary plus web files), and the server container image
+`ghcr.io/n-sim/forkcast:<version>`. `<n>` is also the Android `versionCode`.
+Without the signing secrets the APK is attached as `-unsigned` and cannot be
+installed; it does not replace the physical-device gates below.
 
 ## Moving data from the old browser version
 
