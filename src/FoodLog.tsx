@@ -75,6 +75,10 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
 
   async function selectDate(date: string) {
     if (!date) return;
+    // Show the chosen day at once; the day's entries follow when loaded, and
+    // nothing can be added to the previous day's view in the meantime.
+    setDate(date);
+    setDaily(null);
     try {
       await saveFoodLogDate(date);
       refreshDay.current(date);
@@ -82,6 +86,7 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
       setError('');
     } catch {
       setError('This food log date could not be saved. Try again.');
+      refreshDay.current();
     }
   }
 
