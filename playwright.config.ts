@@ -9,6 +9,8 @@ export default defineConfig({
   workers: process.env.CI ? 2 : 4,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
+  // A broken environment fails every journey; stop early rather than retry all.
+  maxFailures: process.env.CI ? 10 : 0,
   reporter: 'list',
   timeout: 60_000,
   use: {

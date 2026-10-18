@@ -2,11 +2,15 @@ name: Check application
 
 on: [push, pull_request]
 
+# A newer push replaces an older run of the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  check:
-    # The desktop app is tested through its packaged window (WebView2), so the
-    # whole suite runs on Windows.
+  rust:
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,14 +23,35 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: npm ci
-      - run: npx playwright install chromium
       - run: npm run check:format
       - run: npm run check:rust
       - run: cargo test --workspace
+
+  # The desktop app is tested through its packaged window (WebView2), so these
+  # journeys run on Windows. Each Playwright project runs in its own job.
+  journeys:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [desktop, tablet, browser]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - run: npx playwright install chromium
       - run: npm run test:prepare
-      - run: npm test
+      - run: npx playwright test --project=${{ matrix.project }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: test-results
+          name: test-results-${{ matrix.project }}
           path: test-results/
