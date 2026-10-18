@@ -50,7 +50,7 @@ pub struct PendingChange {
     pub id: String,
     pub person_id: String,
     pub household_id: String,
-    /// `recipeRevision`, `rating`, or `planning`.
+    /// `recipeRevision`, `rating`, `preference`, or `planning`.
     pub kind: String,
     pub payload: Value,
 }
@@ -649,6 +649,21 @@ impl Core {
                     let ids: Vec<String> = batch.iter().map(|entry| entry.id.clone()).collect();
                     self.acknowledge(&ids)?;
                 }
+                "preference" => {
+                    let batch: Vec<&Entry> = entries
+                        .iter()
+                        .take_while(|entry| entry.kind == "preference")
+                        .take(100)
+                        .collect();
+                    let changes: Vec<&Value> = batch.iter().map(|entry| &entry.payload).collect();
+                    remote.call(
+                        "POST",
+                        &format!("/accounts/{account}/ai-preferences"),
+                        Some(&json!({ "changes": changes })),
+                    )?;
+                    let ids: Vec<String> = batch.iter().map(|entry| entry.id.clone()).collect();
+                    self.acknowledge(&ids)?;
+                }
                 "planning" => {
                     let snapshot = remote.call(
                         "POST",
@@ -693,6 +708,8 @@ impl Core {
         let collection = remote.call("GET", &format!("{household}/recipes"), None)?;
         let ratings = remote.call("GET", &format!("/accounts/{account}/recipe-ratings"), None)?;
         let planning = remote.call("GET", &format!("{household}/planning"), None)?;
+        let preferences =
+            remote.call("GET", &format!("/accounts/{account}/ai-preferences"), None)?;
         let person = self.acting(account)?;
         self.write(|db, effects| {
             let pending = pending_entries(db)?;
@@ -708,6 +725,12 @@ impl Core {
                 .collect();
             mirror_recipes(db, &person, &collection, &pending_recipes, effects)?;
             mirror_ratings(db, &person, &ratings, &pending_ratings, effects)?;
+            let pending_preferences: HashSet<String> = pending
+                .iter()
+                .filter(|entry| entry.kind == "preference" && entry.person_id == account)
+                .filter_map(|entry| entry.payload["key"].as_str().map(str::to_owned))
+                .collect();
+            crate::preferences::mirror(db, &person, &preferences, &pending_preferences, effects)?;
             mirror_planning(db, &person, &planning, effects)?;
             Ok(())
         })

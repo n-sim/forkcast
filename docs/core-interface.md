@@ -75,7 +75,13 @@ methods.
 | `logRecipeFood` | `id?`, `recipeId`, `nutritionVersionId`, `consumedAt`, `portions` | none; an identical retry of the same `id` is accepted |
 | `logManualFood` | `id?`, `description`, `consumedAt`, `nutrition` | none |
 | `foodLogDate` / `setFoodLogDate` | `date` | the remembered day |
-| `aiPreferences` / `setRecipePrompt` | `prompt` (up to 8000 characters) | `{recipePrompt}`; never credentials or tokens |
+| `aiPreferences` / `setRecipePrompt` / `setRecipeModel` | `prompt` (up to 8000 characters) / `model?` | `{recipePrompt, recipeModel}`; never credentials or tokens. Synchronized to the account like ratings |
+| `aiStatus` | | `{state, target, email, message, serverUrl, account, canAuthorize, canRetry}` for the principal's execution target (`device` or `server`) |
+| `aiAuthorize` | `serverUrl?`, `accountId?` | `{authorizationUrl}`; starts the loopback listener first. A joined app must name its server and account. Refused on a server host |
+| `aiCancelAuthorization` / `aiSignOut` | | `aiStatus` |
+| `aiRetryTransfer` / `aiCancelTransfer` | | `aiStatus`; resumes or cancels an unfinished handoff to the server |
+| `aiModels` | | `[{slug, displayName}]` |
+| `aiExecute` | `model`, `instructions`, `input` | `{text}`; the one execution interface every AI workflow uses |
 | `syncState` / `joinServer` / `acknowledgeSync` | `serverUrl`, `remoteHouseholdId`, `remoteAccountId` / `ids` | `{binding, pending}` |
 
 Server-only entry points are Rust methods and HTTP endpoints, not bridge operations:
@@ -109,6 +115,7 @@ Every failure is an `Error { kind, message, fields? }`. Messages are written for
 | `conflict` | stale or duplicate identity; local changes are kept | 409 |
 | `invalid` | validation failed | 422 |
 | `rate_limited` | too many sign-in attempts | 429 |
+| `connection_required` | the person's ChatGPT connection is missing or ended | 412 |
 | `unsupported` | the database is from a newer Forkcast, or an upgrade could not complete; nothing was changed | 500 |
 | `internal` | unexpected storage failure | 500 |
 
@@ -123,7 +130,7 @@ household changes to everyone in the household, personal changes only to that pe
 Rolled-back operations publish nothing. A change says what to reload, not what changed.
 
 Topics: `recipes`, `ratings`, `planning` (meal plan and shopping list), `cookingSessions`,
-`foodLog`, `preferences`, `sync`. Scope is `{"kind": "household"|"person", "id": "..."}`.
+`foodLog`, `preferences`, `sync`, `ai` (connection state, never credentials). Scope is `{"kind": "household"|"person", "id": "..."}`.
 
 - Native bridge: deliver each `Change` from `try_next` / `next_timeout` to the frontend.
 - HTTP: `GET /api/changes` is a Server-Sent Events stream of `change` events with the same
@@ -144,9 +151,25 @@ A database newer than the core, or an upgrade that cannot complete, fails `open`
 `unsupported`. The database is left at its previous version with its data intact; there is
 no reset path.
 
-## Not yet in the core
+## ChatGPT connection and handoff
 
-The React frontend still reads and writes IndexedDB, keeps AI prompts in `localStorage`,
-and reaches the AI companion over its own port. Moving it onto a native bridge or
-`POST /api/operations`, the installed-app packaging, browser-data transfer, and the
-synchronization transport are separate migration tickets.
+`crates/core/src/ai` owns sign-in, refresh, revocation, model discovery, and execution for
+both hosts, without Axum or any companion process. Connections are keyed by person and held in
+`Secrets`, never in SQLite.
+
+- **Standalone** (`aiAuthorize` with no selection): the loopback listener binds first, the host
+  opens the returned address, the callback is validated (state, nonce, PKCE, signed identity,
+  plan permission) and the session is stored for that person.
+- **Joined**: execution always goes to the server (`POST /api/operations` with the same AI
+  operations). `aiAuthorize` must carry the active `serverUrl` and `accountId`. The app signs in
+  with the server's host identity (`GET /api/ai/host`) and delivers the session with
+  `POST /api/ai/transfers/{transferId}`; `DELETE` on the same path cancels. The reply is only
+  `{transferId, state}` (`active` or `canceled`). Transfers are idempotent by id; a cancelled id is
+  refused afterwards (`409`); cancelling an imported id is refused (`409`) because the server owns
+  it. Locally the session is fenced (never used or refreshed) until the acknowledgement arrives,
+  then deleted.
+- **Server**: imports bind to the authenticated account, require the server's own host identity,
+  and refresh serially, persisting each rotated token before use.
+
+Resumption: hosts call `core.resume_ai_handoff()` at launch, focus, and resume.
+`connection_required` (412, never 401, so a browser keeps its login) means connect again.

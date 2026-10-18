@@ -53,6 +53,7 @@ pub fn run() {
                     .and_then(|h| h.core_if_ready())
             {
                 core.nudge_sync();
+                host::resume_ai(&core);
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -73,6 +74,7 @@ pub fn run() {
                 && let Some(core) = app.try_state::<Host>().and_then(|h| h.core_if_ready())
             {
                 core.nudge_sync();
+                host::resume_ai(&core);
             }
         });
 }

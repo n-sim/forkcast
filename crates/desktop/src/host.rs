@@ -67,6 +67,7 @@ impl Host {
                     core.start_sync_worker();
                 }
                 relay_changes(app.clone(), &core);
+                resume_ai(&core);
                 *self.core.lock().expect("core lock poisoned") = Some(core);
             }
             Err(message) => {
@@ -85,8 +86,22 @@ impl Host {
         })?;
         let mut config = Config::new(self.data_directory.join("forkcast.sqlite3"));
         config.secrets = protected::open(self.data_directory.clone(), app);
+        // Automation of debug builds may point sign-in at an isolated loopback
+        // authorization fixture. Released builds always use ChatGPT's service.
+        if cfg!(debug_assertions)
+            && let Ok(issuer) = std::env::var("FORKCAST_AI_TEST_ISSUER")
+        {
+            config.ai = forkcast_core::AiConfig::fixture(&issuer).map_err(|error| error.message)?;
+        }
         Core::open(config).map_err(|error| error.message)
     }
+}
+
+/// Finishes a ChatGPT handoff to the server that an earlier run left
+/// unresolved. It touches the network, so it never blocks the interface.
+pub fn resume_ai(core: &Core) {
+    let core = core.clone();
+    std::thread::spawn(move || core.resume_ai_handoff());
 }
 
 /// Forwards committed changes to the frontend, which reloads what it shows.

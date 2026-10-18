@@ -3,9 +3,9 @@
 //! `POST /api/operations` calls, so both transports share one implementation.
 
 use crate::{
-    AccountChange, CookingOutcome, Core, Credentials, CurrentChoice, EditBase, JoinSelection,
-    LogManualFood, LogRecipeFood, Photo, PlanningChoice, Principal, SetCoverPhoto,
-    ShoppingItemKind, StartCooking,
+    AccountChange, AiRequest, CookingOutcome, Core, Credentials, CurrentChoice, EditBase,
+    JoinSelection, LogManualFood, LogRecipeFood, Photo, PlanningChoice, Principal, ServerSelection,
+    SetCoverPhoto, ShoppingItemKind, StartCooking,
     error::{Error, Result},
 };
 use forkcast_recipe_domain::{planning::PlannedCooking, shopping::ShoppingItem};
@@ -115,6 +115,24 @@ pub enum Operation {
     AiPreferences,
     SetRecipePrompt {
         prompt: String,
+    },
+    SetRecipeModel {
+        model: Option<String>,
+    },
+    AiStatus,
+    /// A joined installation must name the server and account.
+    AiAuthorize {
+        server_url: Option<String>,
+        account_id: Option<String>,
+    },
+    AiCancelAuthorization,
+    AiSignOut,
+    AiRetryTransfer,
+    AiCancelTransfer,
+    AiModels,
+    AiExecute {
+        #[serde(flatten)]
+        request: AiRequest,
     },
     SyncStatus,
     SyncNow,
@@ -300,6 +318,30 @@ impl Core {
             }
             AiPreferences => json(self.ai_preferences(principal)?),
             SetRecipePrompt { prompt } => json(self.set_recipe_prompt(principal, &prompt)?),
+            SetRecipeModel { model } => json(self.set_recipe_model(principal, model.as_deref())?),
+            AiStatus => json(self.ai_status(principal)?),
+            AiAuthorize {
+                server_url,
+                account_id,
+            } => {
+                let selection = match (server_url, account_id) {
+                    (Some(server_url), Some(account_id)) => Some(ServerSelection {
+                        server_url,
+                        account_id,
+                    }),
+                    (None, None) => None,
+                    _ => {
+                        return Err(Error::invalid("Choose both the server and the account."));
+                    }
+                };
+                json(json!({"authorizationUrl": self.ai_authorize(principal, selection)?}))
+            }
+            AiCancelAuthorization => json(self.ai_cancel_authorization(principal)?),
+            AiSignOut => json(self.ai_sign_out(principal)?),
+            AiRetryTransfer => json(self.ai_retry_transfer(principal)?),
+            AiCancelTransfer => json(self.ai_cancel_transfer(principal)?),
+            AiModels => json(self.ai_models(principal)?),
+            AiExecute { request } => json(json!({"text": self.ai_execute(principal, request)?})),
             SyncStatus => json(self.sync_status()?),
             SyncNow => json(self.sync_now()?),
             ConnectServer { server_url } => json(self.connect_server(&server_url)?),

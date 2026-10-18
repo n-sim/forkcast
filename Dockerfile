@@ -17,8 +17,8 @@ FROM rust:1-bookworm AS server
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
-# The desktop app and AI companion are not part of the server image.
-RUN sed -i 's#, "crates/ai-companion", "crates/desktop"##' Cargo.toml \
+# The desktop app is not part of the server image.
+RUN sed -i 's#, "crates/desktop"##' Cargo.toml \
  && cargo build --release -p forkcast-backend
 
 FROM debian:bookworm-slim

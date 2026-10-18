@@ -1,4 +1,4 @@
-import { companionRequest } from './ai-client';
+import { aiExecute } from './ai-client';
 import {
   calculateRecipe,
   validateRecipe,
@@ -11,26 +11,18 @@ Use this structure: {"id":"recipe","name":"Dish name","basePortions":2,"ingredie
 Use unique nonempty ids for the recipe, ingredients and steps. Quantities and basePortions must be positive finite numbers. Include at least one ingredient and one nonempty instruction. Allocate every ingredient's full quantity across the steps, referring to its ingredient id. Every allocation quantity must be greater than zero. When a later step uses an ingredient already allocated in full, mention it in the instruction without adding another allocation; never add a zero-quantity allocation. Steps may have an empty allocations array. Allocation units must be compatible with the ingredient total. Use metric units by default; allowed units: mg, g, kg, oz, lb, ml, l, tsp, tbsp, fl-oz, cup, piece. Difficulty may be null, easy, medium or challenging. Times may be null or nonnegative minutes; total time must be at least active time. Do not include personal settings, account data, or storage revisions.`;
 
 export async function generateRecipe(
-  url: string,
   model: string,
   description: string,
   preferences: string,
-  signal?: AbortSignal,
 ): Promise<Recipe> {
-  const result = await companionRequest<{ text: string }>(
-    url,
-    '/execute',
-    'POST',
-    {
-      model,
-      instructions: `${recipeContract}\n\nPersonal preferences:\n${preferences}`,
-      input: `Dish:\n${description}`,
-    },
-    signal,
-  );
+  const text = await aiExecute({
+    model,
+    instructions: `${recipeContract}\n\nPersonal preferences:\n${preferences}`,
+    input: `Dish:\n${description}`,
+  });
   let recipe: Recipe;
   try {
-    let draft = JSON.parse(result.text) as RecipeDraft;
+    let draft = JSON.parse(text) as RecipeDraft;
     let validated = validateRecipe(draft);
     // Some generated instructions reference already allocated ingredients with
     // zero amounts. Omit these no-ops only when they are the sole validation

@@ -643,18 +643,7 @@ export function App({
           ) : settingsOpen ? (
             <article>
               <h1>Settings</h1>
-              {isNative ? (
-                <AiConnection />
-              ) : (
-                <section className="panel" aria-label="ChatGPT connection">
-                  <h2>ChatGPT</h2>
-                  <p>
-                    ChatGPT connections are set up and reconnected in the
-                    installed Forkcast app. An established connection on your
-                    household server can be used here once it exists.
-                  </p>
-                </section>
-              )}
+              <AiConnection sync={isNative ? status : null} />
               <AiPrompts key={accountKey} enabled={personalAvailable} />
               {isNative ? (
                 <>

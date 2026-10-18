@@ -1,11 +1,7 @@
 import { test as base, expect } from './app-fixture';
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import { once } from 'node:events';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
 
 type Mode =
   | 'success'
@@ -54,23 +50,29 @@ type InferenceFailure =
   | 'malformed';
 
 export const test = base.extend<{
-  legacyHost: boolean;
-  companion: {
-    url: string;
-    directory: string;
+  provider: {
     issuer: string;
+    /** Host identities the provider saw in authorization requests. */
+    hosts: string[];
     mode: (value: Mode) => void;
     reply: (value: unknown | ((request: InferenceRequest) => unknown)) => void;
     fail: (value: InferenceFailure | null) => void;
+    /** What refreshing a session does: succeed, or end the session. */
+    refresh: (value: 'ok' | 'reject') => void;
+    /** Makes every issued access token short-lived, so each request renews it. */
+    shortSessions: () => void;
     pause: () => void;
     resume: () => void;
-    stop: () => Promise<void>;
-    restart: () => Promise<void>;
+    count: (what: 'refresh' | 'inference') => number;
   };
 }>({
-  legacyHost: [false, { option: true }],
-  companion: async ({ legacyHost }, use) => {
-    const directory = await mkdtemp(join(tmpdir(), 'forkcast-ai-'));
+  // The app talks to a deterministic ChatGPT provider; nothing else is faked.
+  app: async ({ launch, provider }, use) => {
+    await use(
+      await launch({ env: { FORKCAST_AI_TEST_ISSUER: provider.issuer } }),
+    );
+  },
+  provider: async ({}, use) => {
     const { privateKey, publicKey } = generateKeyPairSync('rsa', {
       modulusLength: 2048,
     });
@@ -87,6 +89,23 @@ export const test = base.extend<{
     let gate: Promise<void> | undefined;
     let resume = () => {};
     let issuer = '';
+    const hosts: string[] = [];
+    const accessTokens = new Set<string>();
+    const refreshTokens = new Set<string>();
+    let refreshMode: 'ok' | 'reject' = 'ok';
+    let sessionSeconds = 3600;
+    let generation = 0;
+    const counts = { refresh: 0, inference: 0 };
+    const issue = () => {
+      generation += 1;
+      const issued = {
+        access: `SECRET_ACCESS_TOKEN_${generation}`,
+        refresh: `SECRET_REFRESH_TOKEN_${generation}`,
+      };
+      accessTokens.add(issued.access);
+      refreshTokens.add(issued.refresh);
+      return issued;
+    };
     const provider = createServer(async (request, response) => {
       const url = new URL(request.url!, issuer);
       response.setHeader('Content-Type', 'application/json');
@@ -113,6 +132,7 @@ export const test = base.extend<{
           );
           return;
         }
+        hosts.push(params.get('ext_agent_host_id')!);
         const code = randomUUID();
         attempts.set(code, new URLSearchParams(params));
         const callback = new URL(params.get('redirect_uri')!);
@@ -133,8 +153,24 @@ export const test = base.extend<{
         for await (const part of request) body += part;
         const form = new URLSearchParams(body);
         if (form.get('grant_type') === 'refresh_token') {
-          response.statusCode = 400;
-          response.end(JSON.stringify({ error: 'invalid_grant' }));
+          counts.refresh += 1;
+          if (
+            refreshMode === 'reject' ||
+            !refreshTokens.delete(form.get('refresh_token') ?? '')
+          ) {
+            response.statusCode = 400;
+            response.end(JSON.stringify({ error: 'invalid_grant' }));
+            return;
+          }
+          const renewed = issue();
+          response.end(
+            JSON.stringify({
+              access_token: renewed.access,
+              refresh_token: renewed.refresh,
+              token_type: 'Bearer',
+              expires_in: sessionSeconds,
+            }),
+          );
           return;
         }
         const params = attempts.get(form.get('code')!);
@@ -179,19 +215,20 @@ export const test = base.extend<{
           Buffer.from(mode === 'signature' ? 'invalid' : encoded),
           privateKey,
         ).toString('base64url');
+        const granted = issue();
         response.end(
           JSON.stringify({
-            access_token: 'SECRET_ACCESS_TOKEN',
-            refresh_token: 'SECRET_REFRESH_TOKEN',
+            access_token: granted.access,
+            refresh_token: granted.refresh,
             id_token: `${encoded}.${signature}`,
             token_type: 'Bearer',
-            expires_in: mode === 'short_session' ? 1 : 3600,
+            expires_in: mode === 'short_session' ? 1 : sessionSeconds,
             scope:
               mode === 'scope' ? 'openid email profile' : params.get('scope'),
           }),
         );
       } else if (url.pathname === '/v1/models') {
-        if (request.headers.authorization !== 'Bearer SECRET_ACCESS_TOKEN') {
+        if (!accessTokens.has(request.headers.authorization?.slice(7) ?? '')) {
           response.statusCode = 401;
           response.end('{}');
           return;
@@ -211,8 +248,9 @@ export const test = base.extend<{
         let body = '';
         for await (const part of request) body += part;
         const input = JSON.parse(body);
+        counts.inference += 1;
         if (
-          request.headers.authorization !== 'Bearer SECRET_ACCESS_TOKEN' ||
+          !accessTokens.has(request.headers.authorization?.slice(7) ?? '') ||
           input.model !== 'fixture-recipe' ||
           input.store !== false ||
           input.stream !== true ||
@@ -300,110 +338,10 @@ export const test = base.extend<{
     if (!address || typeof address === 'string')
       throw new Error('No provider port');
     issuer = `http://127.0.0.1:${address.port}`;
-    async function seedLegacyRecord() {
-      // An initial-release credential record, not a current-runtime rewrite.
-      const record = JSON.stringify({
-        issuer,
-        host_id: 'forkcast:legacy-installation',
-        client_id: 'oaiapp_fixture',
-        subject: 'fixture-person',
-        email: 'cook@example.test',
-        tokens: null,
-      });
-      const path = join(directory, 'credentials');
-      if (process.platform === 'win32') {
-        execFileSync(
-          'powershell.exe',
-          [
-            '-NoProfile',
-            '-NonInteractive',
-            '-Command',
-            `
-          Add-Type -AssemblyName System.Security
-          $recordBytes = [System.Text.Encoding]::UTF8.GetBytes($env:FORKCAST_TEST_LEGACY_RECORD)
-          $protectedBytes = [System.Security.Cryptography.ProtectedData]::Protect($recordBytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
-          [System.IO.File]::WriteAllBytes($env:FORKCAST_TEST_LEGACY_PATH, $protectedBytes)
-        `,
-          ],
-          {
-            env: {
-              ...process.env,
-              FORKCAST_TEST_LEGACY_RECORD: record,
-              FORKCAST_TEST_LEGACY_PATH: path,
-            },
-            windowsHide: true,
-          },
-        );
-      } else {
-        await writeFile(path, record, { mode: 0o600 });
-      }
-    }
-    let child: ChildProcess | undefined;
-    let url = '';
-    async function start() {
-      child = spawn(
-        resolve(
-          'target/debug/forkcast-ai-companion' +
-            (process.platform === 'win32' ? '.exe' : ''),
-        ),
-        [],
-        {
-          env: {
-            ...process.env,
-            FORKCAST_AI_BIND: url ? new URL(url).host : '127.0.0.1:0',
-            FORKCAST_AI_DIRECTORY: directory,
-            FORKCAST_AI_ALLOWED_ORIGINS: 'http://tauri.localhost',
-            FORKCAST_AI_TEST_ISSUER: issuer,
-          },
-          stdio: ['ignore', 'pipe', 'pipe'],
-          windowsHide: true,
-        },
-      );
-      const running = child;
-      url = await new Promise<string>((resolve, reject) => {
-        let output = '';
-        let errors = '';
-        const timeout = setTimeout(
-          () => reject(new Error(`Companion did not start: ${errors}`)),
-          15_000,
-        );
-        running.stdout!.on('data', (data: Buffer) => {
-          output += data.toString();
-          const match = output.match(/listening on (http:\/\/[^\s]+)/);
-          if (match?.[1]) {
-            clearTimeout(timeout);
-            resolve(match[1]);
-          }
-        });
-        running.stderr!.on('data', (data: Buffer) => {
-          errors += data.toString();
-        });
-        running.once('error', (error) => {
-          clearTimeout(timeout);
-          reject(error);
-        });
-        running.once('exit', (code) => {
-          clearTimeout(timeout);
-          reject(new Error(`Companion exited (${code}): ${errors}`));
-        });
-      });
-    }
-    async function stop() {
-      if (child && child.exitCode === null && child.signalCode === null) {
-        const exited = once(child, 'exit');
-        child.kill();
-        await exited;
-      }
-    }
     try {
-      if (legacyHost) await seedLegacyRecord();
-      await start();
       await use({
-        get url() {
-          return url;
-        },
-        directory,
         issuer,
+        hosts,
         mode: (value) => {
           mode = value;
         },
@@ -412,6 +350,12 @@ export const test = base.extend<{
         },
         fail: (value) => {
           failure = value;
+        },
+        refresh: (value) => {
+          refreshMode = value;
+        },
+        shortSessions: () => {
+          sessionSeconds = 1;
         },
         pause: () => {
           gate = new Promise<void>((resolve) => {
@@ -422,18 +366,12 @@ export const test = base.extend<{
           resume();
           gate = undefined;
         },
-        stop,
-        restart: async () => {
-          await stop();
-          await start();
-        },
+        count: (what) => counts[what],
       });
     } finally {
       resume();
-      await stop();
       provider.closeAllConnections();
       await new Promise<void>((resolve) => provider.close(() => resolve()));
-      await rm(directory, { recursive: true, force: true });
     }
   },
 });

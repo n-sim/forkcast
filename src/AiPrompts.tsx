@@ -48,7 +48,8 @@ export function AiPrompts({ enabled }: { enabled: boolean }) {
       <h2>Personal AI prompts</h2>
       <p>
         Set your preferences for recipe generation. They belong to your personal
-        account. Prompt synchronization will be available later.
+        account and follow it to your other devices when you use a household
+        server. Instructions for a single request go in that request, not here.
       </p>
       {!enabled && (
         <p>Sign in to your backend account to manage your personal prompts.</p>

@@ -1,163 +1,126 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { openExternal } from './core';
+import { useCallback, useEffect, useState } from 'react';
+import { isNative, openExternal, subscribeToTopics } from './core';
 import {
-  companionKey,
-  companionRequest,
-  companionStatus,
-  companionUrl,
-  savedCompanion,
-  type ChatGptStatus,
+  aiAuthorize,
+  aiCancelAuthorization,
+  aiCancelTransfer,
+  aiRetryTransfer,
+  aiSignOut,
+  aiStatus,
+  type AiStatus,
 } from './ai-client';
+import type { SyncStatus } from './household-client';
 
-export function AiConnection() {
-  const [activeUrl, setActiveUrl] = useState(savedCompanion);
-  const [url, setUrl] = useState(
-    () => savedCompanion() ?? 'http://127.0.0.1:8788',
-  );
-  const [status, setStatus] = useState<ChatGptStatus | null>(null);
+const summaries: Record<AiStatus['state'], string> = {
+  unconfigured: 'ChatGPT is not connected',
+  authorizing:
+    'Waiting for ChatGPT authorization. Complete sign-in in your browser.',
+  connected: 'Connected',
+  denied: 'ChatGPT sign-in was not allowed',
+  expired: 'ChatGPT sign-in expired',
+  reconnect_required: 'ChatGPT needs reconnection',
+  transferring: 'Finishing setup on your household server…',
+  transfer_failed: 'Setup on your household server did not finish',
+  unavailable: 'ChatGPT is unavailable right now',
+};
+
+export function AiConnection({ sync }: { sync?: SyncStatus | null }) {
+  const [status, setStatus] = useState<AiStatus | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    if (!activeUrl) return;
-    let canceled = false;
-    let checking = false;
-    async function check() {
-      if (checking) return;
-      checking = true;
-      try {
-        const next = await companionStatus(activeUrl!);
-        if (!canceled) {
-          setStatus(next);
-          setError('');
-        }
-      } catch (error) {
-        if (!canceled) {
-          setStatus(null);
-          setError(
-            error instanceof Error ? error.message : 'Companion unavailable.',
-          );
-        }
-      } finally {
-        checking = false;
-      }
+  const refresh = useCallback(async () => {
+    try {
+      setStatus(await aiStatus());
+      setError('');
+    } catch (failure) {
+      setStatus(null);
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : 'The ChatGPT connection could not be read.',
+      );
     }
-    void check();
-    const interval = window.setInterval(() => void check(), 2_000);
-    const onFocus = () => void check();
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    const stop = subscribeToTopics(['ai', 'sync'], () => void refresh());
+    const interval = window.setInterval(() => void refresh(), 3_000);
+    const onFocus = () => void refresh();
     window.addEventListener('focus', onFocus);
     return () => {
-      canceled = true;
+      stop();
       window.clearInterval(interval);
       window.removeEventListener('focus', onFocus);
     };
-  }, [activeUrl]);
+  }, [refresh]);
 
-  async function connect(event: FormEvent) {
-    event.preventDefault();
+  async function act(work: () => Promise<AiStatus | void>) {
     setBusy(true);
     setError('');
     try {
-      const checkedUrl = companionUrl(url);
-      const next = await companionStatus(checkedUrl);
-      localStorage.setItem(companionKey, checkedUrl);
-      setActiveUrl(checkedUrl);
-      setUrl(checkedUrl);
-      setStatus(next);
-    } catch (error) {
+      const next = await work();
+      if (next) setStatus(next);
+      else await refresh();
+    } catch (failure) {
       setError(
-        error instanceof Error ? error.message : 'Check the companion URL.',
+        failure instanceof Error ? failure.message : 'That did not work.',
       );
+      await refresh();
     } finally {
       setBusy(false);
     }
   }
 
-  function disconnect() {
-    localStorage.removeItem(companionKey);
-    setActiveUrl(null);
-    setStatus(null);
-    setError('');
-  }
+  const serverTarget = status?.target === 'server';
+  const account = sync?.activeAccount;
 
   async function authorize() {
-    setBusy(true);
-    setError('');
-    try {
-      const result = await companionRequest<{ authorizationUrl: string }>(
-        activeUrl!,
-        '/authorization',
-        'POST',
-      );
-      const destination = new URL(result.authorizationUrl);
-      if (
-        !(
-          destination.origin === 'https://auth.openai.com' ||
-          (destination.protocol === 'http:' &&
-            destination.hostname === '127.0.0.1')
-        ) ||
-        destination.pathname !== '/api/accounts/authorize'
-      )
-        throw new Error('The companion returned an invalid sign-in address.');
-      // Sign-in happens in the person's own browser, not inside the app.
-      await openExternal(destination.href);
-      setStatus({ state: 'authorizing', email: null, message: null });
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : 'ChatGPT sign-in could not start.',
-      );
-    } finally {
-      setBusy(false);
-    }
+    // Sign-in happens in the person's own browser, not inside the app. A
+    // joined app names the server and account it is granting access to.
+    const selection =
+      serverTarget && sync?.serverUrl && account
+        ? { serverUrl: sync.serverUrl, accountId: account.id }
+        : undefined;
+    await act(async () => {
+      await openExternal(await aiAuthorize(selection));
+      setStatus(await aiStatus());
+    });
   }
 
-  async function signOut() {
-    setBusy(true);
-    setError('');
-    try {
-      setStatus(
-        await companionRequest<ChatGptStatus>(
-          activeUrl!,
-          '/connection',
-          'DELETE',
-        ),
-      );
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : 'ChatGPT sign-out could not complete.',
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
+  const connected = status?.state === 'connected';
+  const handoff =
+    status?.state === 'transferring' || status?.state === 'transfer_failed';
+  const authorizing = status?.state === 'authorizing';
 
   return (
     <section aria-label="ChatGPT connection" className="panel account-form">
       <h2>ChatGPT</h2>
-      <p>
-        Connect your ChatGPT subscription through the optional native AI
-        companion running on this device. No backend account is required.
-      </p>
-      <p>
-        Your application data stays in this browser. The companion does not
-        enable backups or synchronization.
-      </p>
+      {serverTarget ? (
+        <p>
+          AI runs on your household server
+          {status?.serverUrl ? ` (${status.serverUrl})` : ''}
+          {status?.account ? ` for the account “${status.account}”` : ''}. Every
+          device and browser signed in to that account uses this one connection.
+          Your ChatGPT sign-in never leaves your device except to be handed to
+          that server once you choose to.
+        </p>
+      ) : (
+        <p>
+          Connect your ChatGPT subscription to this device. No backend account
+          or terminal setup is needed, and your session stays in protected
+          storage on this device.
+        </p>
+      )}
       <p role="status" aria-label="ChatGPT status">
-        {status?.state === 'connected'
-          ? `Connected as ${status.email ?? 'your ChatGPT account'}`
-          : status?.state === 'authorizing'
-            ? 'Waiting for ChatGPT authorization. Complete sign-in in the other window.'
-            : status?.state === 'reconnect_required'
-              ? 'ChatGPT needs reconnection'
-              : error && !status
-                ? 'Companion unavailable'
-                : activeUrl && !status
-                  ? 'Checking companion connection…'
-                  : 'AI not configured'}
+        {status
+          ? connected
+            ? `Connected as ${status.email ?? 'your ChatGPT account'}`
+            : summaries[status.state]
+          : error
+            ? 'ChatGPT status unavailable'
+            : 'Checking ChatGPT connection…'}
       </p>
       {error && (
         <p role="alert" className="error-banner">
@@ -165,70 +128,70 @@ export function AiConnection() {
         </p>
       )}
       {status?.message && (
-        <p role="alert" className="error-banner">
+        <p role={connected ? 'status' : 'alert'} className="error-banner">
           {status.message}
         </p>
       )}
-      {status?.state === 'reconnect_required' && !status.message && (
-        <p>Your ChatGPT session has expired. Connect again to continue.</p>
-      )}
-      {activeUrl && status && status.state !== 'connected' && (
+      {status && !connected && !handoff && status.canAuthorize && isNative && (
         <button
           type="button"
           className="button primary"
-          disabled={busy}
+          disabled={busy || (serverTarget && !account)}
           onClick={() => void authorize()}
         >
-          {status.state === 'authorizing'
+          {authorizing
             ? 'Restart ChatGPT sign-in'
-            : 'Continue with ChatGPT'}
+            : serverTarget
+              ? 'Set up ChatGPT on this server'
+              : 'Continue with ChatGPT'}
         </button>
       )}
-      {activeUrl && status?.state === 'connected' && (
+      {authorizing && (
         <button
           type="button"
           className="button secondary"
           disabled={busy}
-          onClick={() => void signOut()}
+          onClick={() => void act(aiCancelAuthorization)}
         >
-          Sign out of ChatGPT
+          Cancel sign-in
         </button>
       )}
-      {!activeUrl && (
-        <p>
-          Start the native AI companion on this device, then connect it here.
-        </p>
-      )}
-      {activeUrl ? (
-        <div className="account-form">
-          <p>Companion: {activeUrl}</p>
+      {handoff && (
+        <div className="form-actions">
+          <button
+            type="button"
+            className="button primary"
+            disabled={busy}
+            onClick={() => void act(aiRetryTransfer)}
+          >
+            Retry setup on server
+          </button>
           <button
             type="button"
             className="button secondary"
             disabled={busy}
-            onClick={disconnect}
+            onClick={() => void act(aiCancelTransfer)}
           >
-            Disconnect companion
+            Cancel setup
           </button>
         </div>
-      ) : (
-        <form
-          className="account-form"
-          onSubmit={(event) => void connect(event)}
+      )}
+      {connected && (
+        <button
+          type="button"
+          className="button secondary"
+          disabled={busy}
+          onClick={() => void act(aiSignOut)}
         >
-          <label>
-            Companion URL
-            <input
-              type="url"
-              value={url}
-              onChange={(event) => setUrl(event.target.value)}
-              required
-            />
-          </label>
-          <button className="button primary" disabled={busy}>
-            Connect companion
-          </button>
-        </form>
+          Sign out of ChatGPT
+        </button>
+      )}
+      {status && !status.canAuthorize && !connected && (
+        <p>
+          ChatGPT connections are set up and reconnected in the installed
+          Forkcast app, choosing this server and your account. Once connected,
+          you can use it here.
+        </p>
       )}
     </section>
   );
