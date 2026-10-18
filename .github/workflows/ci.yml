@@ -1,6 +1,9 @@
 name: Check application
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
 
 # A newer push replaces an older run of the same branch.
 concurrency:

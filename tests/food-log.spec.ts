@@ -336,6 +336,10 @@ test('cooking a recipe does not log intake and manual intake does not change coo
   await page
     .getByRole('button', { name: 'Finish cooking', exact: true })
     .click();
+  // Finishing returns to the recipe; leave only after it has.
+  await expect(
+    page.getByRole('heading', { name: 'Simple salad', exact: true }),
+  ).toBeVisible();
   await page.getByRole('link', { name: 'Food log', exact: true }).click();
   await expect(
     page
