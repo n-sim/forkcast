@@ -47,7 +47,7 @@ Android 7.0 (API 24) and newer, arm64 and x86_64 (`minSdk` 24). Tested: see the 
 
 ## Build
 
-Prerequisites: JDK 17, the Android SDK (platform 37, NDK 27.2.12479018), the Rust Android targets, and Node.js.
+Prerequisites: JDK 17, the Android SDK (the Android Gradle plugin downloads the compile platform; NDK 27.2.12479018), the Rust Android targets, and Node.js.
 
 ```sh
 rustup target add aarch64-linux-android x86_64-linux-android
