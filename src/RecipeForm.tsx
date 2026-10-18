@@ -14,6 +14,7 @@ import { StepAllocations } from './StepAllocations';
 import { AllocationChecks } from './AllocationChecks';
 import { nutrients } from './food-log';
 import { unknownNutrition } from './nutrition';
+import { RecipeEstimation, ingredientSignature } from './RecipeEstimation';
 
 function emptyIngredient() {
   return {
@@ -36,10 +37,12 @@ export function RecipeForm({
   recipe: initialRecipe,
   onSave,
   onCancel,
+  aiAvailable = true,
 }: {
   recipe?: Recipe;
   onSave: (recipe: Recipe) => Promise<void>;
   onCancel: () => void;
+  aiAvailable?: boolean;
 }) {
   const [draft, setDraft] = useState<RecipeDraft>(
     () =>
@@ -55,6 +58,7 @@ export function RecipeForm({
         totalMinutes: null,
       },
   );
+  const baseline = useRef(ingredientSignature(draft)).current;
   const [error, setError] = useState('');
   const [errors, setErrors] = useState<FieldError[]>([]);
   const errorSummary = useRef<HTMLDivElement>(null);
@@ -514,6 +518,21 @@ export function RecipeForm({
           ))}
         </div>
       </section>
+      <RecipeEstimation
+        draft={draft}
+        baseline={baseline}
+        hasNutrition={
+          draft.nutrition !== undefined &&
+          Object.values(draft.nutrition).some((value) => value !== null)
+        }
+        available={aiAvailable}
+        onNutrition={(nutrition) =>
+          setDraft((current) => ({ ...current, nutrition }))
+        }
+        onMetadata={(metadata) =>
+          setDraft((current) => ({ ...current, ...metadata }))
+        }
+      />
       <div className="form-actions">
         <p>Saved on this device. Ready when you are.</p>
         <button
