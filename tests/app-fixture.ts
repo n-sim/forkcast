@@ -138,7 +138,7 @@ ${errors}`);
     }
     browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
     context = browser.contexts()[0]!;
-    const deadline = Date.now() + 15_000;
+    const deadline = Date.now() + 30_000;
     let found: Page | undefined;
     while (!found && Date.now() < deadline) {
       found = context

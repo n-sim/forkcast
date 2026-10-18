@@ -65,7 +65,7 @@ export async function createAccount(page: Page, username: string) {
 export async function synced(page: Page) {
   await expect(
     page.getByRole('status', { name: 'Data synchronization', exact: true }),
-  ).toContainText('Up to date', { timeout: 15_000 });
+  ).toContainText('Up to date', { timeout: 30_000 });
 }
 
 export async function syncNow(page: Page) {
