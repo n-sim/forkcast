@@ -186,6 +186,10 @@ test('keep previous nutrition after ingredient edits and offer reestimation, kee
   await page
     .getByRole('button', { name: 'Re-estimate nutrition with AI', exact: true })
     .click();
+  await page
+    .getByRole('dialog', { name: 'Replace nutrition values?' })
+    .getByRole('button', { name: 'Replace with AI estimate' })
+    .click();
   await expect(page.getByLabel('Calories (kcal)', { exact: true })).toHaveValue(
     '1800',
   );
@@ -231,6 +235,10 @@ test('an invalid estimate leaves manual nutrition unchanged and the recipe savea
   await page
     .getByRole('button', { name: 'Re-estimate nutrition with AI', exact: true })
     .click();
+  await page
+    .getByRole('dialog', { name: 'Replace nutrition values?' })
+    .getByRole('button', { name: 'Replace with AI estimate' })
+    .click();
   await expect(page.getByRole('alert')).toContainText('invalid nutrition');
   await expect(page.getByLabel('Calories (kcal)', { exact: true })).toHaveValue(
     '900',
@@ -249,7 +257,7 @@ test('manual and unknown nutrition stay valid when AI is not connected', async (
     page.getByRole('button', { name: /Estimate nutrition with AI/ }),
   ).toHaveCount(0);
   await expect(
-    page.getByText('Manual and unknown values stay valid'),
+    page.getByText(/to estimate nutrition with AI. Manual and unknown/),
   ).toBeVisible();
   await save(page);
   const whole = page.getByRole('region', {
@@ -262,4 +270,93 @@ test('manual and unknown nutrition stay valid when AI is not connected', async (
     'Unknown',
     'Unknown',
   ]);
+});
+
+test('ask before an estimate replaces existing nutrition or difficulty and time', async ({
+  page,
+  provider,
+  connectChatGpt,
+}) => {
+  fixtureReplies(provider);
+  await connectChatGpt();
+  await startRecipe(page);
+  await page.getByLabel('Protein (g)', { exact: true }).fill('12');
+  await page
+    .getByRole('button', { name: 'Re-estimate nutrition with AI', exact: true })
+    .click();
+  const nutritionDialog = page.getByRole('dialog', {
+    name: 'Replace nutrition values?',
+  });
+  await expect(nutritionDialog).toBeVisible();
+  // Declining keeps the partial values and never calls the provider.
+  await nutritionDialog.getByRole('button', { name: 'Keep my values' }).click();
+  await expect(nutritionDialog).toHaveCount(0);
+  await expect(page.getByLabel('Protein (g)', { exact: true })).toHaveValue(
+    '12',
+  );
+  expect(provider.count('inference')).toBe(0);
+
+  await page.getByLabel('Total time (minutes)').fill('50');
+  await page
+    .getByRole('button', {
+      name: 'Suggest difficulty and time with AI',
+      exact: true,
+    })
+    .click();
+  const metadataDialog = page.getByRole('dialog', {
+    name: 'Replace difficulty and time?',
+  });
+  await metadataDialog.getByRole('button', { name: 'Keep my values' }).click();
+  await expect(page.getByLabel('Total time (minutes)')).toHaveValue('50');
+  expect(provider.count('inference')).toBe(0);
+
+  await page
+    .getByRole('button', {
+      name: 'Suggest difficulty and time with AI',
+      exact: true,
+    })
+    .click();
+  await metadataDialog
+    .getByRole('button', { name: 'Replace with AI suggestion' })
+    .click();
+  await expect(page.getByLabel('Total time (minutes)')).toHaveValue('45');
+  expect(provider.count('inference')).toBe(1);
+});
+
+test('choose the AI model in Settings and see a notice beside AI buttons when it is no longer available', async ({
+  page,
+  provider,
+  connectChatGpt,
+}) => {
+  provider.models(['fixture-recipe', 'fixture-other']);
+  fixtureReplies(provider);
+  await connectChatGpt();
+  const model = page.getByRole('region', { name: 'AI model' });
+  await model.getByLabel('Model').selectOption('fixture-other');
+  await expect(model.getByRole('status').last()).toContainText('Model saved');
+  await page.reload();
+  await expect(model.getByLabel('Model')).toHaveValue('fixture-other');
+
+  // The provider drops the saved model: AI is paused with an explanation.
+  provider.models(['fixture-recipe']);
+  const notice = page.getByRole('status', { name: 'AI model unavailable' });
+  await page.goto('/#/recipes/generate');
+  await page.getByLabel('Describe your dish').fill('Soup');
+  await expect(notice).toContainText('fixture-other');
+  await expect(
+    page.getByRole('button', { name: 'Generate recipe', exact: true }),
+  ).toBeDisabled();
+  await startRecipe(page);
+  await expect(notice.first()).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Estimate nutrition with AI' }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole('button', { name: 'Suggest difficulty and time with AI' }),
+  ).toBeDisabled();
+
+  await page.goto('/#/settings');
+  await expect(notice).toContainText('no longer available');
+  await model.getByLabel('Model').selectOption('');
+  await expect(notice).toHaveCount(0);
 });

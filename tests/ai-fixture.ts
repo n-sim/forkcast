@@ -56,6 +56,8 @@ export const test = base.extend<{
     hosts: string[];
     mode: (value: Mode) => void;
     reply: (value: unknown | ((request: InferenceRequest) => unknown)) => void;
+    /** The model slugs the provider lists and accepts. */
+    models: (slugs: string[]) => void;
     fail: (value: InferenceFailure | null) => void;
     /** What refreshing a session does: succeed, or end the session. */
     refresh: (value: 'ok' | 'reject') => void;
@@ -85,6 +87,7 @@ export const test = base.extend<{
     const attempts = new Map<string, URLSearchParams>();
     let mode: Mode = 'success';
     let reply: unknown = generatedRecipe;
+    let models = ['fixture-recipe'];
     let failure: InferenceFailure | null = null;
     let gate: Promise<void> | undefined;
     let resume = () => {};
@@ -235,13 +238,12 @@ export const test = base.extend<{
         }
         response.end(
           JSON.stringify({
-            models: [
-              {
-                slug: 'fixture-recipe',
-                display_name: 'Fixture recipe model',
-                visibility: 'list',
-              },
-            ],
+            models: models.map((slug) => ({
+              slug,
+              display_name:
+                slug === 'fixture-recipe' ? 'Fixture recipe model' : slug,
+              visibility: 'list',
+            })),
           }),
         );
       } else if (url.pathname === '/v1/responses') {
@@ -251,7 +253,7 @@ export const test = base.extend<{
         counts.inference += 1;
         if (
           !accessTokens.has(request.headers.authorization?.slice(7) ?? '') ||
-          input.model !== 'fixture-recipe' ||
+          !models.includes(input.model) ||
           input.store !== false ||
           input.stream !== true ||
           !Array.isArray(input.input)
@@ -347,6 +349,9 @@ export const test = base.extend<{
         },
         reply: (value) => {
           reply = value;
+        },
+        models: (slugs) => {
+          models = slugs;
         },
         fail: (value) => {
           failure = value;

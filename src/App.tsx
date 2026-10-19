@@ -40,6 +40,7 @@ import { BrowserAccountPanel, type BrowserSession } from './BrowserAccount';
 import { isNative } from './core';
 import { AiConnection } from './AiConnection';
 import { RecipeGeneration } from './RecipeGeneration';
+import { AiModelSetting } from './AiModelSetting';
 import { AiPrompts } from './AiPrompts';
 import { FoodLog } from './FoodLog';
 import { MealPlan } from './MealPlan';
@@ -724,6 +725,7 @@ export function App({
             <article>
               <h1>Settings</h1>
               <AiConnection sync={isNative ? status : null} />
+              <AiModelSetting key={accountKey} enabled={personalAvailable} />
               <AiPrompts key={accountKey} enabled={personalAvailable} />
               {isNative ? (
                 <>
