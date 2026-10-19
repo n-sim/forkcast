@@ -332,10 +332,14 @@ test('choose the AI model in Settings and see a notice beside AI buttons when it
   fixtureReplies(provider);
   await connectChatGpt();
   const model = page.getByRole('region', { name: 'AI model' });
-  await model.getByLabel('Model').selectOption('fixture-other');
+  await model
+    .getByRole('combobox', { name: /^Model/ })
+    .selectOption('fixture-other');
   await expect(model.getByRole('status').last()).toContainText('Model saved');
   await page.reload();
-  await expect(model.getByLabel('Model')).toHaveValue('fixture-other');
+  await expect(model.getByRole('combobox', { name: /^Model/ })).toHaveValue(
+    'fixture-other',
+  );
 
   // The provider drops the saved model: AI is paused with an explanation.
   provider.models(['fixture-recipe']);
@@ -357,6 +361,6 @@ test('choose the AI model in Settings and see a notice beside AI buttons when it
 
   await page.goto('/#/settings');
   await expect(notice).toContainText('no longer available');
-  await model.getByLabel('Model').selectOption('');
+  await model.getByRole('combobox', { name: /^Model/ }).selectOption('');
   await expect(notice).toHaveCount(0);
 });
