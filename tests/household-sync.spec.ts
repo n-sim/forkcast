@@ -161,20 +161,23 @@ test('competing recipe edits are kept for explicit resolution and a stale choice
   // The second app must still show the old alternatives when it chooses, but
   // its background worker synchronizes every 20 seconds and on focus. Open its
   // page first and choose right after the first app, keeping that window short.
-  const secondRevision = second
-    .getByRole('region', { name: 'Revision 2', exact: true })
-    .getByRole('button', { name: 'Make current' });
+  // Alternatives are ordered by revision identity, so number them by name.
+  const alternative = (page: Page, name: string) =>
+    page
+      .getByRole('region', { name: /^Revision \d+$/ })
+      .filter({ has: page.getByRole('heading', { name, exact: true }) });
+  const secondRevision = alternative(second, 'Sweet soup').getByRole('button', {
+    name: 'Make current',
+  });
   await second.goto('/#/recipe-conflicts');
   await expect(secondRevision).toBeVisible();
   await first.goto('/#/recipe-conflicts');
-  await first
-    .getByRole('region', { name: 'Revision 1', exact: true })
+  await alternative(first, 'Salty soup')
     .getByRole('button', { name: 'Make current' })
     .click();
+  // The choice is complete once the server resolved it and nothing competes.
   await expect(
-    first
-      .getByRole('region', { name: 'Revision 1', exact: true })
-      .getByText('Current recipe'),
+    first.getByText('No unresolved recipe conflicts.'),
   ).toBeVisible();
   await secondRevision.click();
   await expect(second.getByRole('alert')).toContainText(/changed|Review/);
