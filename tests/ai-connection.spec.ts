@@ -140,9 +140,10 @@ test('an ended session asks for reconnection and an expiring one is renewed quie
   ).toContainText('Connected as cook@example.test');
   // Every request needs a renewed session; the person notices nothing.
   await page.goto('/#/recipes/generate');
-  await expect(page.getByLabel('ChatGPT model')).toContainText(
-    'Fixture recipe model',
-  );
+  await page.getByLabel('Describe your dish').fill('Soup');
+  await expect(
+    page.getByRole('button', { name: 'Generate recipe', exact: true }),
+  ).toBeEnabled();
   expect(provider.count('refresh')).toBeGreaterThan(0);
 
   provider.refresh('reject');

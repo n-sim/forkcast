@@ -1,16 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import {
-  aiModels,
-  aiStatus,
-  loadAiPreferences,
-  saveRecipeModel,
-  type AiModel,
-  type AiStatus,
-} from './ai-client';
 import { generateRecipe } from './recipe-generation';
 import { estimateNutrition } from './recipe-estimation';
 import { loadRecipePrompt } from './ai-prompts';
 import type { Recipe } from './domain';
+import { AiModelNotice, useAiModel } from './use-ai-model';
 
 export function RecipeGeneration({
   onSave,
@@ -19,11 +12,9 @@ export function RecipeGeneration({
   onSave: (recipe: Recipe) => Promise<void>;
   promptsAvailable: boolean;
 }) {
-  const [connection, setConnection] = useState<AiStatus | null>(null);
-  const [models, setModels] = useState<AiModel[]>([]);
-  const [model, setModel] = useState('');
+  const ai = useAiModel(promptsAvailable);
   const [description, setDescription] = useState('');
-  const [error, setError] = useState('');
+  const [failure, setFailure] = useState('');
   const [busy, setBusy] = useState(false);
   const canceled = useRef(false);
   useEffect(
@@ -32,68 +23,22 @@ export function RecipeGeneration({
     },
     [],
   );
-  useEffect(() => {
-    if (!promptsAvailable) return;
-    let active = true;
-    void (async () => {
-      try {
-        const status = await aiStatus();
-        if (!active) return;
-        setConnection(status);
-        if (status.state !== 'connected') {
-          setError(status.message ?? '');
-          return;
-        }
-        const [listed, preferences] = await Promise.all([
-          aiModels(),
-          loadAiPreferences(),
-        ]);
-        if (!active) return;
-        setModels(listed);
-        // The model last chosen follows the person across devices.
-        setModel(
-          listed.find((entry) => entry.slug === preferences.recipeModel)
-            ?.slug ??
-            listed[0]?.slug ??
-            '',
-        );
-        if (!listed.length)
-          setError(
-            'No ChatGPT models are available for this account. Check your connection in Settings.',
-          );
-      } catch (failure) {
-        if (active)
-          setError(
-            failure instanceof Error
-              ? failure.message
-              : 'Could not load ChatGPT models.',
-          );
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [promptsAvailable]);
-
-  const connected = connection?.state === 'connected';
-
-  function choose(slug: string) {
-    setModel(slug);
-    void saveRecipeModel(slug).catch(() => undefined);
-  }
+  const connected = ai.connection?.state === 'connected';
+  const model = ai.model;
+  const error = failure || ai.error;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (
       !connected ||
-      !model ||
+      !ai.ready ||
       !promptsAvailable ||
       busy ||
       !description.trim()
     )
       return;
     setBusy(true);
-    setError('');
+    setFailure('');
     try {
       const preferences = await loadRecipePrompt();
       let recipe = await generateRecipe(model, description, preferences);
@@ -117,7 +62,7 @@ export function RecipeGeneration({
       }
     } catch (error) {
       if (canceled.current) return;
-      setError(
+      setFailure(
         error instanceof Error
           ? error.message
           : 'Recipe generation failed. Try again.',
@@ -146,7 +91,7 @@ export function RecipeGeneration({
       {!promptsAvailable && (
         <p>Sign in to your backend account to use your personal prompts.</p>
       )}
-      {promptsAvailable && connection && !connected && (
+      {promptsAvailable && ai.connection && !connected && (
         <p>
           Connect ChatGPT in <a href="#/settings">Settings</a> to generate
           recipes. You can also{' '}
@@ -172,25 +117,11 @@ export function RecipeGeneration({
             disabled={busy}
           />
         </label>
-        <label>
-          ChatGPT model
-          <select
-            value={model}
-            onChange={(event) => choose(event.target.value)}
-            disabled={busy || !models.length}
-          >
-            {models.map((entry) => (
-              <option key={entry.slug} value={entry.slug}>
-                {entry.displayName}
-              </option>
-            ))}
-          </select>
-        </label>
         <button
           className="button primary"
           disabled={
             !connected ||
-            !model ||
+            !ai.ready ||
             !promptsAvailable ||
             !description.trim() ||
             busy
@@ -198,6 +129,7 @@ export function RecipeGeneration({
         >
           {busy ? 'Generating…' : 'Generate recipe'}
         </button>
+        <AiModelNotice choice={ai} />
         {busy && (
           <p role="status">Generating your recipe… Keep this page open.</p>
         )}

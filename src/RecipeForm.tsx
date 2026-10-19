@@ -14,7 +14,13 @@ import { StepAllocations } from './StepAllocations';
 import { AllocationChecks } from './AllocationChecks';
 import { nutrients } from './food-log';
 import { unknownNutrition } from './nutrition';
-import { RecipeEstimation, ingredientSignature } from './RecipeEstimation';
+import {
+  EstimateControl,
+  hasNutrition,
+  ingredientSignature,
+  useRecipeEstimation,
+} from './RecipeEstimation';
+import { useAiModel } from './use-ai-model';
 
 function emptyIngredient() {
   return {
@@ -59,6 +65,8 @@ export function RecipeForm({
       },
   );
   const baseline = useRef(ingredientSignature(draft)).current;
+  const ai = useAiModel(aiAvailable);
+  const estimation = useRecipeEstimation(draft, setDraft, ai, aiAvailable);
   const [error, setError] = useState('');
   const [errors, setErrors] = useState<FieldError[]>([]);
   const errorSummary = useRef<HTMLDivElement>(null);
@@ -260,6 +268,12 @@ export function RecipeForm({
             <small>Elapsed time until ready to eat.</small>
           </label>
         </div>
+        <EstimateControl
+          kind="metadata"
+          estimation={estimation}
+          label="Suggest difficulty and time with AI"
+          busyLabel="Suggesting…"
+        />
       </section>
       <section
         className="panel"
@@ -517,22 +531,25 @@ export function RecipeForm({
             </label>
           ))}
         </div>
+        <EstimateControl
+          kind="nutrition"
+          estimation={estimation}
+          label={
+            hasNutrition(draft)
+              ? 'Re-estimate nutrition with AI'
+              : 'Estimate nutrition with AI'
+          }
+          busyLabel="Estimating…"
+          offer={
+            ai.ready &&
+            hasNutrition(draft) &&
+            ingredientSignature(draft) !== baseline
+              ? 'The ingredients changed. Your previous nutrition is kept; re-estimate it with AI if you want it to match.'
+              : undefined
+          }
+        />
       </section>
-      <RecipeEstimation
-        draft={draft}
-        baseline={baseline}
-        hasNutrition={
-          draft.nutrition !== undefined &&
-          Object.values(draft.nutrition).some((value) => value !== null)
-        }
-        available={aiAvailable}
-        onNutrition={(nutrition) =>
-          setDraft((current) => ({ ...current, nutrition }))
-        }
-        onMetadata={(metadata) =>
-          setDraft((current) => ({ ...current, ...metadata }))
-        }
-      />
+      {estimation.dialog}
       <div className="form-actions">
         <p>Saved on this device. Ready when you are.</p>
         <button
