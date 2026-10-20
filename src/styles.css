@@ -1083,7 +1083,8 @@ dialog .form-actions {
   }
   .bottom-nav {
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     position: fixed;
     bottom: 0;
     left: 0;
