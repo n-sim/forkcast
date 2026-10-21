@@ -35,6 +35,8 @@ export interface FoodLogEntry extends ManualFoodLogEntry {
   recipeId: string | null;
   nutritionVersionId: string | null;
   portions: number | null;
+  /** The recipe has been archived: the entry keeps its nutrition, without a link. */
+  recipeArchived: boolean;
 }
 
 /** A day's entries and totals, computed by the application core. */

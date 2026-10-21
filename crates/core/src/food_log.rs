@@ -142,7 +142,18 @@ impl Core {
                 .iter()
                 .map(|entry| entry.nutrition_version_id.clone())
                 .collect();
-            daily_food_log(manual, recipe, versions(db, &ids)?, date).map_err(Error::invalid)
+            let mut log = daily_food_log(manual, recipe, versions(db, &ids)?, date)
+                .map_err(Error::invalid)?;
+            // Entries keep their retained nutrition; an archived recipe is
+            // named but no longer reachable from them.
+            let archived = recipes::archived_recipes(db, principal.household_id())?;
+            for entry in &mut log.entries {
+                entry.recipe_archived = entry
+                    .recipe_id
+                    .as_ref()
+                    .is_some_and(|recipe| archived.contains_key(recipe));
+            }
+            Ok(log)
         })
     }
 

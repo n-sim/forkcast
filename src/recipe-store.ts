@@ -75,6 +75,22 @@ export async function saveRecipe(draft: Recipe): Promise<Recipe> {
   return toRecipe(saved.current);
 }
 
+/**
+ * Withdraws the recipe from the collection and removes its planned cookings
+ * from `today` on. Food-log entries, reviewed shopping lists, and cooking
+ * already underway keep what they captured.
+ */
+export async function archiveRecipe(
+  recipe: Recipe,
+  today: string,
+): Promise<{ removedCookings: number }> {
+  return execute('archiveRecipe', {
+    recipeId: recipe.id,
+    baseRevisionId: recipe.syncRevisionId ?? null,
+    today,
+  });
+}
+
 // Cover photos are household recipe assets, separate from personal records.
 export async function saveRecipeCoverPhoto(
   draft: Recipe,
@@ -147,7 +163,8 @@ export async function endCookingSession(
 }
 
 export function subscribeToCookingChanges(listener: () => void) {
-  return subscribeToTopics(['cookingSessions'], listener);
+  // Archiving a recipe changes the notice its unfinished sessions carry.
+  return subscribeToTopics(['cookingSessions', 'recipes'], listener);
 }
 
 /** Starts cooking the recipe as the core holds it now, unless the person still has unfinished sessions. */

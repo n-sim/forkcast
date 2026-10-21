@@ -351,7 +351,8 @@ impl Core {
         self.read(|db| {
             let (person, local_household) = local_identity(db)?;
             let views = recipes::current_recipe_views(db, &local_household)?;
-            let names: std::collections::HashMap<String, String> = views
+            let names: std::collections::HashMap<String, String> =
+                recipes::retained_recipe_views(db, &local_household)?
                 .iter()
                 .filter_map(|view| {
                     Some((
@@ -440,7 +441,9 @@ impl Core {
             if sync::is_bound(db)? {
                 return Err(Error::conflict("This profile is already linked to a household."));
             }
-            let views = recipes::current_recipe_views(db, &local_household)?;
+            // Archived recipes are never offered for publishing; they join
+            // only when the household already has them, else stay local.
+            let views = recipes::retained_recipe_views(db, &local_household)?;
             let local_ids: HashSet<String> = views
                 .iter()
                 .filter_map(|view| view.recipe["id"].as_str().map(str::to_owned))

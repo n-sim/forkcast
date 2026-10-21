@@ -44,13 +44,72 @@ fn generation_aliases(
         .collect()
 }
 
+/// Removes planned cookings of archived recipes dated on or after the day
+/// they were archived, with any conflicts retained about them. Every replica
+/// applies this one rule whenever it saves the plan, so a cooking planned
+/// elsewhere before the archival arrived is withdrawn as the plan
+/// synchronizes, and earlier cookings stay as they were.
+fn withdraw(
+    db: &Connection,
+    household: &str,
+    data: &mut Value,
+    conflicts: &mut Vec<Conflict>,
+) -> Result<usize> {
+    let archived = recipes::archived_recipes(db, household)?;
+    let Some(cookings) = data["cookings"].as_object_mut() else {
+        return Ok(0);
+    };
+    let withdrawn: Vec<String> = cookings
+        .iter()
+        .filter(|(_, cooking)| {
+            let since = cooking["recipeId"]
+                .as_str()
+                .and_then(|recipe| archived.get(recipe));
+            let date = cooking["cookingDate"].as_str();
+            matches!((since, date), (Some(since), Some(date)) if date >= since.as_str())
+        })
+        .map(|(id, _)| id.clone())
+        .collect();
+    for id in &withdrawn {
+        cookings.remove(id);
+    }
+    conflicts.retain(|conflict| {
+        !(conflict.path.first().map(String::as_str) == Some("cookings")
+            && conflict
+                .path
+                .get(1)
+                .is_some_and(|id| withdrawn.contains(id)))
+    });
+    Ok(withdrawn.len())
+}
+
+/// Applies the archival rule to the stored plan after a recipe's current
+/// revision changed. Returns how many planned cookings were removed.
+pub(crate) fn withdraw_archived(
+    db: &Connection,
+    principal: &Principal,
+    effects: &mut Effects,
+) -> Result<usize> {
+    let household = principal.household_id();
+    let current = snapshot(db, household)?;
+    let mut data = current["data"].clone();
+    let mut conflicts: Vec<Conflict> = serde_json::from_value(current["conflicts"].clone())?;
+    let removed = withdraw(db, household, &mut data, &mut conflicts)?;
+    if removed > 0 {
+        persist(db, household, data, conflicts)?;
+        effects.household(principal, Topic::Planning);
+    }
+    Ok(removed)
+}
+
 fn persist(
     db: &Connection,
     household: &str,
     mut data: Value,
-    conflicts: Vec<Conflict>,
+    mut conflicts: Vec<Conflict>,
 ) -> Result<Value> {
     household_planning::apply_generation_aliases(&mut data, &generation_aliases(db, household)?);
+    withdraw(db, household, &mut data, &mut conflicts)?;
     validate_data(db, household, &data)?;
     let revision = Uuid::new_v4().to_string();
     let saved = json!({"revision": revision, "data": data, "conflicts": conflicts});
@@ -313,6 +372,9 @@ pub enum SourceStatus {
 pub struct ShoppingListView {
     pub list: Value,
     pub source_status: SourceStatus,
+    /// Contributing recipes archived since the list was generated. Their
+    /// contributions and the reviewed items stay as they are.
+    pub archived_recipe_ids: Vec<String>,
     pub edit_base: Option<EditBase>,
 }
 
@@ -320,6 +382,8 @@ pub struct ShoppingListView {
 #[serde(rename_all = "camelCase")]
 pub struct MealPlanView {
     pub cookings: Vec<PlannedCooking>,
+    /// Names of archived recipes the remaining (earlier) cookings refer to.
+    pub archived_recipes: BTreeMap<String, String>,
     pub edit_base: Option<EditBase>,
 }
 
@@ -339,7 +403,22 @@ pub(crate) fn cookings(data: &Value) -> Result<Vec<PlannedCooking>> {
         .collect()
 }
 
-fn source_status(list: &Value, data: &Value, recipes: Vec<RecipeDraft>) -> Result<SourceStatus> {
+/// The planned cookings a new shopping list draws on: earlier cookings of an
+/// archived recipe stay in the plan but contribute nothing new.
+fn shopping_sources(db: &Connection, household: &str, data: &Value) -> Result<Vec<PlannedCooking>> {
+    let archived = recipes::archived_recipes(db, household)?;
+    Ok(cookings(data)?
+        .into_iter()
+        .filter(|cooking| !archived.contains_key(&cooking.recipe_id))
+        .collect())
+}
+
+fn source_status(
+    list: &Value,
+    data: &Value,
+    sources: Vec<PlannedCooking>,
+    recipes: Vec<RecipeDraft>,
+) -> Result<SourceStatus> {
     let mut contributions = list["contributions"]
         .as_array()
         .cloned()
@@ -359,7 +438,7 @@ fn source_status(list: &Value, data: &Value, recipes: Vec<RecipeDraft>) -> Resul
     let contributions: Vec<RecipeContribution> =
         serde_json::from_value(Value::Array(contributions)).map_err(|_| invalid_plan())?;
     if shopping::shopping_source_changed(
-        cookings(data)?,
+        sources,
         recipes,
         contributions,
         list["startDate"].as_str().unwrap_or_default(),
@@ -457,8 +536,12 @@ impl Core {
                         &b.id,
                     ))
             });
+            let mut archived_recipes =
+                recipes::archived_recipe_names(db, principal.household_id())?;
+            archived_recipes.retain(|id, _| plan.iter().any(|cooking| &cooking.recipe_id == id));
             Ok(MealPlanView {
                 cookings: plan,
+                archived_recipes,
                 edit_base: view_base(db, &data)?,
             })
         })
@@ -513,18 +596,32 @@ impl Core {
         db: &Connection,
         principal: &Principal,
     ) -> Result<Option<ShoppingListView>> {
-        let data = snapshot(db, principal.household_id())?["data"].clone();
+        let household = principal.household_id();
+        let data = snapshot(db, household)?["data"].clone();
         if data["shoppingList"].is_null() {
             return Ok(None);
         }
         let status = source_status(
             &data["shoppingList"],
             &data,
-            drafts(db, principal.household_id())?,
+            shopping_sources(db, household, &data)?,
+            drafts(db, household)?,
         )?;
+        let archived = recipes::archived_recipes(db, household)?;
+        let mut archived_recipe_ids: Vec<String> = data["shoppingList"]["contributions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|contribution| contribution["recipeId"].as_str())
+            .filter(|recipe| archived.contains_key(*recipe))
+            .map(str::to_owned)
+            .collect();
+        archived_recipe_ids.sort();
+        archived_recipe_ids.dedup();
         Ok(Some(ShoppingListView {
             list: data["shoppingList"].clone(),
             source_status: status,
+            archived_recipe_ids,
             edit_base: view_base(db, &data)?,
         }))
     }
@@ -554,7 +651,7 @@ impl Core {
                     ));
                 }
                 let requirements = shopping::generate_shopping_requirements(
-                    cookings(current)?,
+                    shopping_sources(db, principal.household_id(), current)?,
                     drafts(db, principal.household_id())?,
                     start_date,
                     end_date,

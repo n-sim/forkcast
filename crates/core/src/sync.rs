@@ -472,7 +472,7 @@ impl Core {
                         [],
                         |row| row.get(0),
                     )?;
-                    recipes::current_recipe_views(db, &household)?
+                    recipes::retained_recipe_views(db, &household)?
                         .iter()
                         .map(|view| view.unresolved)
                         .sum()
@@ -732,6 +732,9 @@ impl Core {
                 .collect();
             crate::preferences::mirror(db, &person, &preferences, &pending_preferences, effects)?;
             mirror_planning(db, &person, &planning, effects)?;
+            // A plan edited here while an archival arrived drops its
+            // withdrawn cookings now, as the server does when it merges.
+            crate::planning::withdraw_archived(db, &person, effects)?;
             Ok(())
         })
     }

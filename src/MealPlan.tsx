@@ -53,7 +53,7 @@ function PlannedCookingCard({
   onRemove,
   editing,
 }: {
-  cooking: PlannedCooking;
+  cooking: EditablePlannedCooking;
   recipe?: PlanningRecipe;
   onEdit: () => void;
   onRemove: () => void;
@@ -65,7 +65,9 @@ function PlannedCookingCard({
   return (
     <article
       className="planned-cooking"
-      aria-label={recipe?.name ?? 'Recipe unavailable'}
+      aria-label={
+        recipe?.name ?? cooking.archivedRecipeName ?? 'Recipe unavailable'
+      }
     >
       {cooking.cookingTime && (
         <p className="eyebrow">
@@ -78,9 +80,12 @@ function PlannedCookingCard({
         {recipe ? (
           <a href={`#/recipes/${recipe.id}`}>{recipe.name}</a>
         ) : (
-          'Recipe unavailable'
+          (cooking.archivedRecipeName ?? 'Recipe unavailable')
         )}
       </h4>
+      {!recipe && cooking.archivedRecipeName && (
+        <p className="section-note">Archived recipe</p>
+      )}
       {recipe?.label && <p className="recipe-label">{recipe.label}</p>}
       <p>
         <strong>

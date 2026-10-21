@@ -12,6 +12,8 @@ export interface CookingSession extends CookingProgress {
   portions: number;
   displayUnits?: DisplayUnits;
   timers: Record<string, StepTimer>;
+  /** The recipe was archived after cooking started; the session still finishes. */
+  recipeArchived?: boolean;
 }
 
 export function cookingUrl(id: string) {

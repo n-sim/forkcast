@@ -10,11 +10,14 @@ import { execute, subscribeToTopics } from './core';
 export type EditableShoppingList = ShoppingList & {
   editBase?: PlanningEditBase;
   sourceStatus: ShoppingSourceStatus;
+  /** Contributing recipes archived since the list was generated. */
+  archivedRecipeIds: string[];
 };
 
 interface ShoppingListView {
   list: ShoppingList;
   sourceStatus: ShoppingSourceStatus;
+  archivedRecipeIds: string[];
   editBase: PlanningEditBase | null;
 }
 
@@ -23,6 +26,7 @@ function editable(view: ShoppingListView): EditableShoppingList {
     ...view.list,
     editBase: view.editBase ?? undefined,
     sourceStatus: view.sourceStatus,
+    archivedRecipeIds: view.archivedRecipeIds,
   };
 }
 

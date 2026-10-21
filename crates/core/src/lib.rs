@@ -49,8 +49,8 @@ pub use planning::{
 pub use preferences::{AiPreferences, PreferenceChange};
 pub use principal::{Principal, Standing};
 pub use recipes::{
-    Collection, CurrentChoice, Photo, Rating, RatingChange, RecipeView, Revision, SaveRecipe,
-    SavedRecipe, SetCoverPhoto,
+    ArchiveRecipe, ArchivedRecipe, Collection, CurrentChoice, Photo, Rating, RatingChange,
+    RecipeView, Revision, SaveRecipe, SavedRecipe, SetCoverPhoto,
 };
 pub use remote::PROTOCOL_VERSION;
 #[cfg(unix)]

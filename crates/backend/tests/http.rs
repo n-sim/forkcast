@@ -244,6 +244,67 @@ async fn operations_endpoint_runs_the_shared_core_contract() {
 }
 
 #[tokio::test]
+async fn a_browser_archives_through_the_server_core_and_synchronization_carries_it() {
+    let server = Server::new();
+    let (token, _, household) = signed_in(&server).await;
+    let operate = |operation: Value| {
+        let server = &server;
+        let token = token.clone();
+        async move {
+            server
+                .call(
+                    Method::POST,
+                    "/api/operations",
+                    Some(&token),
+                    Some(operation),
+                )
+                .await
+        }
+    };
+    operate(json!({"operation": "saveRecipe", "recipe": risotto()})).await;
+    operate(
+        json!({"operation": "planCooking", "cooking": {"id": "later",
+        "recipeId": "veggie-pumpkin-risotto", "cookingDate": "2030-05-09", "portions": 2.0}}),
+    )
+    .await;
+
+    let (status, body) = operate(json!({"operation": "archiveRecipe",
+        "recipeId": "veggie-pumpkin-risotto", "today": "2030-05-06"}))
+    .await;
+    assert_eq!(
+        (status, &body["removedCookings"]),
+        (StatusCode::OK, &json!(1))
+    );
+    let (_, recipes) = operate(json!({"operation": "recipes"})).await;
+    assert_eq!(recipes, json!([]));
+
+    // Devices read the archival as one more revision of the shared collection.
+    let (_, collection) = server
+        .call(
+            Method::GET,
+            &format!("/api/households/{household}/recipes"),
+            Some(&token),
+            None,
+        )
+        .await;
+    assert_eq!(collection["revisions"][1]["archivedOn"], "2030-05-06");
+    assert_eq!(
+        collection["current"][0]["revisionId"],
+        body["archivedRevisionId"]
+    );
+    let (status, body) = operate(json!({"operation": "archiveRecipe",
+        "recipeId": "veggie-pumpkin-risotto", "today": "someday"}))
+    .await;
+    assert_eq!(
+        (status, body["message"].as_str()),
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Some("Choose a valid date.")
+        )
+    );
+}
+
+#[tokio::test]
 async fn changes_stream_announces_committed_changes() {
     let server = Server::new();
     let (token, _, _) = signed_in(&server).await;

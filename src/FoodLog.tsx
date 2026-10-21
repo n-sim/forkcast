@@ -212,9 +212,9 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
             ) : (
               <ol className="food-log-entries" aria-label="Food-log entries">
                 {daily.entries.map((entry) => {
-                  const recipe = recipes.find(
-                    (recipe) => recipe.id === entry.recipeId,
-                  );
+                  const recipe = entry.recipeArchived
+                    ? undefined
+                    : recipes.find((recipe) => recipe.id === entry.recipeId);
                   const olderNutrition =
                     recipe &&
                     entry.nutritionVersionId !== recipe.nutritionVersionId;
@@ -241,6 +241,12 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
                           entry.description
                         )}
                       </h3>
+                      {entry.recipeArchived && (
+                        <p className="section-note">
+                          Archived recipe. This entry keeps its logged
+                          nutrition.
+                        </p>
+                      )}
                       {olderNutrition && (
                         <p className="nutrition-version-notice" id={noticeId}>
                           Newer recipe nutrition available. This entry keeps its

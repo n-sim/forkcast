@@ -87,6 +87,21 @@ fn unfinished(db: &Connection, principal: &Principal) -> Result<Vec<Value>> {
         .collect()
 }
 
+/// Marks sessions whose recipe has been archived since cooking started. They
+/// remain resumable from what they captured; the notice is never stored.
+fn with_archival(
+    db: &Connection,
+    principal: &Principal,
+    mut sessions: Vec<Value>,
+) -> Result<Vec<Value>> {
+    let archived = recipes::archived_recipes(db, principal.household_id())?;
+    for session in &mut sessions {
+        let recipe = session["recipe"]["id"].as_str().unwrap_or_default();
+        session["recipeArchived"] = Value::Bool(archived.contains_key(recipe));
+    }
+    Ok(sessions)
+}
+
 fn find_unfinished(db: &Connection, principal: &Principal, id: &str) -> Result<Value> {
     unfinished(db, principal)?
         .into_iter()
@@ -234,6 +249,13 @@ impl Core {
                 .optional()?
                 .ok_or_else(|| Error::not_found("Recipe not found."))?;
             principal.require_household(&owner)?;
+            // Only cooking already underway may still record an archived recipe.
+            if input.session_id.is_none()
+                && recipes::archived_recipes(db, principal.household_id())?
+                    .contains_key(&input.recipe_id)
+            {
+                return Err(Error::not_found("This recipe has been archived."));
+            }
             if let Some(session_id) = &input.session_id {
                 // The session may already have finished; its recipe must match.
                 let recipe: Option<String> = db
@@ -288,7 +310,7 @@ impl Core {
     /// The person's unfinished cooking sessions.
     pub fn cooking_sessions(&self, principal: &Principal) -> Result<Vec<Value>> {
         principal.require_personal()?;
-        self.read(|db| unfinished(db, principal))
+        self.read(|db| with_archival(db, principal, unfinished(db, principal)?))
     }
 
     /// Captures the recipe as it is now and starts a session at its first step.
@@ -323,7 +345,7 @@ impl Core {
             if !existing.is_empty() && named != found {
                 return Ok(BeginCooking {
                     session: None,
-                    conflicts: existing,
+                    conflicts: with_archival(db, principal, existing)?,
                 });
             }
             for mut previous in existing {
@@ -391,7 +413,7 @@ impl Core {
             session["timers"] = timers;
             store(db, &session)?;
             effects.person(principal, Topic::CookingSessions);
-            Ok(session)
+            Ok(with_archival(db, principal, vec![session])?.remove(0))
         })
     }
 
