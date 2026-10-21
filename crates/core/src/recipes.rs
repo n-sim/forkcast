@@ -49,12 +49,6 @@ pub struct Revision {
 }
 
 impl Revision {
-    /// The revision with its recipe normalized by the shared validation.
-    pub(crate) fn validated(mut self) -> Result<Self> {
-        self.validate()?;
-        Ok(self)
-    }
-
     /// Returns the recipe id after normalizing the recipe through the shared
     /// domain validation.
     fn validate(&mut self) -> Result<String> {

@@ -1,10 +1,4 @@
-import {
-  expect,
-  importTransfer,
-  legacyTransfer,
-  test,
-  type Page,
-} from './app-fixture';
+import { expect, test, type Page } from './app-fixture';
 
 type Ingredient = { name: string; quantity: string; unit: string };
 
@@ -680,9 +674,9 @@ test('track only changes within the saved cooking period, including time, recipe
 });
 
 test('keep older reviewed lists with unknown source times and establish a source baseline by regenerating', async ({
-  launch,
+  app,
 }) => {
-  let { page } = await launch();
+  let page = app.page;
   await createRecipe(page, 'Lentil stew', [
     { name: 'Lentils', quantity: '250', unit: 'g' },
   ]);
@@ -720,43 +714,23 @@ test('keep older reviewed lists with unknown source times and establish a source
     .click();
   await expect(reviewed).toContainText('150 g');
   // A list saved by an earlier release recorded no cooking times in its
-  // contributions. Reproduce it by carrying this list to a fresh app through
-  // the browser transfer, without those times.
-  const held = await page.evaluate(async () => {
-    const run = (operation: string) =>
-      (
-        window as unknown as {
-          __TAURI_INTERNALS__: {
-            invoke: (
-              name: string,
-              args: object,
-            ) => Promise<{ [key: string]: unknown }>;
-          };
-        }
-      ).__TAURI_INTERNALS__.invoke('execute', { operation: { operation } });
-    return {
-      recipes: (await run('recipes')) as unknown as { recipe: object }[],
-      plan: (await run('mealPlan')) as unknown as { cookings: object[] },
-      list: (await run('shoppingList')) as unknown as {
-        list: Record<string, unknown>;
-      },
-    };
+  // contributions. Reproduce it by removing those times from the stored list.
+  page = await app.editData((database) => {
+    const plans = database
+      .prepare('SELECT household_id, payload FROM household_planning')
+      .all() as { household_id: string; payload: string }[];
+    for (const { household_id, payload } of plans) {
+      const document = JSON.parse(payload);
+      for (const contribution of document.data.shoppingList?.contributions ??
+        [])
+        delete contribution.cookingTime;
+      database
+        .prepare(
+          'UPDATE household_planning SET payload = ? WHERE household_id = ?',
+        )
+        .run(JSON.stringify(document), household_id);
+    }
   });
-  const older = (held.list.list.contributions as Record<string, unknown>[]).map(
-    (contribution) => {
-      const { cookingTime: _time, ...rest } = contribution;
-      return rest;
-    },
-  );
-  page = (await launch()).page;
-  await importTransfer(
-    page,
-    legacyTransfer({
-      recipes: held.recipes.map((view) => view.recipe),
-      plannedCookings: held.plan.cookings,
-      shoppingLists: [{ ...held.list.list, contributions: older }],
-    }),
-  );
   await page.goto('/#/shopping-list');
   const lentils = page.getByRole('article', { name: 'Lentils', exact: true });
   const status = page.getByRole('status', {

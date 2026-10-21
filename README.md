@@ -14,13 +14,12 @@ is an online client of the household server, with no offline mode and no databas
 See [ADR 0015](docs/adr/0015-embed-a-shared-rust-core-and-synchronize.md) and
 [the product specification](https://github.com/n-sim/forkcast/issues/1).
 
-| I want to…                                                              | Read                                                 |
-| ----------------------------------------------------------------------- | ---------------------------------------------------- |
-| install and build the desktop app, understand where data lives, signing | [docs/desktop.md](docs/desktop.md)                   |
-| run a household server (Docker, HTTPS, upgrades)                        | [docs/server.md](docs/server.md)                     |
-| move data from the old browser version                                  | [docs/browser-transfer.md](docs/browser-transfer.md) |
-| build for Android and see its release gates                             | [docs/android.md](docs/android.md)                   |
-| use the core's operations, errors, and change notifications             | [docs/core-interface.md](docs/core-interface.md)     |
+| I want to…                                                              | Read                                             |
+| ----------------------------------------------------------------------- | ------------------------------------------------ |
+| install and build the desktop app, understand where data lives, signing | [docs/desktop.md](docs/desktop.md)               |
+| run a household server (Docker, HTTPS, upgrades)                        | [docs/server.md](docs/server.md)                 |
+| build for Android and see its release gates                             | [docs/android.md](docs/android.md)               |
+| use the core's operations, errors, and change notifications             | [docs/core-interface.md](docs/core-interface.md) |
 
 ## Run locally
 
@@ -372,8 +371,7 @@ Manual recipe and food-log actions need no AI provider or external food service.
 
 Data belongs to the installed app's data folder (see [docs/desktop.md](docs/desktop.md)). Deleting
 that folder removes recipes, photos, ratings, plans, shopping lists, cooking sessions, and the food
-log; backups beyond the household server's copy are later work. Older browser data moves with the
-explicit [browser transfer](docs/browser-transfer.md).
+log; backups beyond the household server's copy are later work.
 
 ## Development and verification
 
@@ -392,7 +390,7 @@ journeys run two app processes against a real household server. Browser journeys
 against a real server that serves the built frontend (server downtime, expired logins, failed
 saves, cross-account denial, and concurrent installed/browser editing). Rust integration tests
 cover the same behavior without a UI: workflows and rollback against real SQLite, versioned
-migrations from an unversioned server database, the browser-profile import, and two embedded cores
+migrations from an unversioned server database, and two embedded cores
 synchronizing with a real server over HTTP. No external provider credentials are needed; ChatGPT
 connection, refresh, handoff, and execution journeys use real cores and a real server with a
 deterministic local OAuth/JWKS/inference provider fixture (`crates/backend/tests/ai.rs` and
@@ -410,7 +408,7 @@ Rust changes need a new WebAssembly build; restart `npm run dev` or build it aga
 ## Layout
 
 - `src/`: React screens, the typed boundary to the core (`core.ts`), and presentation-only previews.
-- `crates/core/`: the application core: workflows, validation, SQLite and migrations, synchronization, ChatGPT connection and execution, browser-transfer import.
+- `crates/core/`: the application core: workflows, validation, SQLite and migrations, synchronization, ChatGPT connection and execution.
 - `crates/recipe-domain/`: Rust domain rules (recipes, scaling, shopping, merge), also compiled to WebAssembly for previews.
 - `crates/desktop/`: the Tauri desktop host; `crates/secure-store/`: Android Keystore plugin.
 - `crates/backend/`: the household server's HTTP adapter over the core.

@@ -23,7 +23,6 @@ mod remote;
 mod secrets;
 mod session;
 mod sync;
-mod transfer;
 
 pub use accounts::{
     Account, AccountChange, Authenticated, Credentials, Household, Role, ServerStatus, Session,
@@ -57,7 +56,6 @@ pub use session::{
     AccountInfo, JoinReview, JoinSelection, PendingJoin, ServerAuthentication, ServerProbe,
 };
 pub use sync::{PendingChange, SyncStatus};
-pub use transfer::ImportReport;
 
 use changes::{Effects, Hub};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};

@@ -1,10 +1,4 @@
-import {
-  expect,
-  importTransfer,
-  legacyTransfer,
-  test,
-  type Page,
-} from './app-fixture';
+import { expect, test, type Page } from './app-fixture';
 
 async function startRecipe(page: Page) {
   await page.goto('/');
@@ -446,33 +440,33 @@ test('combine US fluid ounces and teaspoons as volume allocations without confus
 });
 
 test('open recipes saved before allocations were introduced, then allocate and retain their totals', async ({
-  page,
+  app,
 }) => {
-  // A recipe saved before allocations existed arrives through the browser transfer.
-  await importTransfer(
-    page,
-    legacyTransfer({
-      recipes: [
-        {
-          id: 'legacy-recipe',
-          name: 'Old soup',
-          basePortions: 2,
-          ingredients: [
-            {
-              id: 'legacy-ingredient',
-              name: 'Stock',
-              quantity: 1000,
-              unit: 'ml',
-            },
-          ],
-          steps: [{ id: 'legacy-step', instruction: 'Simmer the stock.' }],
-          difficulty: null,
-          activeMinutes: null,
-          totalMinutes: null,
-        },
-      ],
-    }),
-  );
+  let page = app.page;
+  await page.goto('/');
+  await page.getByRole('button', { name: 'New recipe', exact: true }).click();
+  await page.getByLabel('Recipe name').fill('Old soup');
+  await page.getByLabel('Ingredient 1 name').fill('Stock');
+  await page.getByLabel('Ingredient 1 quantity').fill('1000');
+  await page.getByLabel('Ingredient 1 unit').selectOption('ml');
+  await page.getByLabel('Step 1 instruction').fill('Simmer the stock.');
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Old soup', exact: true }),
+  ).toBeVisible();
+  // Recipes saved before allocations existed have no allocations in their steps.
+  page = await app.editData((database) => {
+    const revisions = database
+      .prepare('SELECT id, payload FROM recipe_revisions')
+      .all() as { id: string; payload: string }[];
+    for (const { id, payload } of revisions) {
+      const revision = JSON.parse(payload);
+      for (const step of revision.recipe.steps) delete step.allocations;
+      database
+        .prepare('UPDATE recipe_revisions SET payload = ? WHERE id = ?')
+        .run(JSON.stringify(revision), id);
+    }
+  });
   await page.goto('/');
   await page.getByRole('link', { name: 'Old soup' }).click();
   await expect(

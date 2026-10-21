@@ -61,10 +61,6 @@ visible message and left untouched; an upgrade that cannot complete is rolled
 back. Web assets are bundled and there is no service worker, so an update
 cannot be replaced by a stale cache.
 
-## Moving data from the old browser version
-
-See [browser-transfer.md](browser-transfer.md).
-
 ## Signing and distribution
 
 No keys, certificates, or tokens are committed or required to build. For a

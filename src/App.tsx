@@ -35,7 +35,6 @@ import { SuspendedCookingBar } from './SuspendedCookingBar';
 import { HouseholdSettings, SyncPanel } from './Household';
 import { useSyncStatus } from './household-client';
 import { useConflicts } from './conflicts';
-import { LegacyImport } from './LegacyImport';
 import { BrowserAccountPanel, type BrowserSession } from './BrowserAccount';
 import { isNative } from './core';
 import { AiConnection } from './AiConnection';
@@ -731,7 +730,6 @@ export function App({
                 <>
                   <HouseholdSettings status={status} refresh={refreshSync} />
                   <SyncPanel status={status} refresh={refreshSync} />
-                  <LegacyImport />
                 </>
               ) : (
                 browserSession && (

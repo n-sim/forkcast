@@ -90,13 +90,6 @@ server tarball (binary plus web files), and the server container image
 Without the signing secrets the APK is attached as `-unsigned` and cannot be
 installed; it does not replace the physical-device gates below.
 
-## Moving data from the old browser version
-
-Same explicit transfer as desktop ([browser-transfer.md](browser-transfer.md)).
-Open the transfer page in the old browser, save the file, and choose it under
-Settings → Move data from your browser. Nothing depends on the browser and the
-app sharing an origin.
-
 ## Verification
 
 | Area                                                                                                                         | How                                                                                                                                                                               | Status                                                                                                                                                                                                                               |
