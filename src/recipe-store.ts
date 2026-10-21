@@ -15,6 +15,8 @@ interface RecipeView {
   coverPhoto: WirePhoto | null;
   revisionId: string;
   unresolved: number;
+  /** Only set when the recipe stays archived. */
+  archivedOn?: string;
 }
 
 export function photoBlob(photo: WirePhoto): Blob {
@@ -65,14 +67,19 @@ export function subscribeToRecipeChanges(listener: () => void) {
   return subscribeToTopics(['recipes', 'ratings'], listener);
 }
 
-export async function saveRecipe(draft: Recipe): Promise<Recipe> {
+/**
+ * Saves an edit. Returns `null` when the recipe was archived meanwhile: the
+ * edit is kept as a competing alternative and the recipe stays out of the
+ * collection until someone chooses it.
+ */
+export async function saveRecipe(draft: Recipe): Promise<Recipe | null> {
   const { recipe } = validateRecipe(draft);
   if (!recipe) throw new Error('Check the recipe before saving.');
   const saved = await execute<{ current: RecipeView }>('saveRecipe', {
     recipe: draft,
     baseRevisionId: draft.syncRevisionId ?? null,
   });
-  return toRecipe(saved.current);
+  return saved.current.archivedOn ? null : toRecipe(saved.current);
 }
 
 /**

@@ -597,8 +597,16 @@ export function App({
     const saved = await saveRecipe(recipe);
     setRecipes((current) => [
       ...current.filter((item) => item.id !== recipe.id),
-      saved,
+      ...(saved ? [saved] : []),
     ]);
+    if (!saved) {
+      // Archived meanwhile: the edit waits in conflict review, not the collection.
+      setNotice(
+        `${recipe.name} was archived. Your edit is kept for review in recipe conflicts.`,
+      );
+      moveOn(startedAt, '#/');
+      return;
+    }
     moveOn(startedAt, recipeUrl(recipe.id));
   }
 
