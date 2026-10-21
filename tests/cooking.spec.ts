@@ -450,6 +450,10 @@ test('reopen existing local recipes and ratings, cook unallocated steps, and rej
     page.getByRole('status', { name: 'Cover photo status' }),
   ).toContainText('Cover photo saved');
   await page.getByLabel('Your rating', { exact: true }).selectOption('4');
+  await page.getByRole('button', { name: 'Save rating', exact: true }).click();
+  await expect(page.getByRole('status', { name: 'Rating status' })).toHaveText(
+    'Your rating saved.',
+  );
   await page.goto('/');
   await expect(
     page.getByText('Your rating: 4 / 5', { exact: true }),
