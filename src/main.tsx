@@ -34,6 +34,21 @@ if ('serviceWorker' in navigator && !isNative) {
 
 type Data = Parameters<typeof App>[0];
 
+// The calculation engine downloads and compiles while the host is checked and
+// the collection loads, rather than before either can start.
+const domain = initializeDomain().then(
+  () => true,
+  () => false,
+);
+
+const engineFailure = (
+  <StartupError
+    message="The calculation engine could not start."
+    onRetry={() => window.location.reload()}
+    folder={false}
+  />
+);
+
 function StartupError({
   message,
   onRetry,
@@ -68,14 +83,20 @@ function StartupError({
 function Loaded({ browserSession }: { browserSession?: BrowserSession }) {
   const [data, setData] = useState<Data | null>(null);
   const [failure, setFailure] = useState('');
+  const [engineFailed, setEngineFailed] = useState(false);
   const load = useCallback(async () => {
     setFailure('');
     try {
-      const [collection, ratings, sessions] = await Promise.all([
+      const [ready, collection, ratings, sessions] = await Promise.all([
+        domain,
         loadRecipeCollection(),
         loadPersonalRecipeRatings(),
         loadCookingSessions(),
       ]);
+      if (!ready) {
+        setEngineFailed(true);
+        return;
+      }
       setData({
         initialRecipes: collection.recipes,
         initialCoverPhotos: collection.photos,
@@ -90,6 +111,7 @@ function Loaded({ browserSession }: { browserSession?: BrowserSession }) {
   useEffect(() => {
     void load();
   }, [load]);
+  if (engineFailed) return engineFailure;
   if (failure)
     return (
       <StartupError
@@ -98,13 +120,15 @@ function Loaded({ browserSession }: { browserSession?: BrowserSession }) {
         folder={isNative}
       />
     );
-  if (!data) return <p>Opening your recipe collection…</p>;
+  if (!data)
+    return <p className="startup-loading">Opening your recipe collection…</p>;
   return <App key={browserSession?.account.id ?? 'app'} {...data} />;
 }
 
 function Browser() {
   const { state, retry } = useBrowserSession(true);
-  if (state.phase === 'checking') return <p>Opening your recipe collection…</p>;
+  if (state.phase === 'checking')
+    return <p className="startup-loading">Opening your recipe collection…</p>;
   if (state.phase === 'unreachable')
     return <BrowserUnreachable message={state.message} onRetry={retry} />;
   if (state.phase === 'signed-out')
@@ -123,7 +147,8 @@ function Native() {
   useEffect(() => {
     void check();
   }, [check]);
-  if (!host) return <p>Opening your recipe collection…</p>;
+  if (!host)
+    return <p className="startup-loading">Opening your recipe collection…</p>;
   if (host.state === 'failed')
     return (
       <StartupError
@@ -137,20 +162,6 @@ function Native() {
   return <Loaded />;
 }
 
-async function start() {
-  const root = createRoot(document.getElementById('root')!);
-  try {
-    await initializeDomain();
-    root.render(isNative ? <Native /> : <Browser />);
-  } catch {
-    root.render(
-      <StartupError
-        message="The calculation engine could not start."
-        onRetry={() => window.location.reload()}
-        folder={false}
-      />,
-    );
-  }
-}
-
-void start();
+createRoot(document.getElementById('root')!).render(
+  isNative ? <Native /> : <Browser />,
+);
