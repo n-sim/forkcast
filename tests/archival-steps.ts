@@ -56,11 +56,20 @@ export function generatedItem(page: Page, name: string) {
 }
 
 export async function reviewQuantity(page: Page, name: string, value: string) {
+  // Edit only once the list has loaded, and report any failure the app shows.
+  await expect(
+    page.getByRole('button', { name: 'Generate shopping list', exact: true }),
+  ).toBeEnabled();
   const item = generatedItem(page, name);
   await item.getByLabel('Quantity', { exact: true }).fill(value);
   await item
     .getByRole('button', { name: 'Save quantity', exact: true })
     .click();
+  const errors = page.locator('.error-banner');
+  await expect(
+    page.getByText('Shopping list saved on this device.').or(errors),
+  ).toBeVisible();
+  expect(await errors.allTextContents()).toEqual([]);
   await expect(item.locator('p').first()).toHaveText(new RegExp(`^${value} `));
 }
 
