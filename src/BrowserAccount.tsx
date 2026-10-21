@@ -35,14 +35,19 @@ export function useBrowserSession(enabled: boolean) {
     let canceled = false;
     async function check() {
       try {
-        const status = await serverRequest<{ setupRequired: boolean }>(
-          '/status',
-          'GET',
-          undefined,
-          null,
-        );
         const token = browserToken();
-        if (!token) {
+        // A stored token's session is checked alongside the server's status
+        // rather than after it.
+        const [status, session] = await Promise.all([
+          serverRequest<{ setupRequired: boolean }>(
+            '/status',
+            'GET',
+            undefined,
+            null,
+          ),
+          token ? serverRequest<BrowserSession>('/session') : null,
+        ]);
+        if (!session) {
           if (!canceled)
             setState({
               phase: 'signed-out',
@@ -53,7 +58,6 @@ export function useBrowserSession(enabled: boolean) {
             });
           return;
         }
-        const session = await serverRequest<BrowserSession>('/session');
         if (!canceled) setState({ phase: 'signed-in', session });
       } catch (failure) {
         if (canceled) return;

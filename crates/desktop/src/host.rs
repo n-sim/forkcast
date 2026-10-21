@@ -175,6 +175,7 @@ pub async fn open_window(app: AppHandle) -> Result<String, String> {
         tauri::WebviewUrl::App("index.html".into()),
     ))
     .title("Forkcast")
+    .background_color(tauri::window::Color(0xfa, 0xf8, 0xf3, 0xff))
     .inner_size(1280.0, 860.0)
     .min_inner_size(360.0, 480.0)
     .build()
