@@ -189,15 +189,6 @@ export function BrowserSignIn({
           {setupRequired ? 'Create administrator' : 'Sign in'}
         </button>
       </form>
-      <section aria-labelledby="old-browser-data">
-        <h2 id="old-browser-data">Used Forkcast in this browser before?</h2>
-        <p>
-          Recipes you kept in this browser are still here and have not been
-          touched. Open the{' '}
-          <a href="./legacy-export.html">browser data transfer</a> to export
-          them, then import the file in the Forkcast desktop app.
-        </p>
-      </section>
     </main>
   );
 }

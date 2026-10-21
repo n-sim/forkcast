@@ -1,11 +1,4 @@
-import {
-  expect,
-  importTransfer,
-  legacyTransfer,
-  test,
-  type Page,
-} from './app-fixture';
-import { readFileSync } from 'node:fs';
+import { expect, test, type Page } from './app-fixture';
 
 async function createRecipe(page: Page) {
   await page.goto('/');
@@ -435,43 +428,33 @@ test('notice recipe edits made in another tab while keeping the current cooking 
   ).toContainText('Simmer the first lentils.');
 });
 
-test('upgrade existing local recipes and ratings, cook unallocated steps, and reject invalid timer amounts', async ({
-  page,
+test('reopen existing local recipes and ratings, cook unallocated steps, and reject invalid timer amounts', async ({
+  app,
 }) => {
-  // Data from the previous release arrives through the browser transfer.
-  await importTransfer(
-    page,
-    legacyTransfer({
-      recipes: [
-        {
-          id: 'existing-soup',
-          name: 'Existing soup',
-          basePortions: 2,
-          ingredients: [
-            { id: 'stock', name: 'Stock', quantity: 500, unit: 'ml' },
-          ],
-          steps: [
-            { id: 'simmer', instruction: 'Simmer the soup.', allocations: [] },
-          ],
-          difficulty: null,
-          activeMinutes: null,
-          totalMinutes: null,
-        },
-      ],
-      coverPhotos: [
-        {
-          recipeId: 'existing-soup',
-          mime: 'image/png',
-          data: readFileSync('tests/fixtures/cover-photo.png').toString(
-            'base64',
-          ),
-        },
-      ],
-      ratings: [
-        { personId: 'existing-person', recipeId: 'existing-soup', value: 4 },
-      ],
-    }),
-  );
+  let page = app.page;
+  await page.goto('/');
+  await page.getByRole('button', { name: 'New recipe', exact: true }).click();
+  await page.getByLabel('Recipe name').fill('Existing soup');
+  await page.getByLabel('Ingredient 1 name').fill('Stock');
+  await page.getByLabel('Ingredient 1 quantity').fill('500');
+  await page.getByLabel('Ingredient 1 unit').selectOption('ml');
+  await page.getByLabel('Step 1 instruction').fill('Simmer the soup.');
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Existing soup', exact: true }),
+  ).toBeVisible();
+  await page
+    .getByLabel('Cover photo', { exact: true })
+    .setInputFiles('tests/fixtures/cover-photo.png');
+  await expect(
+    page.getByRole('status', { name: 'Cover photo status' }),
+  ).toContainText('Cover photo saved');
+  await page.getByLabel('Your rating', { exact: true }).selectOption('4');
+  await page.goto('/');
+  await expect(
+    page.getByText('Your rating: 4 / 5', { exact: true }),
+  ).toBeVisible();
+  page = await app.restart();
   const start = new Date('2026-10-15T12:00:00Z');
   await page.clock.install({ time: start });
   await page.clock.pauseAt(start);

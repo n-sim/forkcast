@@ -8,10 +8,10 @@ import {
 } from '@playwright/test';
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { mkdtemp, rm, mkdir, readFile, readdir } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 // Journeys run against the real packaged desktop app: its WebView2 window is
 // driven over the DevTools protocol, and its embedded core stores real SQLite
@@ -48,6 +48,11 @@ export interface App {
   files: string;
   /** Closes the app and opens it again on the same data. */
   restart(options?: Pick<AppOptions, 'env'>): Promise<Page>;
+  /**
+   * Closes the app, changes its SQLite data directly (to recreate what an
+   * earlier release left behind), and opens it again on that data.
+   */
+  editData(edit: (database: DatabaseSync) => void): Promise<Page>;
   stop(): Promise<void>;
 }
 
@@ -241,6 +246,19 @@ ${errors}`);
       await open(restartOptions?.env);
       return app.page;
     },
+    async editData(edit) {
+      await close();
+      const database = new DatabaseSync(
+        join(profile, 'data', 'forkcast.sqlite3'),
+      );
+      try {
+        edit(database);
+      } finally {
+        database.close();
+      }
+      await open();
+      return app.page;
+    },
     async stop() {
       await close();
       if (!options.profile)
@@ -308,53 +326,4 @@ export async function openedExternally(
   const page = await systemBrowser();
   await page.goto((await app.externalUrls()).at(-1)!);
   return page;
-}
-
-/**
- * A browser-profile transfer (see docs/browser-transfer.md) with defaults, for
- * journeys that start from data made by an earlier release.
- */
-export function legacyTransfer(data: Record<string, unknown> = {}) {
-  return {
-    format: 'forkcast-browser-transfer',
-    version: 1,
-    exportId: randomUUID(),
-    exportedAt: new Date().toISOString(),
-    source: { origin: 'https://forkcast.example' },
-    localPersonId: 'existing-person',
-    recipes: [],
-    coverPhotos: [],
-    nutritionVersions: [],
-    recipeRevisions: [],
-    ratings: [],
-    ratingChanges: [],
-    plannedCookings: [],
-    shoppingLists: [],
-    cookingSessions: [],
-    manualFoodLogEntries: [],
-    recipeFoodLogEntries: [],
-    settings: {
-      foodLogDates: {},
-      shoppingListIds: {},
-      recipeSyncBinding: null,
-      recipeSyncCurrent: [],
-      planningSync: null,
-    },
-    aiPrompts: {},
-    backend: null,
-    ...data,
-  };
-}
-
-/** Imports a transfer through the app's own screen, as a person would. */
-export async function importTransfer(page: Page, transfer: object) {
-  await page.goto('/#/settings');
-  await page.getByLabel('Browser transfer file').setInputFiles({
-    name: 'forkcast-browser-transfer.json',
-    mimeType: 'application/json',
-    buffer: Buffer.from(JSON.stringify(transfer)),
-  });
-  await expect(
-    page.getByRole('status', { name: 'Browser data import' }),
-  ).toContainText(/Imported|already imported/);
 }

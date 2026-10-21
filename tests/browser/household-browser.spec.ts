@@ -159,23 +159,6 @@ test('an expired or revoked login returns to sign-in and keeps accounts apart', 
   );
 });
 
-test('the old standalone address offers the data transfer and a server sign-in', async ({
-  page,
-  backend,
-}) => {
-  await page.goto(backend.url);
-  await expect(
-    page.getByRole('heading', { name: 'Set up your household' }),
-  ).toBeVisible();
-  await page.getByRole('link', { name: 'browser data transfer' }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Move your Forkcast data to the app' }),
-  ).toBeVisible();
-  // With nothing stored, the exporter says so and changes nothing.
-  await page.getByRole('button', { name: 'Create transfer file' }).click();
-  await expect(page.getByRole('alert')).toContainText('no Forkcast data');
-});
-
 test('edits made in the browser and in an installed app while it was signed out meet as competing alternatives', async ({
   page,
   backend,

@@ -183,6 +183,9 @@ const MIGRATIONS: &[&str] = &[
          cooked_at INTEGER NOT NULL
      );
      CREATE INDEX cooking_occurrence_recipe ON cooking_occurrences(household_id, recipe_id);",
+    // Version 4: the browser-profile import is gone, and with it the record of
+    // which transfers had been applied.
+    "DROP TABLE legacy_imports;",
 ];
 
 pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;

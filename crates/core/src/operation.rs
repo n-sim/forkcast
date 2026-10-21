@@ -173,9 +173,6 @@ pub enum Operation {
         active: Option<bool>,
         password: Option<String>,
     },
-    ImportLegacy {
-        transfer: Value,
-    },
 }
 
 fn json(value: impl serde::Serialize) -> Result<Value> {
@@ -404,7 +401,6 @@ impl Core {
                     json(self.change_account(principal, &id, AccountChange { active, password })?)
                 }
             }
-            ImportLegacy { transfer } => json(self.import_legacy(transfer)?),
         }
     }
 }
