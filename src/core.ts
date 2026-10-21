@@ -96,6 +96,9 @@ export function setBrowserToken(token: string | null, ended = false) {
 const unreachable =
   'Forkcast could not reach its server, so nothing was saved. Check the connection and try again.';
 
+const noServer =
+  'This address does not host a Forkcast household server, so nothing can be loaded or saved here.';
+
 export async function serverRequest<T>(
   path: string,
   method = 'GET',
@@ -144,9 +147,11 @@ export async function serverRequest<T>(
       error?.fields,
     );
   }
-  return response.status === 204
-    ? (undefined as T)
-    : ((await response.json()) as T);
+  if (response.status === 204) return undefined as T;
+  // A static host answers unknown paths with its own page, not the interface.
+  if (!response.headers.get('Content-Type')?.includes('application/json'))
+    throw new CoreError(noServer, 'unsupported');
+  return (await response.json()) as T;
 }
 
 /** Runs one operation of the shared application interface. */

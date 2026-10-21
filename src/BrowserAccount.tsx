@@ -21,7 +21,8 @@ type State =
   | { phase: 'checking' }
   | { phase: 'signed-out'; setupRequired: boolean; message: string }
   | { phase: 'signed-in'; session: BrowserSession }
-  | { phase: 'unreachable'; message: string };
+  | { phase: 'unreachable'; message: string }
+  | { phase: 'no-server' };
 
 /**
  * A browser is an online client of its household server. It holds a bearer
@@ -61,7 +62,17 @@ export function useBrowserSession(enabled: boolean) {
         if (!canceled) setState({ phase: 'signed-in', session });
       } catch (failure) {
         if (canceled) return;
-        if (failure instanceof CoreError && failure.kind === 'unauthenticated')
+        // The address answers, but not as a household server: an old
+        // standalone deployment of the browser version.
+        if (
+          failure instanceof CoreError &&
+          (failure.kind === 'unsupported' || failure.kind === 'not_found')
+        )
+          setState({ phase: 'no-server' });
+        else if (
+          failure instanceof CoreError &&
+          failure.kind === 'unauthenticated'
+        )
           setState({
             phase: 'signed-out',
             setupRequired: false,
@@ -189,6 +200,33 @@ export function BrowserSignIn({
           {setupRequired ? 'Create administrator' : 'Sign in'}
         </button>
       </form>
+    </main>
+  );
+}
+
+/**
+ * An old standalone deployment of the retired browser-only version: there is
+ * no household server here, so nothing is loaded or saved, and whatever that
+ * version stored in this browser is left untouched.
+ */
+export function BrowserServerRequired({ onRetry }: { onRetry: () => void }) {
+  return (
+    <main className="startup-error browser-gate" id="main-content">
+      <h1>Forkcast now needs its app or a household server</h1>
+      <p role="alert">
+        This address does not host a Forkcast household server, so nothing can
+        be loaded or saved here.
+      </p>
+      <p>
+        The browser-only version of Forkcast has been retired. Install the
+        Forkcast desktop app to keep your recipes, plans, and food log on your
+        device and use them offline. To use Forkcast in a browser, open the
+        address of your household’s Forkcast server instead.
+      </p>
+      <p>Nothing stored in this browser has been changed or deleted.</p>
+      <button className="button secondary" onClick={onRetry}>
+        Try again
+      </button>
     </main>
   );
 }

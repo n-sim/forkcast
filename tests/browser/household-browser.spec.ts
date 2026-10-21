@@ -159,6 +159,43 @@ test('an expired or revoked login returns to sign-in and keeps accounts apart', 
   );
 });
 
+for (const [host, reply] of [
+  [
+    'answers unknown paths with its app page',
+    {
+      status: 200,
+      contentType: 'text/html',
+      body: '<!doctype html><div id="root"></div>',
+    },
+  ],
+  [
+    'has no such path',
+    { status: 404, contentType: 'text/html', body: 'Not found' },
+  ],
+] as const)
+  test(`an old standalone address whose static host ${host} explains the move instead of opening a store`, async ({
+    page,
+    backend,
+  }) => {
+    // The same built frontend on a static host with no household server.
+    await page.route('**/api/**', (route) => route.fulfill(reply));
+    await page.goto(backend.url);
+    await expect(
+      page.getByRole('heading', {
+        name: 'Forkcast now needs its app or a household server',
+      }),
+    ).toBeVisible();
+    await expect(page.getByRole('alert')).toContainText(
+      'does not host a Forkcast household server',
+    );
+    await expect(
+      page.getByRole('heading', { name: 'Your recipe collection' }),
+    ).toHaveCount(0);
+    expect(
+      await page.evaluate(async () => (await indexedDB.databases()).length),
+    ).toBe(0);
+  });
+
 test('edits made in the browser and in an installed app while it was signed out meet as competing alternatives', async ({
   page,
   backend,
