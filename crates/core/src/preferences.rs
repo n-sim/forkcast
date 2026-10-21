@@ -17,8 +17,11 @@ use uuid::Uuid;
 
 const RECIPE_PROMPT: &str = "recipePrompt";
 const RECIPE_MODEL: &str = "recipeModel";
+const PLAN_PROMPT: &str = "planPrompt";
+const KEYS: [&str; 3] = [RECIPE_PROMPT, RECIPE_MODEL, PLAN_PROMPT];
 const DEFAULT_RECIPE_PROMPT: &str =
     "Use English and metric quantities. Prefer practical home cooking.";
+const DEFAULT_PLAN_PROMPT: &str = "Prefer variety across the period and practical weekday cooking.";
 const MAX_PROMPT_CHARS: usize = 8000;
 const MAX_MODEL_CHARS: usize = 200;
 
@@ -28,6 +31,7 @@ pub struct AiPreferences {
     pub recipe_prompt: String,
     /// The model the person last chose for recipe generation, if any.
     pub recipe_model: Option<String>,
+    pub plan_prompt: String,
 }
 
 /// One synchronized preference change. Unknown keys are refused.
@@ -41,9 +45,16 @@ pub struct PreferenceChange {
 
 fn validate(key: &str, value: Option<&str>) -> Result<()> {
     match (key, value) {
-        (RECIPE_PROMPT, Some(prompt)) if prompt.chars().count() <= MAX_PROMPT_CHARS => Ok(()),
+        (RECIPE_PROMPT | PLAN_PROMPT, Some(prompt))
+            if prompt.chars().count() <= MAX_PROMPT_CHARS =>
+        {
+            Ok(())
+        }
         (RECIPE_PROMPT, _) => Err(Error::invalid(format!(
             "Use a recipe prompt of up to {MAX_PROMPT_CHARS} characters."
+        ))),
+        (PLAN_PROMPT, _) => Err(Error::invalid(format!(
+            "Use a cooking plan prompt of up to {MAX_PROMPT_CHARS} characters."
         ))),
         (RECIPE_MODEL, None) => Ok(()),
         (RECIPE_MODEL, Some(model))
@@ -87,7 +98,7 @@ pub(crate) fn queue_all(
     effects: &mut Effects,
     principal: &Principal,
 ) -> Result<()> {
-    for key in [RECIPE_PROMPT, RECIPE_MODEL] {
+    for key in KEYS {
         if let Some(value) = stored(db, principal.person_id(), key)? {
             let id = Uuid::new_v4().to_string();
             sync::record(
@@ -111,7 +122,7 @@ pub(crate) fn mirror(
     pending: &HashSet<String>,
     effects: &mut Effects,
 ) -> Result<()> {
-    for key in [RECIPE_PROMPT, RECIPE_MODEL] {
+    for key in KEYS {
         if pending.contains(key) {
             continue;
         }
@@ -133,6 +144,8 @@ impl Core {
                 recipe_prompt: stored(db, principal.person_id(), RECIPE_PROMPT)?
                     .unwrap_or_else(|| DEFAULT_RECIPE_PROMPT.to_owned()),
                 recipe_model: stored(db, principal.person_id(), RECIPE_MODEL)?,
+                plan_prompt: stored(db, principal.person_id(), PLAN_PROMPT)?
+                    .unwrap_or_else(|| DEFAULT_PLAN_PROMPT.to_owned()),
             })
         })
     }
@@ -144,6 +157,7 @@ impl Core {
             Ok(json!({
                 RECIPE_PROMPT: stored(db, principal.person_id(), RECIPE_PROMPT)?,
                 RECIPE_MODEL: stored(db, principal.person_id(), RECIPE_MODEL)?,
+                PLAN_PROMPT: stored(db, principal.person_id(), PLAN_PROMPT)?,
             }))
         })
     }
@@ -175,6 +189,10 @@ impl Core {
 
     pub fn set_recipe_prompt(&self, principal: &Principal, prompt: &str) -> Result<AiPreferences> {
         self.change_preference(principal, RECIPE_PROMPT, Some(prompt))
+    }
+
+    pub fn set_plan_prompt(&self, principal: &Principal, prompt: &str) -> Result<AiPreferences> {
+        self.change_preference(principal, PLAN_PROMPT, Some(prompt))
     }
 
     pub fn set_recipe_model(

@@ -6,8 +6,9 @@ mod harness;
 
 use forkcast_core::ErrorKind;
 use harness::{
-    Device, Server,
+    Device, Server, plan,
     provider::{Provider, api},
+    recipe, save_recipe,
 };
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -786,12 +787,14 @@ fn model_and_prompt_preferences_follow_the_account_and_work_offline() {
         .op(json!({"operation": "setRecipePrompt", "prompt": "Vegetarian only."}));
     home.admin
         .op(json!({"operation": "setRecipeModel", "model": "fixture-recipe"}));
+    home.admin
+        .op(json!({"operation": "setPlanPrompt", "prompt": "Fish on Fridays."}));
     let kept = home.admin.op(json!({"operation": "aiPreferences"}));
     assert_eq!(
         (kept["recipePrompt"].as_str(), kept["recipeModel"].as_str()),
         (Some("Vegetarian only."), Some("fixture-recipe"))
     );
-    assert_eq!(home.admin.status().pending, 2);
+    assert_eq!(home.admin.status().pending, 3);
     home.server.restart();
     home.admin.sync();
     assert_eq!(home.admin.status().pending, 0);
@@ -802,6 +805,7 @@ fn model_and_prompt_preferences_follow_the_account_and_work_offline() {
         (seen["recipePrompt"].as_str(), seen["recipeModel"].as_str()),
         (Some("Vegetarian only."), Some("fixture-recipe"))
     );
+    assert_eq!(seen["planPrompt"], "Fish on Fridays.");
 
     // A browser write reaches installed apps through the server core, and a
     // second person's settings stay separate.
@@ -830,4 +834,171 @@ fn model_and_prompt_preferences_follow_the_account_and_work_offline() {
     assert_eq!(theirs["recipeModel"], Value::Null);
     // Preferences never carry credentials.
     assert_no_secrets(&seen.to_string());
+}
+
+/// Generates a plan for 2030-05-06 to 2030-05-08 with the fixture's reply.
+fn generate_plan(
+    device: &Device,
+    provider: &Provider,
+    reply: Value,
+) -> forkcast_core::Result<Value> {
+    provider.with(|s| s.reply = reply);
+    device.try_op(json!({
+        "operation": "generateCookingPlan", "model": "fixture-recipe",
+        "request": "Meals I liked and have not cooked for a while.",
+        "startDate": "2030-05-06", "endDate": "2030-05-08",
+    }))
+}
+
+fn planned(device: &Device) -> Vec<(String, String)> {
+    device.op(json!({"operation": "mealPlan"}))["cookings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|cooking| {
+            (
+                cooking["cookingDate"].as_str().unwrap().to_owned(),
+                cooking["recipeId"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_generated_plan_uses_only_the_collection_and_replaces_its_period_after_confirmation() {
+    let provider = Provider::start();
+    let device = Device::with_provider(&provider.issuer);
+    connect(&device, &provider);
+    save_recipe(&device, "soup", "Soup");
+    save_recipe(&device, "stew", "Stew");
+    device.op(json!({"operation": "rateRecipe", "recipeId": "stew", "value": 5}));
+    device.op(json!({"operation": "markCooked", "recipeId": "stew"}));
+    device.op(json!({"operation": "setPlanPrompt", "prompt": "No cooking on Sundays."}));
+    plan(&device, "inside", "soup", "2030-05-07", 2.0);
+    plan(&device, "before", "soup", "2030-05-05", 2.0);
+    plan(&device, "after", "soup", "2030-05-09", 2.0);
+    let before = planned(&device);
+
+    let proposal = generate_plan(
+        &device,
+        &provider,
+        json!({"cookings": [
+            {"recipeId": "stew", "cookingDate": "2030-05-06", "portions": 3, "cookingTime": "evening"},
+            {"recipeId": "soup", "cookingDate": "2030-05-08"},
+        ]}),
+    )
+    .unwrap();
+
+    // The request carried the person's defaults, the request, the period
+    // and the collection with ratings and cooking history.
+    let request = provider.with(|s| s.requests.last().cloned().unwrap());
+    let instructions = request["instructions"].as_str().unwrap();
+    assert!(instructions.contains("No cooking on Sundays."));
+    let input = request["input"][0]["content"].as_str().unwrap();
+    assert!(input.contains("Meals I liked and have not cooked for a while."));
+    let context: Value = serde_json::from_str(
+        input
+            .strip_prefix("Collection and period:\n")
+            .unwrap()
+            .split("\n\nRequest:\n")
+            .next()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        context["period"][0],
+        json!({"date": "2030-05-06", "weekday": "Monday"})
+    );
+    assert_eq!(context["period"].as_array().unwrap().len(), 3);
+    let stew = context["collection"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|recipe| recipe["id"] == "stew")
+        .unwrap();
+    assert_eq!(
+        (stew["yourRating"].clone(), stew["timesCooked"].clone()),
+        (json!(5), json!(1))
+    );
+    assert!(stew["lastCooked"].is_string());
+    assert_eq!(context["plannedNearby"].as_array().unwrap().len(), 2);
+
+    // Nothing changes until the proposal is applied.
+    assert_eq!(planned(&device), before);
+    assert_eq!(proposal["replaced"][0]["id"], "inside");
+    let cookings = proposal["cookings"].as_array().unwrap();
+    assert_eq!(cookings[0]["portions"].as_f64(), Some(3.0));
+    assert_eq!(cookings[0]["cookingTime"], "evening");
+    // Omitted portions default to the recipe's base yield.
+    assert_eq!(
+        cookings[1]["portions"].as_f64(),
+        recipe("soup", "Soup")["basePortions"].as_f64()
+    );
+
+    let apply = |replacing: Value| {
+        device.try_op(json!({
+            "operation": "applyCookingPlan", "dates": proposal["dates"],
+            "cookings": proposal["cookings"], "replacing": replacing,
+            "editBase": proposal["editBase"],
+        }))
+    };
+    assert_eq!(apply(json!([])).unwrap_err().kind, ErrorKind::Conflict);
+    assert_eq!(planned(&device), before);
+    apply(json!(["inside"])).unwrap();
+    assert_eq!(
+        planned(&device),
+        [
+            ("2030-05-05", "soup"),
+            ("2030-05-06", "stew"),
+            ("2030-05-08", "soup"),
+            ("2030-05-09", "soup"),
+        ]
+        .map(|(date, recipe)| (date.to_owned(), recipe.to_owned()))
+    );
+}
+
+#[test]
+fn invalid_or_failed_plan_generation_never_changes_the_plan() {
+    let provider = Provider::start();
+    let device = Device::with_provider(&provider.issuer);
+    connect(&device, &provider);
+    save_recipe(&device, "soup", "Soup");
+    plan(&device, "kept", "soup", "2030-05-07", 2.0);
+    let before = device.op(json!({"operation": "planningSnapshot"}));
+    let cooking = |recipe: &str, date: &str| json!({"recipeId": recipe, "cookingDate": date});
+    for reply in [
+        json!("Here is your plan: soup on Monday."),
+        json!({"cookings": []}),
+        json!({"plan": [cooking("soup", "2030-05-06")]}),
+        // A recipe outside the collection fails the whole reply.
+        json!({"cookings": [cooking("soup", "2030-05-06"), cooking("pizza", "2030-05-07")]}),
+        json!({"cookings": [cooking("soup", "2030-05-06"), cooking("soup", "2030-05-09")]}),
+        json!({"cookings": [{"recipeId": "soup", "cookingDate": "2030-05-06", "portions": 0}]}),
+        json!({"cookings": [{"recipeId": "soup", "cookingDate": "2030-05-06", "cookingTime": "midnight"}]}),
+    ] {
+        let failure = generate_plan(&device, &provider, reply.clone()).unwrap_err();
+        assert_eq!(failure.kind, ErrorKind::Invalid, "{reply}");
+        assert!(failure.message.contains("Your meal plan was not changed."));
+        assert_eq!(device.op(json!({"operation": "planningSnapshot"})), before);
+    }
+    for failure in ["http", "failed", "interrupted"] {
+        provider.with(|s| s.failure = Some(failure.into()));
+        let reply = json!({"cookings": [cooking("soup", "2030-05-06")]});
+        assert!(generate_plan(&device, &provider, reply).is_err());
+        assert_eq!(device.op(json!({"operation": "planningSnapshot"})), before);
+    }
+    // A fenced reply is still read.
+    provider.with(|s| s.failure = None);
+    let fenced = json!(format!(
+        "```json\n{}\n```",
+        json!({"cookings": [cooking("soup", "2030-05-06")]})
+    ));
+    provider.with(|s| s.reply = fenced);
+    let proposal = device
+        .try_op(json!({
+            "operation": "generateCookingPlan", "model": "fixture-recipe",
+            "request": "Soup", "startDate": "2030-05-06", "endDate": "2030-05-06",
+        }))
+        .unwrap();
+    assert_eq!(proposal["cookings"][0]["recipeId"], "soup");
 }

@@ -34,6 +34,8 @@ pub struct State {
     next: u32,
     pub log: Vec<String>,
     pub hosts: Vec<String>,
+    /// The body of every inference request, in order.
+    pub requests: Vec<Value>,
 }
 
 #[derive(Clone)]
@@ -123,6 +125,7 @@ impl Provider {
                 next: 0,
                 log: Vec::new(),
                 hosts: Vec::new(),
+                requests: Vec::new(),
             })),
         };
         let serving = provider.clone();
@@ -384,6 +387,7 @@ impl Provider {
                 "inference {}",
                 body["model"].as_str().unwrap_or("")
             ));
+            s.requests.push(body.clone());
             (s.failure.clone(), s.reply.clone())
         });
         match failure.as_deref() {
@@ -399,7 +403,10 @@ impl Provider {
             Some("http") => return respond(stream, 503, "application/json", "{}"),
             _ => (),
         }
-        let text = reply.to_string();
+        // A string reply is the model's raw text; anything else is sent as JSON.
+        let text = reply
+            .as_str()
+            .map_or_else(|| reply.to_string(), str::to_owned);
         let middle = text
             .char_indices()
             .nth(text.chars().count() / 2)

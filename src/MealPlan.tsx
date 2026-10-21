@@ -4,6 +4,8 @@ import {
   cookingPeriodLabels,
   cookingPeriodOf,
   cookingTimeRank,
+  dateLabel,
+  shiftDate,
   type PlannedCooking,
   type PlanningRecipe,
 } from './planning';
@@ -15,31 +17,17 @@ import {
   type EditablePlannedCooking,
 } from './planning-store';
 import { PlannedCookingForm } from './PlannedCookingForm';
+import { CookingPlanner, type PlannerMode } from './CookingPlanner';
+import type { CookingPlanProposal } from './cooking-plans';
 import { recipeNutrition } from './nutrition';
 import { NutritionBrief } from './NutritionBrief';
 
 const firstDate = '0001-01-01';
 const lastDate = '9999-12-31';
 
-function shiftDate(date: string, days: number) {
-  const value = new Date(`${date}T12:00:00`);
-  value.setDate(value.getDate() + days);
-  return localDateTime(value).split('T')[0]!;
-}
-
 function monday(date: string) {
   const day = new Date(`${date}T12:00:00`).getDay();
   return shiftDate(date, -((day + 6) % 7));
-}
-
-const dateFormat = new Intl.DateTimeFormat('en-GB', {
-  weekday: 'long',
-  day: 'numeric',
-  month: 'long',
-  year: 'numeric',
-});
-function dateLabel(date: string) {
-  return dateFormat.format(new Date(`${date}T12:00:00`));
 }
 
 function useToday() {
@@ -138,12 +126,19 @@ function PlannedCookingCard({
   );
 }
 
-export function MealPlan({ recipes }: { recipes: PlanningRecipe[] }) {
+export function MealPlan({
+  recipes,
+  personalAvailable,
+}: {
+  recipes: PlanningRecipe[];
+  personalAvailable: boolean;
+}) {
   const today = useToday();
   const [week, setWeek] = useState(() => monday(today));
   const [cookings, setCookings] = useState<EditablePlannedCooking[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [planner, setPlanner] = useState<PlannerMode>();
   const [addDate, setAddDate] = useState<string>();
   const [removing, setRemoving] = useState(false);
   const [editingCooking, setEditingCooking] =
@@ -186,6 +181,23 @@ export function MealPlan({ recipes }: { recipes: PlanningRecipe[] }) {
     );
   }
 
+  async function applied(proposal: CookingPlanProposal) {
+    setCookings(await loadPlannedCookings());
+    setWeek(monday(proposal.dates[0]!));
+    setPlanner(undefined);
+    const days = proposal.dates.length;
+    setMessage(
+      `Cooking plan applied to ${days} ${days === 1 ? 'day' : 'days'} from ${dateLabel(proposal.dates[0]!)}.`,
+    );
+  }
+
+  function openPlanner(mode: PlannerMode) {
+    setAdding(false);
+    setEditingCooking(undefined);
+    setPlanner(mode);
+    setMessage('');
+  }
+
   async function remove(cooking: EditablePlannedCooking) {
     setRemoving(true);
     setError('');
@@ -207,6 +219,7 @@ export function MealPlan({ recipes }: { recipes: PlanningRecipe[] }) {
   );
 
   function startAdding(date?: string) {
+    setPlanner(undefined);
     setEditingCooking(undefined);
     setAddDate(date);
     setAdding(true);
@@ -250,6 +263,7 @@ export function MealPlan({ recipes }: { recipes: PlanningRecipe[] }) {
               editing={adding || removing}
               onRemove={() => void remove(cooking)}
               onEdit={() => {
+                setPlanner(undefined);
                 setEditingCooking(cooking);
                 setAdding(true);
                 setMessage('');
@@ -274,13 +288,29 @@ export function MealPlan({ recipes }: { recipes: PlanningRecipe[] }) {
             separately in the food log.
           </p>
         </div>
-        <button
-          className="button primary"
-          disabled={!loaded || !recipes.length || adding || removing}
-          onClick={() => startAdding()}
-        >
-          Plan cooking
-        </button>
+        <div className="page-actions">
+          <button
+            className="button primary"
+            disabled={!loaded || !recipes.length || adding || removing}
+            onClick={() => startAdding()}
+          >
+            Plan cooking
+          </button>
+          <button
+            className="button secondary"
+            disabled={!loaded || !recipes.length || removing}
+            onClick={() => openPlanner('schedule')}
+          >
+            Schedule cooking
+          </button>
+          <button
+            className="button secondary"
+            disabled={!loaded || !recipes.length || removing}
+            onClick={() => openPlanner('generate')}
+          >
+            Generate plan
+          </button>
+        </div>
       </div>
       {error && (
         <p className="error-banner" role="alert">
@@ -296,6 +326,17 @@ export function MealPlan({ recipes }: { recipes: PlanningRecipe[] }) {
           Add a recipe to your <a href="#/">recipe collection</a> to start
           planning.
         </p>
+      )}
+      {planner && (
+        <CookingPlanner
+          key={planner}
+          mode={planner}
+          recipes={recipes}
+          today={today}
+          personalAvailable={personalAvailable}
+          onApplied={applied}
+          onCancel={() => setPlanner(undefined)}
+        />
       )}
       {adding && (
         <PlannedCookingForm

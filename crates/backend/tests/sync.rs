@@ -568,3 +568,67 @@ fn an_edit_from_a_stale_view_becomes_an_explicit_conflict() {
     let values = snapshot["conflicts"][0]["values"].as_array().unwrap();
     assert_eq!(values.len(), 2, "both quantities are retained for review");
 }
+
+#[test]
+fn an_applied_cooking_plan_synchronizes_atomically_and_keeps_concurrent_edits_reviewable() {
+    let server = Server::start();
+    let (admin, member) = household(&server);
+    save_recipe(&admin, "stew", "Stew");
+    plan(&admin, "friday", "soup", "2030-05-10", 2.0);
+    admin.sync();
+    member.sync();
+
+    // The member reviews a schedule for Monday and Tuesday, which replaces
+    // Monday's soup...
+    let proposal = member.op(json!({
+        "operation": "scheduleCookings", "dates": ["2030-05-06", "2030-05-07"],
+        "portions": 2, "strategy": "leastOftenCooked",
+    }));
+    assert_eq!(proposal["replaced"][0]["id"], "monday");
+    let apply = |replacing: Value| {
+        member.try_op(json!({
+            "operation": "applyCookingPlan", "dates": proposal["dates"],
+            "cookings": proposal["cookings"], "replacing": replacing,
+            "editBase": proposal["editBase"],
+        }))
+    };
+    // A declined replacement queues nothing.
+    assert_eq!(apply(json!([])).unwrap_err().kind, ErrorKind::Conflict);
+    assert_eq!(member.status().pending, 0);
+
+    // ...while the admin changes Monday's portions.
+    admin.op(json!({"operation": "planCooking", "cooking": {
+        "id": "monday", "recipeId": "soup", "cookingDate": "2030-05-06", "portions": 6.0, "cookingTime": null}}));
+    admin.sync();
+
+    apply(json!(["monday"])).unwrap();
+    assert_eq!(member.status().pending, 1, "one atomic planning change");
+    member.sync();
+    admin.sync();
+    assert_eq!(member.status().pending, 0);
+
+    let plan = admin.op(json!({"operation": "mealPlan"}))["cookings"].clone();
+    let on = |date: &str| {
+        plan.as_array()
+            .unwrap()
+            .iter()
+            .filter(|cooking| cooking["cookingDate"] == date)
+            .map(|cooking| cooking["id"].as_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+    };
+    let proposed = |date: &str| {
+        proposal["cookings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|cooking| cooking["cookingDate"] == date)
+            .map(|cooking| cooking["id"].as_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(on("2030-05-07"), proposed("2030-05-07"));
+    assert_eq!(on("2030-05-10"), ["friday"], "other days are untouched");
+    // Removing Monday's soup competes with the admin's edit, so the edit is
+    // kept for explicit review instead of being discarded.
+    assert!(on("2030-05-06").contains(&proposed("2030-05-06")[0]));
+    assert_eq!(admin.status().conflicts.planning, 1);
+}

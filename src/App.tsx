@@ -711,7 +711,7 @@ export function App({
               onRefresh={() => void refreshSync()}
             />
           ) : planningView ? (
-            <MealPlan recipes={recipes} />
+            <MealPlan recipes={recipes} personalAvailable={personalAvailable} />
           ) : shoppingOpen ? (
             shoppingChecklist ? (
               <ShoppingChecklistView />

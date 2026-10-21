@@ -1,5 +1,6 @@
 import { validate_planned_cooking } from '../crates/recipe-domain/pkg/forkcast_recipe_domain';
 import type { FieldError, Recipe } from './domain';
+import { localDateTime } from './food-log';
 
 // The planner reads current per-portion nutrition when supplied by the recipe
 // nutrition workflow. It does not own nutrition versions or intake totals.
@@ -46,4 +47,21 @@ export function cookingPeriodOf(time: string | null): CookingPeriod | null {
 export function cookingTimeRank(time: string | null) {
   const period = cookingPeriodOf(time);
   return period ? cookingPeriods.indexOf(period) : cookingPeriods.length;
+}
+
+/** The local calendar date `days` after `date`. */
+export function shiftDate(date: string, days: number) {
+  const value = new Date(`${date}T12:00:00`);
+  value.setDate(value.getDate() + days);
+  return localDateTime(value).split('T')[0]!;
+}
+
+const dateFormat = new Intl.DateTimeFormat('en-GB', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+export function dateLabel(date: string) {
+  return dateFormat.format(new Date(`${date}T12:00:00`));
 }

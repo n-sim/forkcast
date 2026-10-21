@@ -83,6 +83,7 @@ export async function aiExecute(request: {
 export interface AiPreferences {
   recipePrompt: string;
   recipeModel: string | null;
+  planPrompt: string;
 }
 
 export const loadAiPreferences = () => execute<AiPreferences>('aiPreferences');

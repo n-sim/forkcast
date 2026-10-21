@@ -1,8 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { loadRecipePrompt, saveRecipePrompt } from './ai-prompts';
+import { saveRecipePrompt, savePlanPrompt } from './ai-prompts';
+import { loadAiPreferences } from './ai-client';
 
 export function AiPrompts({ enabled }: { enabled: boolean }) {
   const [prompt, setPrompt] = useState('');
+  const [planPrompt, setPlanPrompt] = useState('');
+  const [savedPlanPrompt, setSavedPlanPrompt] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -10,10 +13,12 @@ export function AiPrompts({ enabled }: { enabled: boolean }) {
   useEffect(() => {
     if (!enabled) return;
     let active = true;
-    void loadRecipePrompt()
+    void loadAiPreferences()
       .then((stored) => {
         if (active) {
-          setPrompt(stored);
+          setPrompt(stored.recipePrompt);
+          setPlanPrompt(stored.planPrompt);
+          setSavedPlanPrompt(stored.planPrompt);
           setLoaded(true);
         }
       })
@@ -33,8 +38,13 @@ export function AiPrompts({ enabled }: { enabled: boolean }) {
     setMessage('');
     try {
       await saveRecipePrompt(prompt);
+      // An unchanged default is not another change to synchronize.
+      if (planPrompt !== savedPlanPrompt) {
+        await savePlanPrompt(planPrompt);
+        setSavedPlanPrompt(planPrompt);
+      }
       setMessage(
-        'Saved on this device. Future recipe requests will use these defaults.',
+        'Saved on this device. Future recipe and cooking plan requests will use these defaults.',
       );
     } catch {
       setError(
@@ -47,9 +57,10 @@ export function AiPrompts({ enabled }: { enabled: boolean }) {
     <section className="panel account-form" aria-label="Personal AI prompts">
       <h2>Personal AI prompts</h2>
       <p>
-        Set your preferences for recipe generation. They belong to your personal
-        account and follow it to your other devices when you use a household
-        server. Instructions for a single request go in that request, not here.
+        Set your preferences for recipe and cooking plan generation. They belong
+        to your personal account and follow it to your other devices when you
+        use a household server. Instructions for a single request go in that
+        request, not here.
       </p>
       {!enabled && (
         <p>Sign in to your backend account to manage your personal prompts.</p>
@@ -66,6 +77,18 @@ export function AiPrompts({ enabled }: { enabled: boolean }) {
             value={prompt}
             onChange={(event) => {
               setPrompt(event.target.value);
+              setMessage('');
+            }}
+            maxLength={8000}
+            disabled={!enabled || !loaded}
+          />
+        </label>
+        <label>
+          Cooking plan system prompt
+          <textarea
+            value={planPrompt}
+            onChange={(event) => {
+              setPlanPrompt(event.target.value);
               setMessage('');
             }}
             maxLength={8000}

@@ -11,6 +11,7 @@ mod accounts;
 mod ai;
 mod changes;
 mod cooking;
+mod cooking_plans;
 mod db;
 mod error;
 mod food_log;
@@ -35,6 +36,9 @@ pub use ai::{
 };
 pub use changes::{Change, Scope, Subscription, Topic};
 pub use cooking::{BeginCooking, CookingOutcome, MarkCooked, RecipeHistory, StartCooking};
+pub use cooking_plans::{
+    ApplyCookingPlan, CookingPlanProposal, GenerateCookingPlan, ScheduleCookings,
+};
 pub use db::SCHEMA_VERSION;
 pub use error::{Error, ErrorKind, Result};
 pub use food_log::{LogManualFood, LogRecipeFood};

@@ -62,6 +62,9 @@ methods.
 | `chooseCurrentRecipe` | `recipeId`, `revisionId`, `expectedRevisionIds` | none; fails with `conflict` if the alternatives changed |
 | `ratings` / `rateRecipe` | `recipeId`, `value?` (1–5, omit to clear) | ratings / none |
 | `mealPlan` / `planCooking` / `removePlannedCooking` | `cooking` / `id` | plan, ordered by day, time, id |
+| `scheduleCookings` | `dates` (1–31), `portions`, `minimumRating?` (1–5), `strategy` (`lastCookedLongestAgo`/`leastOftenCooked`) | a proposal `{dates, cookings, replaced, editBase}`: one current recipe per date, meeting the person's minimum rating; changes nothing |
+| `generateCookingPlan` | `model`, `request`, `startDate`, `endDate` (up to 31 days) | a proposal as above. Sends the collection, the person's ratings and plan prompt, household cooking history and nearby planned cookings through `aiExecute`; a reply naming anything outside the collection or period, or planning nothing, fails as a whole with `invalid` |
+| `applyCookingPlan` | `dates`, `cookings`, `replacing` (ids), `editBase?` | the applied cookings. Replaces every planned cooking on `dates` in one change; other dates are untouched. `conflict` (nothing changed) when a cooking on those dates is not named in `replacing` |
 | `planningSnapshot` / `resolvePlanningConflict` | `conflict`, `value` | `{revision, data, conflicts}` |
 | `shoppingList` | | `{list, sourceStatus}` (`changed`, `unchanged`, `unknown`) or `null` |
 | `generateShoppingList` | `startDate`, `endDate`, `replacingListId?` | the new list; manual items carry over unchecked; `conflict` unless `replacingListId` names the current list |
@@ -77,7 +80,7 @@ methods.
 | `logRecipeFood` | `id?`, `recipeId`, `nutritionVersionId`, `consumedAt`, `portions` | none; an identical retry of the same `id` is accepted |
 | `logManualFood` | `id?`, `description`, `consumedAt`, `nutrition` | none |
 | `foodLogDate` / `setFoodLogDate` | `date` | the remembered day |
-| `aiPreferences` / `setRecipePrompt` / `setRecipeModel` | `prompt` (up to 8000 characters) / `model?` | `{recipePrompt, recipeModel}`; never credentials or tokens. Synchronized to the account like ratings |
+| `aiPreferences` / `setRecipePrompt` / `setPlanPrompt` / `setRecipeModel` | `prompt` (up to 8000 characters) / `model?` | `{recipePrompt, recipeModel, planPrompt}`; never credentials or tokens. Synchronized to the account like ratings |
 | `aiStatus` | | `{state, target, email, message, serverUrl, account, canAuthorize, canRetry}` for the principal's execution target (`device` or `server`) |
 | `aiAuthorize` | `serverUrl?`, `accountId?` | `{authorizationUrl}`; starts the loopback listener first. A joined app must name its server and account. Refused on a server host |
 | `aiCancelAuthorization` / `aiSignOut` | | `aiStatus` |

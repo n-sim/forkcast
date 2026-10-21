@@ -455,6 +455,63 @@ h2 {
     align-items: start;
   }
 }
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+}
+.cooking-plan-choices {
+  border: 0;
+  padding: 0;
+  margin: 20px 0 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0 16px;
+}
+.cooking-plan-choices legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.cooking-plan-choice {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 13px;
+  font-weight: 400;
+}
+.cooking-plan-choice input {
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+.cooking-plan-request {
+  margin-top: 20px;
+}
+.cooking-plan-days {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 24px;
+}
+.cooking-plan-days > li {
+  padding-block: 12px;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.cooking-plan-days ul,
+.nutrition-version-notice ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+.cooking-plan-days .section-note {
+  margin: 6px 0 0;
+}
 .shopping-item {
   padding-block: 20px;
   border-top: 1px solid var(--line);
