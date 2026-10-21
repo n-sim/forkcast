@@ -195,8 +195,27 @@ fn keyed(items: &Value) -> Value {
     )
 }
 
+/// Writes integral numbers as integers. A plan that crossed the frontend comes
+/// back with `1.0` written as `1`; both must compare as the same value.
+fn canonical_numbers(value: &mut Value) {
+    match value {
+        Value::Number(number) => {
+            if let Some(float) = number.as_f64().filter(|_| number.is_f64())
+                && float.fract() == 0.0
+                && float.abs() < 9_007_199_254_740_992.0
+            {
+                *value = Value::from(float as i64);
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(canonical_numbers),
+        Value::Object(fields) => fields.values_mut().for_each(canonical_numbers),
+        _ => {}
+    }
+}
+
 fn normalize(data: &Value) -> Value {
     let mut data = data.clone();
+    canonical_numbers(&mut data);
     if let Some(list) = data.get("shoppingList").and_then(Value::as_object) {
         let mut requirements = list.clone();
         requirements
@@ -486,4 +505,26 @@ pub fn choose(data: &Value, path: &[String], value: &Value) -> Option<Value> {
         object.insert(last.clone(), value.clone());
     }
     Some(denormalize(normalized))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn plan(quantity: Value) -> Value {
+        json!({"cookings": {}, "shoppingList": {
+            "id": "list", "startDate": "2030-05-06", "endDate": "2030-05-06", "generatedAt": 1,
+            "contributions": [], "manualItems": [],
+            "items": [{"id": "pasta", "name": "Pasta", "quantity": quantity, "unit": "kg",
+                "sources": [], "needsReview": false}],
+        }})
+    }
+
+    #[test]
+    fn a_base_whose_numbers_crossed_json_as_integers_still_matches() {
+        // A device's view comes back from the frontend with `1.0` written as `1`.
+        let merged = merge(&plan(json!(1)), &plan(json!(1.0)), &plan(json!(3.0)));
+        assert!(merged.conflicts.is_empty());
+        assert_eq!(merged.data["shoppingList"]["items"][0]["quantity"], 3);
+    }
 }
