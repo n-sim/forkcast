@@ -20,6 +20,26 @@ the `forkcast-data` volume, and puts Caddy in front for automatic HTTPS. Open
 household** (household name, administrator username and password). The
 administrator then creates the other household accounts under Settings.
 
+On Proxmox VE, one command on the host creates an unprivileged Debian
+container with the latest release as a systemd service:
+
+```sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/n-sim/forkcast/main/deploy/proxmox/forkcast.sh)"
+```
+
+It shows its defaults (1 core, 512 MiB, 4 GiB, DHCP on `vmbr0`) and asks
+before creating anything; **Advanced** changes them, and the variables at the
+top of [`deploy/proxmox/forkcast.sh`](../deploy/proxmox/forkcast.sh) set them
+without questions (`FORKCAST_YES=1`). Give it a public name
+(`FORKCAST_DOMAIN`) that points at the container to get automatic HTTPS from
+Caddy; without one it serves plain HTTP on port 8787, which browsers can use
+but installed apps need a reverse proxy for (see below). The database is in
+`/var/lib/forkcast` and the settings in `/etc/forkcast/forkcast.env`.
+`pct exec <CTID> -- forkcast-update` upgrades to the latest release, keeping a
+copy of the database in `/var/lib/forkcast/backups` first. The installer
+inside the container, [`deploy/proxmox/forkcast-install.sh`](../deploy/proxmox/forkcast-install.sh),
+works the same way on any Debian 12 or newer machine with systemd.
+
 Without Docker:
 
 ```sh
