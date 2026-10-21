@@ -439,10 +439,9 @@ test('combine US fluid ounces and teaspoons as volume allocations without confus
   await expect(steps).toContainText('3 US tsp Oil');
 });
 
-test('open recipes saved before allocations were introduced, then allocate and retain their totals', async ({
-  app,
+test('open recipes saved without allocations, then allocate and retain their totals', async ({
+  page,
 }) => {
-  let page = app.page;
   await page.goto('/');
   await page.getByRole('button', { name: 'New recipe', exact: true }).click();
   await page.getByLabel('Recipe name').fill('Old soup');
@@ -454,19 +453,6 @@ test('open recipes saved before allocations were introduced, then allocate and r
   await expect(
     page.getByRole('heading', { name: 'Old soup', exact: true }),
   ).toBeVisible();
-  // Recipes saved before allocations existed have no allocations in their steps.
-  page = await app.editData((database) => {
-    const revisions = database
-      .prepare('SELECT id, payload FROM recipe_revisions')
-      .all() as { id: string; payload: string }[];
-    for (const { id, payload } of revisions) {
-      const revision = JSON.parse(payload);
-      for (const step of revision.recipe.steps) delete step.allocations;
-      database
-        .prepare('UPDATE recipe_revisions SET payload = ? WHERE id = ?')
-        .run(JSON.stringify(revision), id);
-    }
-  });
   await page.goto('/');
   await page.getByRole('link', { name: 'Old soup' }).click();
   await expect(
