@@ -60,3 +60,67 @@ pub fn cooking_time_rank(value: Option<&str>) -> u8 {
         _ => 4,
     }
 }
+
+/// Days since 1970-01-01 of a valid local calendar date.
+pub fn epoch_day(date: &str) -> Option<i64> {
+    if !valid_date(date) {
+        return None;
+    }
+    let (year, month, day): (i64, i64, i64) = (
+        date[..4].parse().ok()?,
+        date[5..7].parse().ok()?,
+        date[8..].parse().ok()?,
+    );
+    // Howard Hinnant's days_from_civil.
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = year.div_euclid(400);
+    let year_of_era = year - era * 400;
+    let day_of_year = (153 * ((month + 9) % 12) + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    Some(era * 146_097 + day_of_era - 719_468)
+}
+
+/// The calendar date `days` after 1970-01-01, if it has a four-digit year.
+pub fn date_of_epoch_day(days: i64) -> Option<String> {
+    let days = days + 719_468;
+    let era = days.div_euclid(146_097);
+    let day_of_era = days - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_index = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_index + 2) / 5 + 1;
+    let month = if month_index < 10 {
+        month_index + 3
+    } else {
+        month_index - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    (1..=9999)
+        .contains(&year)
+        .then(|| format!("{year:04}-{month:02}-{day:02}"))
+}
+
+/// The English weekday name of a valid calendar date.
+pub fn weekday(date: &str) -> Option<&'static str> {
+    const NAMES: [&str; 7] = [
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+    ];
+    epoch_day(date).map(|day| NAMES[day.rem_euclid(7) as usize])
+}
+
+/// Every date from `start` to `end` inclusive, or `None` when either is
+/// invalid, the period is reversed, or it is longer than `max_days`.
+pub fn dates_between(start: &str, end: &str, max_days: usize) -> Option<Vec<String>> {
+    let (first, last) = (epoch_day(start)?, epoch_day(end)?);
+    if last < first || (last - first) as usize >= max_days {
+        return None;
+    }
+    (first..=last).map(date_of_epoch_day).collect()
+}

@@ -190,26 +190,28 @@ fn record_occurrence(
     Ok(())
 }
 
+pub(crate) fn household_history(db: &Connection, household: &str) -> Result<Vec<RecipeHistory>> {
+    let mut query = db.prepare(
+        "SELECT recipe_id, COUNT(*), MAX(cooked_at) FROM cooking_occurrences
+         WHERE household_id = ? GROUP BY recipe_id ORDER BY recipe_id",
+    )?;
+    let rows = query
+        .query_map([household], |row| {
+            Ok(RecipeHistory {
+                recipe_id: row.get(0)?,
+                count: row.get(1)?,
+                last_cooked_at: row.get(2)?,
+            })
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 impl Core {
     /// Cooking count and last-cooked time for every household recipe that
     /// has been cooked.
     pub fn cooking_history(&self, principal: &Principal) -> Result<Vec<RecipeHistory>> {
-        self.read(|db| {
-            let mut query = db.prepare(
-                "SELECT recipe_id, COUNT(*), MAX(cooked_at) FROM cooking_occurrences
-                 WHERE household_id = ? GROUP BY recipe_id ORDER BY recipe_id",
-            )?;
-            let rows = query
-                .query_map([principal.household_id()], |row| {
-                    Ok(RecipeHistory {
-                        recipe_id: row.get(0)?,
-                        count: row.get(1)?,
-                        last_cooked_at: row.get(2)?,
-                    })
-                })?
-                .collect::<std::result::Result<Vec<_>, _>>()?;
-            Ok(rows)
-        })
+        self.read(|db| household_history(db, principal.household_id()))
     }
 
     /// Records one cooking occurrence of a household recipe outside guided

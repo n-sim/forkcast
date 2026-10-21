@@ -23,7 +23,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-fn invalid_plan() -> Error {
+pub(crate) fn invalid_plan() -> Error {
     Error::invalid("Check the shared meal plan, shopping list, and referenced recipes.")
 }
 
@@ -88,7 +88,7 @@ pub(crate) fn local_snapshot(db: &Connection, household: &str) -> Result<Value> 
     snapshot(db, household)
 }
 
-fn snapshot(db: &Connection, household: &str) -> Result<Value> {
+pub(crate) fn snapshot(db: &Connection, household: &str) -> Result<Value> {
     let payload: Option<String> = db
         .query_row(
             "SELECT payload FROM household_planning WHERE household_id = ?",
@@ -244,7 +244,7 @@ fn current_base(db: &Connection, data: &Value) -> Result<EditBase> {
 
 /// Only a profile that synchronizes needs to remember what a view was based
 /// on; a standalone profile always edits the latest plan.
-fn view_base(db: &Connection, data: &Value) -> Result<Option<EditBase>> {
+pub(crate) fn view_base(db: &Connection, data: &Value) -> Result<Option<EditBase>> {
     if sync::is_bound(db)? {
         current_base(db, data).map(Some)
     } else {
@@ -254,7 +254,7 @@ fn view_base(db: &Connection, data: &Value) -> Result<Option<EditBase>> {
 
 /// Applies a change to the plan inside one serialized transaction. `change`
 /// edits a copy of the base the person saw and also sees the latest data.
-fn edit(
+pub(crate) fn edit(
     db: &Connection,
     principal: &Principal,
     effects: &mut Effects,
@@ -330,7 +330,7 @@ fn drafts(db: &Connection, household: &str) -> Result<Vec<RecipeDraft>> {
         .collect()
 }
 
-fn cookings(data: &Value) -> Result<Vec<PlannedCooking>> {
+pub(crate) fn cookings(data: &Value) -> Result<Vec<PlannedCooking>> {
     data["cookings"]
         .as_object()
         .ok_or_else(invalid_plan)?

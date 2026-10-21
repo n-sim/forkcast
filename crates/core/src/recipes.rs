@@ -192,6 +192,20 @@ pub struct Rating {
     pub value: Option<u8>,
 }
 
+/// Every rating row of a person, including cleared ones.
+pub(crate) fn person_ratings(db: &Connection, person: &str) -> Result<Vec<Rating>> {
+    let mut query =
+        db.prepare("SELECT recipe_id, value FROM recipe_ratings WHERE person_id = ?")?;
+    Ok(query
+        .query_map([person], |row| {
+            Ok(Rating {
+                recipe_id: row.get(0)?,
+                value: row.get(1)?,
+            })
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
 pub(crate) fn competing_revisions(db: &Connection, recipe_id: &str) -> Result<Vec<String>> {
     let mut query = db.prepare(
         "SELECT r.id FROM recipe_revisions r WHERE r.recipe_id = ?
@@ -642,18 +656,7 @@ impl Core {
     /// Every rating row of the person, including cleared ones.
     pub fn ratings(&self, principal: &Principal) -> Result<Vec<Rating>> {
         principal.require_personal()?;
-        self.read(|db| {
-            let mut query =
-                db.prepare("SELECT recipe_id, value FROM recipe_ratings WHERE person_id = ?")?;
-            Ok(query
-                .query_map([principal.person_id()], |row| {
-                    Ok(Rating {
-                        recipe_id: row.get(0)?,
-                        value: row.get(1)?,
-                    })
-                })?
-                .collect::<std::result::Result<Vec<_>, _>>()?)
-        })
+        self.read(|db| person_ratings(db, principal.person_id()))
     }
 
     /// Sets or clears the person's rating of a household recipe.
