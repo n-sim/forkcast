@@ -99,7 +99,9 @@ generation, and conversion assistance all use one execution interface (`aiExecut
 instructions, input → text) so no workflow needs its own provider integration; each validates
 the returned text with the shared Rust/WebAssembly contracts before anything is saved. Today
 **Generate recipe** uses it: describe a dish, choose a model, and a valid recipe is saved through
-the core. **Settings → Personal AI prompts** and your last chosen model are ordinary personal
+the core, and **Generate plan** on the meal plan proposes a cooking plan from the collection (the
+core builds the request and validates the reply). **Settings → Personal AI prompts** (recipe and
+cooking plan defaults) and your last chosen model are ordinary personal
 settings: they work offline, synchronize with your account across devices, and are never another
 person's. Request-specific instructions are not retained as defaults.
 
@@ -283,6 +285,32 @@ time: morning, midday, or evening. **Edit planned cooking** changes that entry's
 or time. Opening an existing entry retains its saved portions; selecting a different
 recipe defaults the quantity to that recipe's base yield. Saving in the weekly view opens the week containing the saved date;
 **Cancel** leaves the saved entry unchanged.
+
+**Schedule cooking** fills several days at once without AI. Choose a **First day** and
+**Last day** (up to 31 days), untick any **Days to schedule** to leave alone, set **Portions per
+day** (used for every scheduled day), a **Minimum rating** (your own rating; **Any, including
+unrated** also considers recipes you have not rated) and a **Strategy**:
+
+- **Last cooked longest ago**: recipes never cooked first, then those whose last cooking is oldest;
+- **Least often cooked**: recipes cooked the fewest times first, then the one cooked longest ago.
+
+Each day gets one recipe, in date order. Cookings already planned on other days count as upcoming
+cookings (unless the recipe has been recorded as cooked since), and a recipe scheduled for an
+earlier day counts before the next day is filled, so recipes rotate rather than repeat.
+
+**Generate plan** asks ChatGPT for a plan of a period (up to 31 days) from a request such as
+"meals I liked and have not cooked for a while" or "something quick on weekdays, fish on
+Friday". It sees the current collection (names, labels, times, difficulty, ingredient names), your
+ratings, the household's cooking count and last cooking, and cookings planned in the four weeks
+around the period, plus your **Cooking plan system prompt** from **Settings → Personal AI
+prompts**. It can only choose recipes from the collection; planning never creates recipes.
+
+Both show a **Proposed cooking plan** before anything changes. When planned cookings already exist
+on its days, the proposal lists them and offers **Replace and apply plan** or **Keep existing
+plan**. Applying replaces exactly those days in one change (synchronized like any other planning
+edit); other days are untouched. If the plan for those days changed after the proposal, nothing is
+replaced and you are asked to propose again. An invalid or failed AI reply is reported and never
+changes the plan.
 
 Assign or clear **Label (optional)** in the recipe editor. The label belongs to the
 shared recipe and appears in its collection card, recipe view, and every planned

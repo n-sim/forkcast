@@ -3,6 +3,7 @@ pub mod cooking;
 pub mod food_log;
 pub mod household_planning;
 pub mod nutrition;
+pub mod plan_generation;
 pub mod planning;
 pub mod quantities;
 pub mod rating;

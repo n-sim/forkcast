@@ -3,9 +3,10 @@
 //! `POST /api/operations` calls, so both transports share one implementation.
 
 use crate::{
-    AccountChange, AiRequest, CookingOutcome, Core, Credentials, CurrentChoice, EditBase,
-    JoinSelection, LogManualFood, LogRecipeFood, MarkCooked, Photo, PlanningChoice, Principal,
-    ServerSelection, SetCoverPhoto, ShoppingItemKind, StartCooking,
+    AccountChange, AiRequest, ApplyCookingPlan, CookingOutcome, Core, Credentials, CurrentChoice,
+    EditBase, GenerateCookingPlan, JoinSelection, LogManualFood, LogRecipeFood, MarkCooked, Photo,
+    PlanningChoice, Principal, ScheduleCookings, ServerSelection, SetCoverPhoto, ShoppingItemKind,
+    StartCooking,
     error::{Error, Result},
 };
 use forkcast_recipe_domain::{planning::PlannedCooking, shopping::ShoppingItem};
@@ -48,6 +49,18 @@ pub enum Operation {
     RemovePlannedCooking {
         id: String,
         edit_base: Option<EditBase>,
+    },
+    ScheduleCookings {
+        #[serde(flatten)]
+        request: ScheduleCookings,
+    },
+    GenerateCookingPlan {
+        #[serde(flatten)]
+        request: GenerateCookingPlan,
+    },
+    ApplyCookingPlan {
+        #[serde(flatten)]
+        plan: ApplyCookingPlan,
     },
     PlanningSnapshot,
     ResolvePlanningConflict {
@@ -123,6 +136,9 @@ pub enum Operation {
     },
     SetRecipeModel {
         model: Option<String>,
+    },
+    SetPlanPrompt {
+        prompt: String,
     },
     AiStatus,
     /// A joined installation must name the server and account.
@@ -244,6 +260,11 @@ impl Core {
                 self.remove_planned_cooking(principal, &id, edit_base)?;
                 Ok(Value::Null)
             }
+            ScheduleCookings { request } => json(self.schedule_cookings(principal, request)?),
+            GenerateCookingPlan { request } => {
+                json(self.generate_cooking_plan(principal, request)?)
+            }
+            ApplyCookingPlan { plan } => json(self.apply_cooking_plan(principal, plan)?),
             PlanningSnapshot => self.planning_snapshot(principal),
             ResolvePlanningConflict { choice } => {
                 if self.is_embedded()? && self.sync_status()?.bound {
@@ -323,6 +344,7 @@ impl Core {
             AiPreferences => json(self.ai_preferences(principal)?),
             SetRecipePrompt { prompt } => json(self.set_recipe_prompt(principal, &prompt)?),
             SetRecipeModel { model } => json(self.set_recipe_model(principal, model.as_deref())?),
+            SetPlanPrompt { prompt } => json(self.set_plan_prompt(principal, &prompt)?),
             AiStatus => json(self.ai_status(principal)?),
             AiAuthorize {
                 server_url,
