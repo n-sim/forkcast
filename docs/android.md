@@ -90,6 +90,34 @@ server tarball (binary plus web files), and the server container image
 Without the signing secrets the APK is attached as `-unsigned` and cannot be
 installed; it does not replace the physical-device gates below.
 
+### Google Play internal testing
+
+The same workflow also builds an Android App Bundle and uploads it to the
+Google Play **internal testing** track (up to 100 testers you invite by email;
+no Google review, no store listing). The upload is skipped with a warning
+until the signing secrets and `PLAY_SERVICE_ACCOUNT_JSON` are set. One-time
+setup:
+
+1. Create a Google Play developer account (a one-time US$25 registration fee
+   and identity verification; there is no free tier).
+2. In the Play Console, create the app, then enroll in Play App Signing with
+   the keystore above as the **upload key**.
+3. Upload the first bundle by hand: Testing → Internal testing → Create
+   release, using a signed `.aab` (`npx tauri android build --aab`), and add
+   your testers' email list. Google Play only learns the package name
+   `app.forkcast.desktop` from this first upload; the API cannot create apps.
+4. In Google Cloud, create a service account with a JSON key and enable the
+   Google Play Android Developer API. In the Play Console (Users and
+   permissions) invite the service account's email with the "Release apps to
+   testing tracks" permission for this app.
+5. Store the JSON key as the `PLAY_SERVICE_ACCOUNT_JSON` repository secret.
+
+While the app is still a draft in the Play Console (before its first release
+was rolled out), Google Play only accepts draft releases: set the repository
+variable `PLAY_RELEASE_STATUS` to `draft` until then and roll the release out
+by hand. Each release's `versionCode` is `<n>` from `0.0.<n>`, so it must stay
+above the one of your manual first upload.
+
 ## Verification
 
 | Area                                                                                                                         | How                                                                                                                                                                               | Status                                                                                                                                                                                                                               |

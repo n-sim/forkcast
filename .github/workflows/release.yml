@@ -1,7 +1,8 @@
 name: Release
 
 # Every successful CI run on main (that is, every merged pull request) publishes
-# release 0.0.<n> with the Android app, the Windows desktop app, and the server.
+# release 0.0.<n> with the Android app, the Windows desktop app, and the server,
+# and uploads the Android app to the Google Play internal testing track.
 on:
   workflow_run:
     workflows: ['Check application']
@@ -84,14 +85,40 @@ jobs:
             echo "keyPassword=$KEY_PASSWORD"
           } > crates/desktop/gen/android/keystore.properties
           echo "suffix=" >> "$GITHUB_OUTPUT"
-      - run: npx tauri android build --apk --target aarch64 --target x86_64 --config "$RUNNER_TEMP/version.json"
+      # The APK is attached to the GitHub release; the bundle (AAB) goes to Google Play.
+      - run: npx tauri android build --apk --aab --target aarch64 --target x86_64 --config "$RUNNER_TEMP/version.json"
         env:
           NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
-      - name: Collect the APK
+      - name: Collect the APK and the bundle
         run: |
           apk=$(find crates/desktop/gen/android/app/build/outputs/apk -name '*.apk' | head -1)
+          aab=$(find crates/desktop/gen/android/app/build/outputs/bundle -name '*.aab' | head -1)
           mkdir dist-release
           cp "$apk" "dist-release/forkcast-$VERSION-android${{ steps.signing.outputs.suffix }}.apk"
+          cp "$aab" "$RUNNER_TEMP/forkcast.aab"
+      # Google Play only accepts bundles signed with the upload key, so the upload
+      # needs both the signing secrets and a service account (see docs/android.md).
+      - name: Check Google Play access
+        id: play
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ] || [ -n "${{ steps.signing.outputs.suffix }}" ]; then
+            echo "::warning::PLAY_SERVICE_ACCOUNT_JSON or the signing secrets are not set; the app is not uploaded to Google Play."
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "upload=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.play.outputs.upload == 'true'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: app.forkcast.desktop
+          releaseFiles: ${{ runner.temp }}/forkcast.aab
+          releaseName: ${{ env.VERSION }}
+          track: internal
+          # "draft" until the first release has been rolled out by hand in the Play Console.
+          status: ${{ vars.PLAY_RELEASE_STATUS || 'completed' }}
       - uses: actions/upload-artifact@v4
         with:
           name: android
