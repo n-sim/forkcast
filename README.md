@@ -17,7 +17,7 @@ See [ADR 0015](docs/adr/0015-embed-a-shared-rust-core-and-synchronize.md) and
 | I want to…                                                              | Read                                             |
 | ----------------------------------------------------------------------- | ------------------------------------------------ |
 | install and build the desktop app, understand where data lives, signing | [docs/desktop.md](docs/desktop.md)               |
-| run a household server (Docker, HTTPS, upgrades)                        | [docs/server.md](docs/server.md)                 |
+| run a household server (Docker, Proxmox VE, HTTPS, upgrades)           | [docs/server.md](docs/server.md)                 |
 | build for Android and see its release gates                             | [docs/android.md](docs/android.md)               |
 | use the core's operations, errors, and change notifications             | [docs/core-interface.md](docs/core-interface.md) |
 
