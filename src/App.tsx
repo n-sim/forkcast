@@ -9,6 +9,7 @@ import {
   type RecipeRating,
 } from './domain';
 import {
+  archiveRecipe,
   saveRecipe,
   saveRecipeCoverPhoto,
   savePersonalRecipeRating,
@@ -42,6 +43,7 @@ import { RecipeGeneration } from './RecipeGeneration';
 import { AiModelSetting } from './AiModelSetting';
 import { AiPrompts } from './AiPrompts';
 import { FoodLog } from './FoodLog';
+import { localDateTime } from './food-log';
 import { MealPlan } from './MealPlan';
 import { ShoppingListView } from './ShoppingList';
 import { ShoppingChecklistView } from './ShoppingChecklist';
@@ -68,6 +70,7 @@ function RecipeDetails({
   onStartCooking,
   history,
   onMarkCooked,
+  onArchive,
   loggedNutritionVersionId,
 }: {
   recipe: Recipe;
@@ -78,6 +81,7 @@ function RecipeDetails({
   loggedNutritionVersionId: string | null;
   history?: RecipeHistory;
   onMarkCooked: (id: string) => Promise<void>;
+  onArchive: () => Promise<void>;
   onStartCooking: (
     portions: number,
     displayUnits: DisplayUnits,
@@ -91,6 +95,9 @@ function RecipeDetails({
   const [markError, setMarkError] = useState('');
   // A failed attempt is retried under the same id so it cannot count twice.
   const pendingCook = useRef<string | null>(null);
+  const archiveDialog = useRef<HTMLDialogElement>(null);
+  const [archiving, setArchiving] = useState(false);
+  const [archiveError, setArchiveError] = useState('');
   let quantities = null;
   let quantityError = '';
   try {
@@ -110,6 +117,18 @@ function RecipeDetails({
       );
     } finally {
       setStarting(false);
+    }
+  }
+  async function archive() {
+    setArchiving(true);
+    setArchiveError('');
+    try {
+      await onArchive();
+      archiveDialog.current?.close();
+    } catch {
+      setArchiveError('This recipe could not be archived. Please try again.');
+    } finally {
+      setArchiving(false);
     }
   }
   async function markCooked() {
@@ -133,10 +152,70 @@ function RecipeDetails({
           <h1>{recipe.name}</h1>
           {recipe.label && <p className="recipe-label">{recipe.label}</p>}
         </div>
-        <a className="button secondary" href={`${recipeUrl(recipe.id)}/edit`}>
-          Edit recipe
-        </a>
+        <div className="form-actions">
+          <a className="button secondary" href={`${recipeUrl(recipe.id)}/edit`}>
+            Edit recipe
+          </a>
+          <button
+            type="button"
+            className="button secondary"
+            onClick={() => {
+              setArchiveError('');
+              archiveDialog.current?.showModal();
+            }}
+          >
+            Archive recipe
+          </button>
+        </div>
       </div>
+      <dialog
+        ref={archiveDialog}
+        aria-labelledby="archive-recipe-title"
+        aria-describedby="archive-recipe-description"
+        className="cancel-cooking-dialog"
+        onCancel={(event) => {
+          if (archiving) event.preventDefault();
+        }}
+      >
+        <h2 id="archive-recipe-title">Archive recipe?</h2>
+        <div id="archive-recipe-description">
+          <p>
+            <strong>{recipe.name}</strong> leaves your collection and can no
+            longer be planned, logged, or cooked. Its planned cookings from
+            today on are removed.
+          </p>
+          <p>
+            Food-log entries keep their nutrition, reviewed shopping lists keep
+            their items and quantities, and cooking already underway can still
+            finish.
+          </p>
+        </div>
+        {archiveError && (
+          <p className="error-banner" role="alert">
+            {archiveError}
+          </p>
+        )}
+        <div className="form-actions">
+          <button
+            type="button"
+            className="button secondary"
+            autoFocus
+            disabled={archiving}
+            onClick={() => archiveDialog.current?.close()}
+          >
+            Keep recipe
+          </button>
+          <button
+            type="button"
+            className="button primary"
+            disabled={archiving}
+            aria-busy={archiving}
+            onClick={() => void archive()}
+          >
+            Archive recipe
+          </button>
+        </div>
+      </dialog>
       {loggedNutritionVersionId &&
         loggedNutritionVersionId !== recipe.nutritionVersionId && (
           <p
@@ -343,6 +422,7 @@ export function App({
     existing: CookingSession[];
   } | null>(null);
   const [refreshError, setRefreshError] = useState('');
+  const [notice, setNotice] = useState('');
   const [history, setHistory] = useState<Record<string, RecipeHistory>>({});
   useEffect(() => {
     const load = () =>
@@ -415,6 +495,9 @@ export function App({
   const loggedNutritionVersionId = new URLSearchParams(recipeQuery).get(
     'nutritionVersion',
   );
+  useEffect(() => {
+    if (route !== '#/') setNotice('');
+  }, [route]);
   const settingsOpen = route === '#/settings' || route === '#/backend';
   const foodLogOpen = route === '#/food-log';
   const shoppingChecklist = route === '#/shopping-list/checklist';
@@ -787,6 +870,23 @@ export function App({
                   [selected.id]: updated,
                 }));
               }}
+              onArchive={async () => {
+                const startedAt = currentRoute();
+                const { removedCookings } = await archiveRecipe(
+                  selected,
+                  localDateTime().slice(0, 10),
+                );
+                setRecipes((current) =>
+                  current.filter((item) => item.id !== selected.id),
+                );
+                setNotice(
+                  `${selected.name} was archived.` +
+                    (removedCookings
+                      ? ` ${removedCookings} planned ${removedCookings === 1 ? 'cooking was' : 'cookings were'} removed.`
+                      : ''),
+                );
+                moveOn(startedAt, '#/');
+              }}
               onStartCooking={async (portions, displayUnits) => {
                 const session = startCooking(selected, portions, displayUnits);
                 await beginSession(session);
@@ -854,6 +954,11 @@ export function App({
                   </button>
                 </div>
               </div>
+              {notice && (
+                <p role="status" aria-label="Archived recipe">
+                  {notice}
+                </p>
+              )}
               <div className="collection-count">
                 {recipes.length} {recipes.length === 1 ? 'recipe' : 'recipes'}
                 <span>Made by you. Kept for next time.</span>

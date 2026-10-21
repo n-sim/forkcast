@@ -11,6 +11,16 @@ import {
 
 function RevisionContents({ revision }: { revision: RecipeRevision }) {
   const { recipe, coverPhoto } = revision;
+  if (revision.archivedOn)
+    return (
+      <>
+        <h4>{recipe.name}</h4>
+        <p className="nutrition-version-notice">
+          Archived on {revision.archivedOn}. Choosing this keeps the recipe out
+          of the collection and removes its planned cookings from that day on.
+        </p>
+      </>
+    );
   return (
     <>
       <h4>{recipe.name}</h4>
@@ -112,7 +122,11 @@ export function RecipeConflicts({
               (revision) => revision.id === conflict.currentRevisionId,
             )?.recipe.name ?? 'Recipe'}
           </h2>
-          <a href={`#/recipes/${conflict.recipeId}`}>View current recipe</a>
+          {!conflict.revisions.find(
+            (revision) => revision.id === conflict.currentRevisionId,
+          )?.archivedOn && (
+            <a href={`#/recipes/${conflict.recipeId}`}>View current recipe</a>
+          )}
           <div className="conflict-alternatives">
             {conflict.revisions.map((revision, index) => (
               <section
@@ -130,7 +144,7 @@ export function RecipeConflicts({
                   disabled={choosing || !canResolve}
                   onClick={() => void choose(conflict, revision.id)}
                 >
-                  Make current
+                  {revision.archivedOn ? 'Keep archived' : 'Make current'}
                 </button>
               </section>
             ))}

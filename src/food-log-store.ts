@@ -42,5 +42,6 @@ export async function saveFoodLogDate(date: string): Promise<void> {
 }
 
 export function subscribeToFoodLogChanges(listener: () => void): () => void {
-  return subscribeToTopics(['foodLog'], listener);
+  // Archiving a recipe changes whether its entries lead to it.
+  return subscribeToTopics(['foodLog', 'recipes'], listener);
 }

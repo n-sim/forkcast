@@ -159,6 +159,16 @@ export function CookingView({
           </button>
         </div>
       </dialog>
+      {session.recipeArchived && (
+        <p
+          className="allocation-checks"
+          role="status"
+          aria-label="Archived recipe"
+        >
+          This recipe has been archived. You can still finish cooking with the
+          ingredients and instructions captured when you started.
+        </p>
+      )}
       {currentRecipe &&
         JSON.stringify(validateRecipe(currentRecipe).recipe) !==
           JSON.stringify(validateRecipe(session.recipe).recipe) && (

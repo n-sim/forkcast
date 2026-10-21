@@ -252,6 +252,8 @@ export function ShoppingListView() {
           >
             <p role="status" aria-label="Shopping source status">
               {sourceMessages[list.sourceStatus]}
+              {list.archivedRecipeIds.length > 0 &&
+                ' A contributing recipe has been archived; its reviewed items and quantities stay on this list.'}
             </p>
             {list.sourceStatus !== 'unchanged' && (
               <button
@@ -295,9 +297,15 @@ export function ShoppingListView() {
                     .map((contribution, index) => (
                       <Fragment key={contribution.cookingId}>
                         {index > 0 && '; '}
-                        <a href={`#/recipes/${contribution.recipeId}`}>
-                          {contribution.recipeName}
-                        </a>{' '}
+                        {list.archivedRecipeIds.includes(
+                          contribution.recipeId,
+                        ) ? (
+                          <>{contribution.recipeName} (archived recipe)</>
+                        ) : (
+                          <a href={`#/recipes/${contribution.recipeId}`}>
+                            {contribution.recipeName}
+                          </a>
+                        )}{' '}
                         ({contribution.cookingDate}, {contribution.portions}{' '}
                         portions)
                       </Fragment>

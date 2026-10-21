@@ -118,6 +118,9 @@ pub struct FoodLogEntry {
     pub recipe_id: Option<String>,
     pub nutrition_version_id: Option<String>,
     pub portions: Option<f64>,
+    /// The linked recipe has since been archived: the entry keeps its
+    /// nutrition but no longer leads to the recipe.
+    pub recipe_archived: bool,
 }
 
 #[derive(Serialize)]
@@ -162,6 +165,7 @@ pub fn daily_food_log(
                 recipe_id: None,
                 nutrition_version_id: None,
                 portions: None,
+                recipe_archived: false,
             });
         }
     }
@@ -188,6 +192,7 @@ pub fn daily_food_log(
                 recipe_id: Some(entry.recipe_id),
                 nutrition_version_id: Some(entry.nutrition_version_id),
                 portions: entry.portions,
+                recipe_archived: false,
             });
         }
     }

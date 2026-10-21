@@ -5,11 +5,13 @@ use crate::{
     Core,
     changes::{Effects, Topic},
     error::{Error, Result},
+    planning,
     principal::{Principal, outside},
     sync,
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use forkcast_recipe_domain::{
+    calendar::valid_date,
     nutrition::{self, NutritionVersion},
     rating::{self, RecipeRating},
     recipe::{RecipeDraft, validate_recipe},
@@ -46,13 +48,23 @@ pub struct Revision {
     pub recipe: Value,
     pub nutrition_versions: Vec<NutritionVersion>,
     pub cover_photo: Option<Photo>,
+    /// Set on a revision that archives the recipe: the archiving person's
+    /// local date. Planned cookings from that day on are withdrawn. Absent on
+    /// every other revision, so their stored form is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archived_on: Option<String>,
 }
 
 impl Revision {
     /// Returns the recipe id after normalizing the recipe through the shared
     /// domain validation.
     fn validate(&mut self) -> Result<String> {
-        if self.id.trim().is_empty() {
+        if self.id.trim().is_empty()
+            || self
+                .archived_on
+                .as_deref()
+                .is_some_and(|date| !valid_date(date))
+        {
             return Err(invalid());
         }
         let draft: RecipeDraft =
@@ -127,6 +139,29 @@ pub struct RecipeView {
     pub revision_id: String,
     /// Competing edits awaiting review; zero when there is nothing to choose.
     pub unresolved: usize,
+    /// When the current revision archived the recipe. Only retained views,
+    /// never the collection, include archived recipes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archived_on: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ArchiveRecipe {
+    pub recipe_id: String,
+    /// The revision the person saw. Omit to archive the current revision; a
+    /// stale base retains the archival as a competing alternative.
+    pub base_revision_id: Option<String>,
+    /// The person's local date. Planned cookings from this day on are removed.
+    pub today: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchivedRecipe {
+    /// `None` when the recipe was already archived.
+    pub archived_revision_id: Option<String>,
+    pub removed_cookings: usize,
 }
 
 #[derive(Serialize)]
@@ -241,7 +276,22 @@ fn revision_payload(db: &Connection, id: &str) -> Result<Option<(String, Revisio
     .transpose()
 }
 
+fn archived() -> Error {
+    Error::not_found("This recipe has been archived.")
+}
+
+/// The household's recipes in active use: archived recipes are left out of
+/// planning, logging, cooking, and every other new use.
 pub(crate) fn current_recipe_views(db: &Connection, household: &str) -> Result<Vec<RecipeView>> {
+    Ok(retained_recipe_views(db, household)?
+        .into_iter()
+        .filter(|view| view.archived_on.is_none())
+        .collect())
+}
+
+/// Every recipe's current state, archived ones included, for conflict review
+/// and joining a household.
+pub(crate) fn retained_recipe_views(db: &Connection, household: &str) -> Result<Vec<RecipeView>> {
     let mut query = db.prepare(
         "SELECT s.id, s.current_revision, r.payload FROM shared_recipes s
          JOIN recipe_revisions r ON r.id = s.current_revision
@@ -264,6 +314,7 @@ pub(crate) fn current_recipe_views(db: &Connection, household: &str) -> Result<V
                 cover_photo: revision.cover_photo,
                 revision_id,
                 unresolved: competing_revisions(db, &recipe_id)?.len().saturating_sub(1),
+                archived_on: revision.archived_on,
             })
         })
         .collect()
@@ -277,6 +328,36 @@ pub(crate) fn current_recipe(
     Ok(current_recipe_views(db, household)?
         .into_iter()
         .find(|view| view.recipe["id"] == recipe_id))
+}
+
+/// Recipes whose current revision archived them, with their archive date.
+pub(crate) fn archived_recipes(
+    db: &Connection,
+    household: &str,
+) -> Result<std::collections::BTreeMap<String, String>> {
+    let mut query = db.prepare(
+        "SELECT s.id, json_extract(r.payload, '$.archivedOn') FROM shared_recipes s
+         JOIN recipe_revisions r ON r.id = s.current_revision
+         WHERE s.household_id = ? AND json_extract(r.payload, '$.archivedOn') IS NOT NULL",
+    )?;
+    Ok(query
+        .query_map([household], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<std::result::Result<_, _>>()?)
+}
+
+/// The names of archived recipes, for records that still mention them.
+pub(crate) fn archived_recipe_names(
+    db: &Connection,
+    household: &str,
+) -> Result<std::collections::BTreeMap<String, String>> {
+    let mut query = db.prepare(
+        "SELECT s.id, json_extract(r.payload, '$.recipe.name') FROM shared_recipes s
+         JOIN recipe_revisions r ON r.id = s.current_revision
+         WHERE s.household_id = ? AND json_extract(r.payload, '$.archivedOn') IS NOT NULL",
+    )?;
+    Ok(query
+        .query_map([household], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<std::result::Result<_, _>>()?)
 }
 
 /// Shared by device synchronization and local saves, so both enforce the same
@@ -382,6 +463,7 @@ pub(crate) fn ingest_remote_revision(
             })
             .collect(),
         cover_photo: revision.cover_photo.clone(),
+        archived_on: revision.archived_on.clone(),
     };
     let recipe_id = revision.validate()?;
     let payload = serde_json::to_string(&revision).map_err(|_| invalid())?;
@@ -422,6 +504,7 @@ fn parent_of(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_revision(
     db: &Connection,
     principal: &Principal,
@@ -430,7 +513,8 @@ fn append_revision(
     mut recipe: Value,
     versions: Vec<NutritionVersion>,
     photo: PhotoChoice,
-) -> Result<SavedRecipe> {
+    archived_on: Option<String>,
+) -> Result<(String, String)> {
     let mut revision = Revision {
         id: Uuid::new_v4().to_string(),
         parent_id: parent.map(|parent| parent.id.clone()),
@@ -440,6 +524,7 @@ fn append_revision(
         },
         nutrition_versions: versions,
         recipe: std::mem::take(&mut recipe),
+        archived_on,
     };
     let recipe_id = revision.validate()?;
     let payload = serde_json::to_string(&revision).map_err(|_| invalid())?;
@@ -452,10 +537,35 @@ fn append_revision(
         &revision.id,
         &revision,
     )?;
-    let current =
-        current_recipe(db, principal.household_id(), &recipe_id)?.ok_or_else(Error::internal)?;
+    Ok((revision.id, recipe_id))
+}
+
+/// Appends an edit and returns the recipe as the household now sees it.
+fn append_edit(
+    db: &Connection,
+    principal: &Principal,
+    effects: &mut Effects,
+    parent: Option<&Revision>,
+    recipe: Value,
+    versions: Vec<NutritionVersion>,
+    photo: PhotoChoice,
+) -> Result<SavedRecipe> {
+    // Continuing an archived revision would silently bring it back.
+    if parent.is_some_and(|parent| parent.archived_on.is_some()) {
+        return Err(archived());
+    }
+    let (saved_revision_id, recipe_id) = append_revision(
+        db, principal, effects, parent, recipe, versions, photo, None,
+    )?;
+    // A stale base leaves the edit as an alternative to an archived current
+    // revision; the recipe stays out of the collection until it is chosen.
+    let current = current_recipe(db, principal.household_id(), &recipe_id)?
+        .or(retained_recipe_views(db, principal.household_id())?
+            .into_iter()
+            .find(|view| view.recipe["id"] == recipe_id.as_str()))
+        .ok_or_else(Error::internal)?;
     Ok(SavedRecipe {
-        saved_revision_id: revision.id,
+        saved_revision_id,
         current,
     })
 }
@@ -529,7 +639,9 @@ impl Core {
         let recipe_id = revision.validate()?;
         let payload = serde_json::to_string(&revision).map_err(|_| invalid())?;
         self.write(|db, effects| {
-            insert_revision(db, principal, &revision, &recipe_id, &payload, effects).map(|_| ())
+            insert_revision(db, principal, &revision, &recipe_id, &payload, effects)?;
+            planning::withdraw_archived(db, principal, effects)?;
+            Ok(())
         })
     }
 
@@ -574,7 +686,7 @@ impl Core {
             };
             let mut value = value;
             value["nutritionVersionId"] = Value::String(version_id);
-            let saved = append_revision(
+            let saved = append_edit(
                 db,
                 principal,
                 effects,
@@ -603,7 +715,7 @@ impl Core {
             )?
             .ok_or_else(|| Error::not_found("Recipe not found."))?;
             let versions = retained_versions(db, &input.recipe_id)?;
-            append_revision(
+            append_edit(
                 db,
                 principal,
                 effects,
@@ -612,6 +724,57 @@ impl Core {
                 versions,
                 PhotoChoice::Set(input.cover_photo),
             )
+        })
+    }
+
+    /// Withdraws a recipe from the collection and from new use, and removes
+    /// its planned cookings from `today` on. The archival is a new revision,
+    /// so it synchronizes like any edit and a competing edit stays retained
+    /// for explicit resolution. Past food-log entries, reviewed shopping
+    /// lists, and started cooking sessions keep what they captured.
+    pub fn archive_recipe(
+        &self,
+        principal: &Principal,
+        input: ArchiveRecipe,
+    ) -> Result<ArchivedRecipe> {
+        if !valid_date(&input.today) {
+            return Err(Error::invalid("Choose a valid date."));
+        }
+        self.write(|db, effects| {
+            require_recipe(db, principal, &input.recipe_id)?;
+            // Repeating an archival that already committed changes nothing.
+            if archived_recipes(db, principal.household_id())?.contains_key(&input.recipe_id) {
+                return Ok(ArchivedRecipe {
+                    archived_revision_id: None,
+                    removed_cookings: 0,
+                });
+            }
+            let parent = parent_of(
+                db,
+                principal,
+                &input.recipe_id,
+                input.base_revision_id.as_deref(),
+            )?
+            .ok_or_else(|| Error::not_found("Recipe not found."))?;
+            if parent.archived_on.is_some() {
+                return Err(archived());
+            }
+            let versions = retained_versions(db, &input.recipe_id)?;
+            let (revision_id, _) = append_revision(
+                db,
+                principal,
+                effects,
+                Some(&parent),
+                parent.recipe.clone(),
+                versions,
+                PhotoChoice::Keep,
+                Some(input.today.clone()),
+            )?;
+            let removed_cookings = planning::withdraw_archived(db, principal, effects)?;
+            Ok(ArchivedRecipe {
+                archived_revision_id: Some(revision_id),
+                removed_cookings,
+            })
         })
     }
 
@@ -649,6 +812,8 @@ impl Core {
                 params![choice.revision_id, recipe_id],
             )?;
             effects.household(principal, Topic::Recipes);
+            // Choosing the archival withdraws the cookings planned meanwhile.
+            planning::withdraw_archived(db, principal, effects)?;
             Ok(())
         })
     }

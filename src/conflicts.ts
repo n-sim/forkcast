@@ -9,6 +9,8 @@ export interface RecipeRevision {
   parentId: string | null;
   recipe: Recipe;
   coverPhoto: Blob | null;
+  /** Set when this alternative archives the recipe: the archiving day. */
+  archivedOn?: string;
 }
 
 export interface RecipeConflict {

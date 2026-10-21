@@ -27,16 +27,20 @@ export interface PlanningEditBase {
 
 export type EditablePlannedCooking = PlannedCooking & {
   editBase?: PlanningEditBase;
+  /** Set for an earlier cooking of a recipe that has since been archived. */
+  archivedRecipeName?: string;
 };
 
 export async function loadPlannedCookings(): Promise<EditablePlannedCooking[]> {
   const plan = await execute<{
     cookings: PlannedCooking[];
+    archivedRecipes: Record<string, string>;
     editBase: PlanningEditBase | null;
   }>('mealPlan');
   return plan.cookings.map((cooking) => ({
     ...cooking,
     editBase: plan.editBase ?? undefined,
+    archivedRecipeName: plan.archivedRecipes[cooking.recipeId],
   }));
 }
 

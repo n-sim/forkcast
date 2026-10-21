@@ -60,23 +60,24 @@ methods.
 | `saveRecipe` | `recipe`, `baseRevisionId?` | `{savedRevisionId, current}`; mints a nutrition version only when nutrition or base portions change; a stale base keeps the edit as a competing alternative |
 | `setRecipeCoverPhoto` | `recipeId`, `coverPhoto?`, `baseRevisionId?` | as `saveRecipe`; photos are PNG/JPEG/WebP up to 10 MiB |
 | `chooseCurrentRecipe` | `recipeId`, `revisionId`, `expectedRevisionIds` | none; fails with `conflict` if the alternatives changed |
+| `archiveRecipe` | `recipeId`, `baseRevisionId?`, `today` (the person's local date) | `{archivedRevisionId, removedCookings}`; see [Archived recipes](#archived-recipes). Repeating it changes nothing (`archivedRevisionId` is `null`) |
 | `ratings` / `rateRecipe` | `recipeId`, `value?` (1–5, omit to clear) | ratings / none |
-| `mealPlan` / `planCooking` / `removePlannedCooking` | `cooking` / `id` | plan, ordered by day, time, id |
+| `mealPlan` / `planCooking` / `removePlannedCooking` | `cooking` / `id` | plan, ordered by day, time, id, with `archivedRecipes` (`{recipeId: name}`) for earlier cookings of archived recipes |
 | `scheduleCookings` | `dates` (1–31), `portions`, `minimumRating?` (1–5), `strategy` (`lastCookedLongestAgo`/`leastOftenCooked`) | a proposal `{dates, cookings, replaced, editBase}`: one current recipe per date, meeting the person's minimum rating; changes nothing |
 | `generateCookingPlan` | `model`, `request`, `startDate`, `endDate` (up to 31 days) | a proposal as above. Sends the collection, the person's ratings and plan prompt, household cooking history and nearby planned cookings through `aiExecute`; a reply naming anything outside the collection or period, or planning nothing, fails as a whole with `invalid` |
 | `applyCookingPlan` | `dates`, `cookings`, `replacing` (ids), `editBase?` | the applied cookings. Replaces every planned cooking on `dates` in one change; other dates are untouched. `conflict` (nothing changed) when a cooking on those dates is not named in `replacing` |
 | `planningSnapshot` / `resolvePlanningConflict` | `conflict`, `value` | `{revision, data, conflicts}` |
-| `shoppingList` | | `{list, sourceStatus}` (`changed`, `unchanged`, `unknown`) or `null` |
+| `shoppingList` | | `{list, sourceStatus, archivedRecipeIds}` (`changed`, `unchanged`, `unknown`) or `null` |
 | `generateShoppingList` | `startDate`, `endDate`, `replacingListId?` | the new list; manual items carry over unchecked; `conflict` unless `replacingListId` names the current list |
 | `saveShoppingItem` | `listId`, `kind` (`generated`/`manual`), `item` | the list |
 | `removeShoppingItem` / `checkShoppingItem` / `completeShoppingList` | `listId`, `kind`, `itemId` / `itemId`, `checked` / none | the list |
-| `cookingSessions` | | the person's unfinished sessions |
+| `cookingSessions` | | the person's unfinished sessions; `recipeArchived` marks one whose recipe was archived since it started |
 | `startCooking` | `recipeId`, `portions`, `displayUnits?`, `cancelSessionIds?` | `{session, conflicts}`; captures the recipe now; `session` is `null` and `conflicts` lists unfinished sessions unless `cancelSessionIds` names exactly them |
 | `saveCookingProgress` | `sessionId`, `step`, `timers` | the session |
 | `endCooking` | `sessionId`, `outcome` (`finished`/`canceled`) | none; finishing needs the last step |
 | `cookingHistory` | | household cooking count and `lastCookedAt` (ms) per cooked recipe: `{recipeId, count, lastCookedAt}` |
 | `markCooked` | `recipeId`, `id?`, `sessionId?` | the recipe's history. Records one occurrence for the household; an identical `id`, or a `sessionId` that already has one, counts nothing more. Finishing a guided session records its occurrence once (retrying `endCooking` is accepted); canceling records none. Creates no food-log entry |
-| `foodLog` | `date` | `{entries, totals, incomplete}` computed from retained nutrition versions |
+| `foodLog` | `date` | `{entries, totals, incomplete}` computed from retained nutrition versions; `recipeArchived` marks entries whose recipe was archived |
 | `logRecipeFood` | `id?`, `recipeId`, `nutritionVersionId`, `consumedAt`, `portions` | none; an identical retry of the same `id` is accepted |
 | `logManualFood` | `id?`, `description`, `consumedAt`, `nutrition` | none |
 | `foodLogDate` / `setFoodLogDate` | `date` | the remembered day |
@@ -94,6 +95,31 @@ Server-only entry points are Rust methods and HTTP endpoints, not bridge operati
 `accounts`, `create_account`, `change_account`, `ingest_recipe_revision`,
 `apply_rating_changes`, and `submit_planning`. They keep the existing `/api/...` routes,
 bodies, and messages.
+
+### Archived recipes
+
+Archiving appends a revision of the unchanged recipe carrying `archivedOn` (the archiving
+person's local date), so it synchronizes as a `recipeRevision` like any edit, and an edit
+made elsewhere from an earlier revision is retained as a competing alternative for
+`chooseCurrentRecipe` instead of silently reviving or discarding either. A recipe whose
+current revision is archived:
+
+- is absent from `recipes` and from planning, scheduling, plan generation, logging,
+  starting cooking, and `markCooked` without a session (`not_found` or `invalid`);
+  `recipeCollection` keeps every revision for conflict review. Continuing the archived
+  revision with `saveRecipe` or `setRecipeCoverPhoto` is refused with `not_found`.
+- loses its planned cookings dated on or after `archivedOn`. Every core applies this rule
+  whenever it saves the plan (local edits, merged device edits on the server, conflict
+  resolution, a newly current archival), so a cooking planned on another device before
+  the archival arrived is withdrawn as the plan synchronizes. Earlier cookings stay.
+- leaves reviewed shopping lists unchanged; `archivedRecipeIds` names it, a new list draws
+  nothing from it, and `sourceStatus` reports the change.
+- keeps food-log entries and their retained nutrition (`recipeArchived`), and lets
+  unfinished cooking sessions finish from their captured contents (`recipeArchived`),
+  recording the household's cooking occurrence.
+
+There is no operation to browse an archived recipe; choosing a competing edit in conflict
+review is the only way it returns to the collection.
 
 ### Pending synchronization
 
