@@ -37,6 +37,26 @@ FORKCAST_BIND=127.0.0.1:8787 target/release/forkcast-backend
 | `FORKCAST_STATIC_DIR` | unset | A built frontend to serve at `/`. Unset serves the API only. |
 | `FORKCAST_ALLOWED_ORIGINS` | the Vite dev origins | Extra browser origins allowed to call the API cross-origin. Not needed when the frontend is served by the server itself. |
 
+## Browsers
+
+A browser is an online client of this server: open its address, sign in with
+a household account, and every read and write goes to the server's core over
+`/api/operations`. Nothing needs to be installed on the browser's device. The
+browser keeps only its sign-in token; it has no database, no queue of unsent
+changes, and no service worker, and every response is sent `Cache-Control:
+no-store`. When the server cannot be reached the browser says so and saves
+nothing, and an expired or revoked sign-in returns to the sign-in page. The
+installed app is the offline mode.
+
+A browser uses the account's ChatGPT connection on the server once it has
+been set up. Connecting and reconnecting happen in the installed app
+(**Settings → ChatGPT**), which the browser's Settings explains.
+
+If the current frontend is opened from an address without a household server
+(for example a leftover static deployment of the retired browser-only
+version), it says so and points to the installed app and the household
+server; it never opens, changes, or deletes data stored in that browser.
+
 ## HTTPS and reverse proxies
 
 The server speaks plain HTTP and expects TLS to end at a reverse proxy.
@@ -72,5 +92,6 @@ always compatible with it.
   independently of the frontend. Administrators manage accounts only; they get
   no access to other people's ratings, food logs, cooking sessions, or AI
   settings.
-- ChatGPT/AI credentials are not handled by the server in this release; see
-  the product specification for the integrated flow.
+- Members' ChatGPT sessions live only in `FORKCAST_SECRETS_FILE`, keyed by
+  account. They are never returned to browsers or apps, never part of
+  synchronization, and never in the database.

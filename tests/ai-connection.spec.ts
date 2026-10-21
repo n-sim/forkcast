@@ -264,6 +264,16 @@ test('a joined app sets up ChatGPT on its household server after an explicit cho
         name: /Continue with ChatGPT|Set up ChatGPT/,
       }),
     ).toHaveCount(0);
+    // It generates through the server's connection, with no setup of its own.
+    await browser.goto(`${backend.url}/#/recipes/generate`);
+    await browser.getByLabel('Describe your dish').fill('A simple soup');
+    await browser
+      .getByRole('button', { name: 'Generate recipe', exact: true })
+      .click();
+    await expect(
+      browser.getByRole('heading', { name: 'Tomato soup', exact: true }),
+    ).toBeVisible();
+    expect(provider.hosts).toHaveLength(1);
   } finally {
     await backend.dispose();
   }

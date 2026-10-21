@@ -8,6 +8,7 @@ import {
   loadCookingSessions,
 } from './recipe-store';
 import {
+  BrowserServerRequired,
   BrowserSignIn,
   BrowserUnreachable,
   useBrowserSession,
@@ -131,6 +132,8 @@ function Browser() {
     return <p className="startup-loading">Opening your recipe collection…</p>;
   if (state.phase === 'unreachable')
     return <BrowserUnreachable message={state.message} onRetry={retry} />;
+  if (state.phase === 'no-server')
+    return <BrowserServerRequired onRetry={retry} />;
   if (state.phase === 'signed-out')
     return (
       <BrowserSignIn
