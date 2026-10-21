@@ -258,3 +258,46 @@ fn an_archival_made_offline_withdraws_cookings_planned_elsewhere_meanwhile() {
         assert_eq!(device.status().conflicts.planning, 0);
     }
 }
+
+/// What the frontend sends back: JSON numbers without a fractional part.
+fn as_frontend_sends(value: &Value) -> Value {
+    serde_json::from_str(&value.to_string().replace(".0,", ",").replace(".0}", "}")).unwrap()
+}
+
+fn quantity(view: &Value, item: &Value) -> Option<f64> {
+    view["list"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|candidate| candidate["id"] == item["id"])
+        .and_then(|candidate| candidate["quantity"].as_f64())
+}
+
+#[test]
+fn a_joined_device_saves_a_reviewed_quantity_from_the_view_it_showed() {
+    let server = Server::start();
+    let (admin, member) = household(&server);
+    admin.op(json!({"operation": "generateShoppingList", "startDate": "2030-05-01", "endDate": "2030-05-10"}));
+    admin.sync();
+    member.sync();
+    let view = member.op(json!({"operation": "shoppingList"}));
+    // A whole-number quantity is the one the frontend writes without `.0`.
+    let item = view["list"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["quantity"].as_f64().is_some_and(|q| q.fract() == 0.0))
+        .unwrap()
+        .clone();
+    let saved = member.op(
+        json!({"operation": "saveShoppingItem", "listId": view["list"]["id"],
+        "kind": "generated", "editBase": as_frontend_sends(&view["editBase"]),
+        "item": {"id": item["id"], "name": item["name"], "quantity": 3.0, "unit": item["unit"]}}),
+    );
+    assert_eq!(quantity(&saved, &item), Some(3.0));
+    member.sync();
+    admin.sync();
+    let shared = admin.op(json!({"operation": "shoppingList"}));
+    assert_eq!(quantity(&shared, &item), Some(3.0));
+    assert_eq!(admin.status().conflicts.planning, 0);
+}
