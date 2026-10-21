@@ -14,6 +14,7 @@ import {
   PASSWORD,
 } from './household-planning-fixture';
 import type { Page } from './app-fixture';
+import { startBackend } from './backend-fixture';
 
 // Two installed apps (each with its own embedded core and SQLite) and a real
 // household server. The narrow HTTP checks live in the *-api and
@@ -306,5 +307,59 @@ test('an incompatible server release fails visibly and keeps pending work', asyn
     ).toBeVisible({ timeout: 15_000 });
   } finally {
     await new Promise((resolve) => newer.close(resolve));
+  }
+});
+
+test('a server with its own certificate is used only after its fingerprint is confirmed', async ({
+  launch,
+}) => {
+  const backend = await startBackend({ FORKCAST_TLS: 'self-signed' });
+  try {
+    const fingerprint = backend.fingerprint!;
+    expect(backend.url).toMatch(/^https:/);
+    const page = (await launch()).page;
+    await page.goto('/#/settings');
+    await page.getByLabel('Backend URL').fill(backend.url);
+    const connectBackend = page.getByRole('button', {
+      name: 'Connect backend',
+      exact: true,
+    });
+    await connectBackend.click();
+    await expect(
+      page.getByRole('heading', { name: "Confirm the server's certificate" }),
+    ).toBeVisible();
+    await expect(page.getByText(fingerprint, { exact: true })).toBeVisible();
+
+    // Cancelling keeps nothing; confirming connects and keeps the fingerprint.
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await connectBackend.click();
+    await page
+      .getByRole('button', {
+        name: 'The fingerprints match, connect',
+        exact: true,
+      })
+      .click();
+    await page.getByLabel('Household name').fill('Our kitchen');
+    await expect(page.getByText(fingerprint, { exact: true })).toBeVisible();
+    await page.getByLabel('Username', { exact: true }).fill('noah');
+    await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
+    await page
+      .getByRole('button', { name: 'Create administrator', exact: true })
+      .click();
+    await page
+      .getByRole('button', { name: 'Enable data synchronization', exact: true })
+      .click();
+    await page
+      .getByRole('button', {
+        name: 'Join and share selected data',
+        exact: true,
+      })
+      .click();
+    await synced(page);
+    await createRecipe(page, 'Soup');
+    await syncNow(page);
+    await expect(page.getByText(fingerprint, { exact: true })).toBeVisible();
+  } finally {
+    await backend.dispose();
   }
 });

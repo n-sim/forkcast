@@ -12,6 +12,8 @@ export interface AccountInfo {
 
 export interface PendingJoin {
   serverUrl: string;
+  /** The confirmed fingerprint of the server's own certificate. */
+  certificate: string | null;
   setupRequired: boolean;
   account: AccountInfo | null;
   household: { id: string; name: string } | null;
@@ -21,6 +23,7 @@ export interface SyncStatus {
   protocol: number;
   bound: boolean;
   serverUrl: string | null;
+  serverCertificate: string | null;
   remoteHouseholdId: string | null;
   activeAccount: AccountInfo | null;
   signedIn: boolean;
@@ -85,10 +88,30 @@ export interface HouseholdAccount {
 
 export const syncStatus = () => execute<SyncStatus>('syncStatus');
 export const syncNow = () => execute<SyncStatus>('syncNow');
-export const connectServer = (serverUrl: string) =>
-  execute<{ serverUrl: string; setupRequired: boolean }>('connectServer', {
+export interface ServerProbe {
+  serverUrl: string;
+  setupRequired: boolean;
+  /**
+   * The server presented a certificate that is not publicly trusted. Nothing
+   * was stored; connect again with this fingerprint once the person confirms
+   * it matches the one the server shows.
+   */
+  untrustedCertificate: string | null;
+}
+
+export const connectServer = (serverUrl: string, certificate?: string) =>
+  execute<ServerProbe>('connectServer', {
     serverUrl,
+    ...(certificate ? { certificate } : {}),
   });
+export const checkServerCertificate = () =>
+  execute<{
+    confirmed: string | null;
+    presented: string | null;
+    trusted: boolean;
+  }>('checkServerCertificate');
+export const trustServerCertificate = (certificate: string) =>
+  execute<SyncStatus>('trustServerCertificate', { certificate });
 export const authenticateServer = (input: {
   setup: boolean;
   username: string;

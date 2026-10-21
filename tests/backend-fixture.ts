@@ -7,6 +7,8 @@ import { test as base, expect } from './app-fixture';
 
 export interface Backend {
   readonly url: string;
+  /** The fingerprint of the server's own certificate, when it serves HTTPS. */
+  readonly fingerprint: string | null;
   stop: () => Promise<void>;
   restart: () => Promise<void>;
   /** Stops the server for good and removes its database. */
@@ -23,6 +25,7 @@ export async function startBackend(
   const directory = await mkdtemp(join(tmpdir(), 'forkcast-backend-'));
   let child: ChildProcess;
   let url = '';
+  let fingerprint: string | null = null;
   async function start() {
     child = spawn(
       resolve(
@@ -54,9 +57,11 @@ export async function startBackend(
       });
       child.stdout!.on('data', (data: Buffer) => {
         output += data.toString();
-        const match = output.match(/listening on (http:\/\/[^\s]+)/);
+        const match = output.match(/listening on (https?:\/\/[^\s]+)/);
         if (match?.[1]) {
           clearTimeout(timeout);
+          // The fingerprint is printed before the address.
+          fingerprint = output.match(/fingerprint: ([0-9A-F:]+)/)?.[1] ?? null;
           resolveUrl(match[1]);
         }
       });
@@ -81,6 +86,9 @@ export async function startBackend(
   return {
     get url() {
       return url;
+    },
+    get fingerprint() {
+      return fingerprint;
     },
     stop,
     restart: async () => {

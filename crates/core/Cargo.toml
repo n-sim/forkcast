@@ -11,9 +11,11 @@ forkcast-recipe-domain = { path = "../recipe-domain" }
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 rand = "0.8"
 rusqlite = { version = "0.40", features = ["bundled"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 url = "2"
 ureq = { version = "3", default-features = false, features = ["rustls", "json"] }
 uuid = { version = "1", features = ["v4"] }
+webpki-roots = "1"

@@ -34,10 +34,12 @@ its household link and pending changes but asks the person to sign in again.
 - Servers must use **HTTPS**. Cleartext traffic is disabled in the manifest
   (`usesCleartextTraffic="false"`), and the core also refuses `http://` unless
   the host is `localhost` or a loopback address.
-- Self-signed or private-CA servers work only if the CA is installed on the
-  device. A LAN deployment should use a name with a real certificate or a
-  private CA installed on the device; plain `http://` LAN addresses are not
-  supported.
+- A server with a publicly trusted certificate just works. A server with its
+  own self-signed certificate (`FORKCAST_TLS=self-signed`, see
+  [server.md](server.md)) works once its SHA-256 fingerprint is confirmed in
+  Settings; the core then accepts only that certificate for it. Certificate
+  authorities installed on the device are not consulted, and plain `http://`
+  LAN addresses are not supported.
 - An unreachable or misconfigured server is shown in Settings (Data
   synchronization) and never blocks local work.
 

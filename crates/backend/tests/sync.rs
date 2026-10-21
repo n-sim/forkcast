@@ -39,7 +39,10 @@ fn joining_publishes_only_what_was_chosen_and_the_member_receives_it() {
     plan(&device, "monday", "soup", "2030-05-06", 4.0);
     device.op(json!({"operation": "rateRecipe", "recipeId": "soup", "value": 5}));
 
-    device.core.connect_server(&server.url).unwrap();
+    device
+        .core
+        .connect_server(&server.url, server.certificate.as_deref())
+        .unwrap();
     device
         .core
         .authenticate_server(true, "admin", "correct horse battery", Some("Home"))
@@ -94,7 +97,10 @@ fn cancelling_a_join_changes_neither_side() {
     admin.op(json!({
         "operation": "createAccount", "username": "sam", "password": "another long passphrase"
     }));
-    newcomer.core.connect_server(&server.url).unwrap();
+    newcomer
+        .core
+        .connect_server(&server.url, server.certificate.as_deref())
+        .unwrap();
     newcomer
         .core
         .authenticate_server(false, "sam", "another long passphrase", None)
@@ -125,7 +131,10 @@ fn joining_with_household_data_explicitly_replaces_the_device_plan_and_keeps_rec
     let device = Device::new();
     save_recipe(&device, "pie", "Pie");
     plan(&device, "tuesday", "pie", "2030-05-07", 2.0);
-    device.core.connect_server(&server.url).unwrap();
+    device
+        .core
+        .connect_server(&server.url, server.certificate.as_deref())
+        .unwrap();
     device
         .core
         .authenticate_server(false, "kim", "yet another passphrase", None)
@@ -154,7 +163,10 @@ fn a_recipe_id_collision_keeps_both_versions_as_alternatives() {
     }));
     let device = Device::new();
     save_recipe(&device, "soup", "Kim's soup");
-    device.core.connect_server(&server.url).unwrap();
+    device
+        .core
+        .connect_server(&server.url, server.certificate.as_deref())
+        .unwrap();
     device
         .core
         .authenticate_server(false, "kim", "yet another passphrase", None)
@@ -404,7 +416,7 @@ fn another_household_requires_a_separate_profile() {
     assert_eq!(
         device
             .core
-            .connect_server("http://127.0.0.1:1")
+            .connect_server("http://127.0.0.1:1", None)
             .err()
             .unwrap()
             .kind,
@@ -515,7 +527,7 @@ fn release_skew_fails_visibly_and_keeps_pending_work() {
     let fresh = Device::new();
     let error = fresh
         .core
-        .connect_server(&format!("http://{address}"))
+        .connect_server(&format!("http://{address}"), None)
         .err()
         .unwrap();
     assert_eq!(error.kind, ErrorKind::ProtocolMismatch);

@@ -2,6 +2,8 @@
 //! the shared [`forkcast_core::Core`] and core results back into responses;
 //! all rules, validation, and storage live in the core.
 
+pub mod tls;
+
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, FromRequestParts, Path, Request, State},

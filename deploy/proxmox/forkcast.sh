@@ -16,7 +16,8 @@
 #   CT_BRIDGE       network bridge              (default: vmbr0)
 #   CT_IP           dhcp or a CIDR address      (default: dhcp)
 #   CT_GATEWAY      gateway for a static address
-#   FORKCAST_DOMAIN public name for automatic HTTPS through Caddy (default: none, plain HTTP on 8787)
+#   FORKCAST_DOMAIN public name for automatic HTTPS through Caddy (default: none, the
+#                   server's own certificate on port 8787)
 #   FORKCAST_VERSION release to install         (default: the latest release)
 #
 # Upgrade later from the host with: pct exec <CTID> -- forkcast-update
@@ -79,7 +80,7 @@ summary() {
   CPU / memory   $CT_CORES core(s), $CT_MEMORY MiB
   Disk           $CT_DISK GiB on $CT_STORAGE
   Network        $CT_BRIDGE, ${CT_IP}${CT_GATEWAY:+ via $CT_GATEWAY}
-  HTTPS          ${FORKCAST_DOMAIN:-none (plain HTTP on port 8787)}
+  HTTPS          ${FORKCAST_DOMAIN:-built-in certificate on port 8787}
   Release        ${FORKCAST_VERSION:-latest}
 
 EOF
@@ -102,8 +103,9 @@ if [[ ${FORKCAST_YES:-} != 1 ]]; then
     CT_IP=$(ask "IPv4 address (dhcp or e.g. 192.168.1.50/24)" "$CT_IP")
     if [[ $CT_IP != dhcp ]]; then CT_GATEWAY=$(ask "Gateway" "${CT_GATEWAY:-none}"); fi
     [[ $CT_GATEWAY == none ]] && CT_GATEWAY=""
-    echo "  Installed apps connect only over HTTPS (or HTTP on the same machine). With a public"
-    echo "  name that points at this container (ports 80 and 443), Caddy gets a certificate for it."
+    echo "  Without a public name the server uses its own certificate, which installed apps confirm"
+    echo "  by its fingerprint. With a name that points at this container (ports 80 and 443),"
+    echo "  Caddy gets a publicly trusted certificate for it instead."
     FORKCAST_DOMAIN=$(ask "Public name for HTTPS (empty for none)" "${FORKCAST_DOMAIN:-none}")
     [[ $FORKCAST_DOMAIN == none ]] && FORKCAST_DOMAIN=""
     FORKCAST_VERSION=$(ask "Release (e.g. 0.0.9)" "${FORKCAST_VERSION:-latest}")
@@ -183,9 +185,21 @@ msg_ok "Forkcast is installed in container $CTID"
 if [[ -n $FORKCAST_DOMAIN ]]; then
   echo "  Open https://$FORKCAST_DOMAIN/ once the name points at ${ip:-the container} (ports 80 and 443)."
 else
-  echo "  Open http://${ip:-<container address>}:8787/ in a browser to set up your household."
-  echo "  Installed apps need HTTPS: put a reverse proxy in front (see docs/server.md), or rerun"
-  echo "  inside the container with a public name: FORKCAST_DOMAIN=forkcast.example.com forkcast-update"
+  fingerprint=$(pct exec "$CTID" -- forkcast-fingerprint 2>/dev/null || true)
+  if [[ -n $fingerprint ]]; then
+    echo "  Open https://${ip:-<container address>}:8787/ to set up your household. The server uses"
+    echo "  its own certificate; when the browser or an installed app shows its fingerprint,"
+    echo "  check that it is:"
+    echo
+    echo "    $fingerprint"
+    echo
+    echo "  Show it again with: pct exec $CTID -- forkcast-fingerprint"
+  else
+    echo "  Open http://${ip:-<container address>}:8787/ in a browser to set up your household."
+    echo "  This release serves plain HTTP, so installed apps need a reverse proxy (see"
+    echo "  docs/server.md); 'pct exec $CTID -- forkcast-update' after a newer release switches"
+    echo "  to the server's own HTTPS certificate."
+  fi
 fi
 echo "  Upgrade later with: pct exec $CTID -- forkcast-update"
 echo

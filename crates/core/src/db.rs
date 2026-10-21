@@ -186,6 +186,9 @@ const MIGRATIONS: &[&str] = &[
     // Version 4: the browser-profile import is gone, and with it the record of
     // which transfers had been applied.
     "DROP TABLE legacy_imports;",
+    // Version 5: the confirmed fingerprint of a household server's own
+    // (not publicly trusted) certificate.
+    "ALTER TABLE sync_binding ADD COLUMN server_certificate TEXT;",
 ];
 
 pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;

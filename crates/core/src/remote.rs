@@ -3,8 +3,13 @@
 //! visible failure that leaves pending work untouched.
 
 use crate::error::{Error, ErrorKind, Result};
+use crate::tls::{CERTIFICATE_CHANGED, PinnedConnector};
 use serde_json::Value;
 use std::time::Duration;
+use ureq::unversioned::{
+    resolver::DefaultResolver,
+    transport::{Connector, TcpConnector},
+};
 
 /// The synchronization contract version both sides must share. Bump it for
 /// any change to wire formats or merge rules that older peers cannot handle.
@@ -13,6 +18,7 @@ pub(crate) const PROTOCOL_HEADER: &str = "x-forkcast-protocol";
 
 pub(crate) struct Remote {
     base: String,
+    pinned: bool,
     token: Option<String>,
     agent: ureq::Agent,
 }
@@ -50,20 +56,36 @@ pub(crate) fn server_url(value: &str) -> Result<String> {
 }
 
 impl Remote {
-    pub(crate) fn new(base: &str, token: Option<String>) -> Self {
-        Self::with_timeout(base, token, Duration::from_secs(8))
+    /// `certificate` is the confirmed fingerprint of a server's own
+    /// certificate; without one the server needs a publicly trusted one.
+    pub(crate) fn new(base: &str, certificate: Option<&str>, token: Option<String>) -> Self {
+        Self::with_timeout(base, certificate, token, Duration::from_secs(8))
     }
 
     /// For requests that legitimately take long, such as AI execution.
-    pub(crate) fn with_timeout(base: &str, token: Option<String>, timeout: Duration) -> Self {
-        let agent: ureq::Agent = ureq::Agent::config_builder()
+    pub(crate) fn with_timeout(
+        base: &str,
+        certificate: Option<&str>,
+        token: Option<String>,
+        timeout: Duration,
+    ) -> Self {
+        let config = ureq::Agent::config_builder()
             .timeout_global(Some(timeout))
             .http_status_as_error(false)
-            .max_redirects(0)
-            .build()
-            .into();
+            .max_redirects(0);
+        let agent = match certificate {
+            // A household server on the local network: no proxy, and only
+            // the confirmed certificate.
+            Some(fingerprint) => ureq::Agent::with_parts(
+                config.proxy(None).build(),
+                TcpConnector::default().chain(PinnedConnector::new(fingerprint)),
+                DefaultResolver::default(),
+            ),
+            None => config.build().into(),
+        };
         Self {
             base: base.to_owned(),
+            pinned: certificate.is_some(),
             token,
             agent,
         }
@@ -82,11 +104,19 @@ impl Remote {
             ("PATCH", Some(body)) => self.with(self.agent.patch(&url), &protocol).send_json(body),
             _ => return Err(Error::internal()),
         }
-        .map_err(|_| {
-            Error::new(
+        .map_err(|error| match error {
+            ureq::Error::Tls(CERTIFICATE_CHANGED) => Error::new(
                 ErrorKind::Unavailable,
-                "Backend unavailable. Check the URL, network, and allowed frontend origin, then try again.",
-            )
+                "The server presented a different certificate than the one you confirmed, so nothing was sent. If its certificate was replaced on purpose, check and confirm the new one under Settings → Backend & accounts.",
+            ),
+            _ => Error::new(
+                ErrorKind::Unavailable,
+                if self.pinned {
+                    "Backend unavailable. Check the URL and network, then try again."
+                } else {
+                    "Backend unavailable. Check the URL, network, and allowed frontend origin, then try again."
+                },
+            ),
         })?;
         let status = response.status().as_u16();
         let text = response.body_mut().read_to_string().unwrap_or_default();

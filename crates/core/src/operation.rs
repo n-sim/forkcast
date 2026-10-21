@@ -163,6 +163,9 @@ pub enum Operation {
     SyncNow,
     ConnectServer {
         server_url: String,
+        /// The fingerprint the person confirmed for a server's own certificate.
+        #[serde(default)]
+        certificate: Option<String>,
     },
     AuthenticateServer {
         #[serde(default)]
@@ -177,6 +180,10 @@ pub enum Operation {
         selection: JoinSelection,
     },
     CancelJoin,
+    CheckServerCertificate,
+    TrustServerCertificate {
+        certificate: String,
+    },
     SignIn {
         username: String,
         password: String,
@@ -375,7 +382,10 @@ impl Core {
             AiExecute { request } => json(json!({"text": self.ai_execute(principal, request)?})),
             SyncStatus => json(self.sync_status()?),
             SyncNow => json(self.sync_now()?),
-            ConnectServer { server_url } => json(self.connect_server(&server_url)?),
+            ConnectServer {
+                server_url,
+                certificate,
+            } => json(self.connect_server(&server_url, certificate.as_deref())?),
             AuthenticateServer {
                 setup,
                 username,
@@ -392,6 +402,10 @@ impl Core {
             CancelJoin => {
                 self.cancel_join()?;
                 Ok(Value::Null)
+            }
+            CheckServerCertificate => json(self.check_server_certificate()?),
+            TrustServerCertificate { certificate } => {
+                json(self.trust_server_certificate(&certificate)?)
             }
             SignIn { username, password } => json(self.profile_sign_in(&username, &password)?),
             SignOut => json(self.profile_sign_out(false)?),

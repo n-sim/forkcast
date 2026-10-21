@@ -9,8 +9,10 @@
 #
 # Settings (environment variables):
 #   FORKCAST_VERSION  release to install, for example 0.0.9 (default: the latest release)
-#   FORKCAST_DOMAIN   public name for automatic HTTPS through Caddy; unset serves plain
-#                     HTTP on port 8787. Kept from the previous run when unset.
+#   FORKCAST_DOMAIN   public name for automatic HTTPS through Caddy. Unset, the server
+#                     serves HTTPS itself on port 8787 with its own certificate, which
+#                     installed apps confirm by its fingerprint (forkcast-fingerprint
+#                     prints it). Kept from the previous run when unset.
 #
 # Running it again upgrades to the latest release: the server is stopped, the
 # database is copied to /var/lib/forkcast/backups, the new release replaces
@@ -94,7 +96,11 @@ if [[ $installed != "$version" ]]; then
     backup="$DATA_DIR/backups/$(date +%Y%m%d-%H%M%S)-${installed:-unknown}"
     install -d -o forkcast -g forkcast -m 0700 "$DATA_DIR/backups" "$backup"
     sqlite3 "$DATA_DIR/forkcast.sqlite3" ".backup '$backup/forkcast.sqlite3'"
-    chown forkcast:forkcast "$backup/forkcast.sqlite3"
+    # The server's own certificate goes with it, so joined apps keep trusting it.
+    for file in "$DATA_DIR"/forkcast.tls.crt "$DATA_DIR"/forkcast.tls.key; do
+      if [[ -f $file ]]; then cp -p "$file" "$backup/"; fi
+    done
+    chown forkcast:forkcast "$backup"/*
     msg_ok "Backed up the database to $backup"
   fi
 
@@ -119,13 +125,33 @@ else
   bind="0.0.0.0:8787"
   rm -f "$CONFIG_DIR/domain"
 fi
+# Without a domain the server serves HTTPS with its own certificate. Releases
+# from before that existed know nothing of FORKCAST_TLS and serve plain HTTP.
+tls="off"
+if [[ -z $FORKCAST_DOMAIN ]] && grep -q FORKCAST_TLS "$APP_DIR/forkcast-backend"; then
+  tls="self-signed"
+fi
 cat >"$ENV_FILE" <<EOF
 # Forkcast household server settings; see docs/server.md.
 # Restart after changes: systemctl restart $SERVICE
 FORKCAST_BIND=$bind
 FORKCAST_DATABASE=$DATA_DIR/forkcast.sqlite3
 FORKCAST_STATIC_DIR=$APP_DIR/web
+FORKCAST_TLS=$tls
 EOF
+
+cat >/usr/local/bin/forkcast-fingerprint <<EOF
+#!/bin/sh
+# Prints the SHA-256 fingerprint of the Forkcast server's own certificate.
+set -a
+. $ENV_FILE
+if [ "\$FORKCAST_TLS" != self-signed ]; then
+  echo "This server does not serve HTTPS with its own certificate." >&2
+  exit 1
+fi
+exec $APP_DIR/forkcast-backend --fingerprint
+EOF
+chmod 0755 /usr/local/bin/forkcast-fingerprint
 
 cat >/etc/systemd/system/$SERVICE.service <<EOF
 [Unit]
@@ -174,8 +200,14 @@ msg_ok "Configured the service"
 
 msg_info "Waiting for the server to answer"
 for _ in $(seq 1 30); do
-  if FORKCAST_BIND=$bind "$APP_DIR/forkcast-backend" --health &>/dev/null; then
+  # shellcheck source=/dev/null
+  if (set -a && . "$ENV_FILE" && "$APP_DIR/forkcast-backend" --health) &>/dev/null; then
     msg_ok "Forkcast $version is running"
+    if [[ $tls == self-signed ]]; then
+      msg_ok "Certificate fingerprint (SHA-256): $(/usr/local/bin/forkcast-fingerprint)"
+    elif [[ -z $FORKCAST_DOMAIN ]]; then
+      msg_info "Release $version serves plain HTTP; installed apps need a later release or a reverse proxy."
+    fi
     exit 0
   fi
   sleep 1

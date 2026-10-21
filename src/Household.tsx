@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import {
   authenticateServer,
   cancelJoin,
+  checkServerCertificate,
   changeAccount,
   completeJoin,
   connectServer,
@@ -12,6 +13,7 @@ import {
   signInToHousehold,
   signOutOfHousehold,
   syncNow,
+  trustServerCertificate,
   type HouseholdAccount,
   type JoinReview,
   type SyncStatus,
@@ -19,6 +21,78 @@ import {
 
 function message(failure: unknown) {
   return failure instanceof Error ? failure.message : String(failure);
+}
+
+function ConfirmCertificate({
+  url,
+  fingerprint,
+  replacing = false,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  url: string;
+  fingerprint: string;
+  replacing?: boolean;
+  busy: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <section
+      className="account-form"
+      aria-labelledby="server-certificate-heading"
+    >
+      <h3 id="server-certificate-heading">
+        {replacing
+          ? "Confirm the server's new certificate"
+          : "Confirm the server's certificate"}
+      </h3>
+      <p>
+        {replacing
+          ? `${url} now presents a different certificate than the one you confirmed. Accept it only if the server's certificate was replaced on purpose. `
+          : `${url} uses its own certificate instead of one from a public certificate authority. `}
+        Compare this fingerprint with the one your server shows: the server
+        prints it when it starts, and{' '}
+        <code>forkcast-backend --fingerprint</code> shows it again. Continue
+        only if they match; this app then accepts only this certificate from the
+        server.
+      </p>
+      <p>
+        <code className="fingerprint">{fingerprint}</code>
+      </p>
+      <div className="account-actions">
+        <button className="button primary" disabled={busy} onClick={onConfirm}>
+          {replacing
+            ? 'The fingerprints match, use it'
+            : 'The fingerprints match, connect'}
+        </button>
+        <button className="button secondary" disabled={busy} onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function Backend({
+  url,
+  certificate,
+}: {
+  url: string | null;
+  certificate: string | null;
+}) {
+  return (
+    <>
+      <p>Backend: {url}</p>
+      {certificate && (
+        <p>
+          Server certificate fingerprint (SHA-256):{' '}
+          <code className="fingerprint">{certificate}</code>
+        </p>
+      )}
+    </>
+  );
 }
 
 export function HouseholdAccounts({ enabled }: { enabled: boolean }) {
@@ -516,6 +590,12 @@ export function HouseholdSettings({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [signInPaused, setSignInPaused] = useState(false);
+  const [untrusted, setUntrusted] = useState<{
+    url: string;
+    fingerprint: string;
+  } | null>(null);
+  const [replacement, setReplacement] = useState<string | null>(null);
+  const [certificateNotice, setCertificateNotice] = useState('');
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -559,13 +639,32 @@ export function HouseholdSettings({
           {error}
         </p>
       )}
-      {!status.bound && !joining && (
+      {!status.bound && !joining && untrusted && (
+        <ConfirmCertificate
+          url={untrusted.url}
+          fingerprint={untrusted.fingerprint}
+          busy={busy}
+          onConfirm={() =>
+            void run(async () => {
+              await connectServer(untrusted.url, untrusted.fingerprint);
+              setUntrusted(null);
+            })
+          }
+          onCancel={() => setUntrusted(null)}
+        />
+      )}
+      {!status.bound && !joining && !untrusted && (
         <form
           className="account-form"
           onSubmit={(event) => {
             event.preventDefault();
             void run(async () => {
-              await connectServer(url);
+              const probe = await connectServer(url);
+              if (probe.untrustedCertificate)
+                setUntrusted({
+                  url: probe.serverUrl,
+                  fingerprint: probe.untrustedCertificate,
+                });
             });
           }}
         >
@@ -586,7 +685,7 @@ export function HouseholdSettings({
       )}
       {!status.bound && joining && !joining.account && (
         <section className="account-form">
-          <p>Backend: {joining.serverUrl}</p>
+          <Backend url={joining.serverUrl} certificate={joining.certificate} />
           <CredentialsForm
             setup={joining.setupRequired}
             busy={busy}
@@ -612,7 +711,7 @@ export function HouseholdSettings({
       )}
       {!status.bound && joining?.account && (
         <section className="account-form">
-          <p>Backend: {joining.serverUrl}</p>
+          <Backend url={joining.serverUrl} certificate={joining.certificate} />
           <p>
             Signed in as <strong>{joining.account.username}</strong> (
             {joining.account.role === 'administrator'
@@ -662,7 +761,51 @@ export function HouseholdSettings({
       )}
       {status.bound && (
         <section className="account-form">
-          <p>Backend: {status.serverUrl}</p>
+          <Backend
+            url={status.serverUrl}
+            certificate={status.serverCertificate}
+          />
+          {status.serverCertificate &&
+            (replacement ? (
+              <ConfirmCertificate
+                url={status.serverUrl ?? ''}
+                fingerprint={replacement}
+                replacing
+                busy={busy}
+                onConfirm={() =>
+                  void run(async () => {
+                    await trustServerCertificate(replacement);
+                    setReplacement(null);
+                  })
+                }
+                onCancel={() => setReplacement(null)}
+              />
+            ) : (
+              <div className="account-actions">
+                <button
+                  className="button secondary"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      setCertificateNotice('');
+                      const check = await checkServerCertificate();
+                      if (
+                        check.presented &&
+                        check.presented !== check.confirmed
+                      )
+                        setReplacement(check.presented);
+                      else
+                        setCertificateNotice(
+                          'The server presents the certificate you confirmed.',
+                        );
+                    })
+                  }
+                >
+                  Check the server&apos;s certificate
+                </button>
+                {certificateNotice && <p role="status">{certificateNotice}</p>}
+              </div>
+            ))}
           {status.signedIn && status.activeAccount ? (
             <>
               <h3>Household</h3>
