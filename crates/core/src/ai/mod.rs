@@ -234,6 +234,7 @@ pub struct TransferAck {
 
 struct ServerContext {
     server_url: String,
+    certificate: Option<String>,
     account_id: String,
     username: Option<String>,
     token: String,
@@ -241,7 +242,12 @@ struct ServerContext {
 
 impl ServerContext {
     fn remote(&self, timeout: Duration) -> Remote {
-        Remote::with_timeout(&self.server_url, Some(self.token.clone()), timeout)
+        Remote::with_timeout(
+            &self.server_url,
+            self.certificate.as_deref(),
+            Some(self.token.clone()),
+            timeout,
+        )
     }
 }
 
@@ -413,6 +419,7 @@ impl Core {
         })?;
         Ok(Route::Server(ServerContext {
             server_url: binding.server_url,
+            certificate: binding.certificate,
             account_id: account,
             username,
             token,
@@ -836,7 +843,12 @@ impl Core {
     // ----- handoff to the server -----------------------------------------
 
     fn server_for(&self, person: &str, handoff: &Handoff) -> Result<ServerContext> {
-        let state = self.read(sync::state)?;
+        let (binding, state) = self.read(|db| Ok((sync::binding(db)?, sync::state(db)?)))?;
+        // The handoff goes to the server it started with, under the
+        // certificate confirmed for it.
+        let certificate = binding
+            .filter(|binding| binding.server_url == handoff.server_url)
+            .and_then(|binding| binding.certificate);
         let token = match state {
             Some(state)
                 if state.active_account.as_deref() == Some(person)
@@ -849,6 +861,7 @@ impl Core {
         };
         Ok(ServerContext {
             server_url: handoff.server_url.clone(),
+            certificate,
             account_id: handoff.account_id.clone(),
             username: None,
             token: token.ok_or_else(|| {

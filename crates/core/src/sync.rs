@@ -77,6 +77,8 @@ pub struct SyncStatus {
     pub protocol: u32,
     pub bound: bool,
     pub server_url: Option<String>,
+    /// The confirmed fingerprint of the server's own certificate, if any.
+    pub server_certificate: Option<String>,
     pub remote_household_id: Option<String>,
     pub active_account: Option<AccountSummary>,
     /// A session token is held for the active account.
@@ -210,18 +212,21 @@ fn pending_entries(db: &Connection) -> Result<Vec<Entry>> {
 
 pub(crate) struct Binding {
     pub(crate) server_url: String,
+    /// The confirmed fingerprint of the server's own certificate.
+    pub(crate) certificate: Option<String>,
     pub(crate) remote_household_id: String,
 }
 
 pub(crate) fn binding(db: &Connection) -> Result<Option<Binding>> {
     Ok(db
         .query_row(
-            "SELECT server_url, remote_household_id FROM sync_binding",
+            "SELECT server_url, server_certificate, remote_household_id FROM sync_binding",
             [],
             |row| {
                 Ok(Binding {
                     server_url: row.get(0)?,
-                    remote_household_id: row.get(1)?,
+                    certificate: row.get(1)?,
+                    remote_household_id: row.get(2)?,
                 })
             },
         )
@@ -499,6 +504,7 @@ impl Core {
                     protocol: PROTOCOL_VERSION,
                     bound: binding.is_some(),
                     server_url: binding.as_ref().map(|b| b.server_url.clone()),
+                    server_certificate: binding.as_ref().and_then(|b| b.certificate.clone()),
                     remote_household_id: binding.map(|b| b.remote_household_id),
                     active_account: account,
                     signed_in: false,
@@ -582,7 +588,11 @@ impl Core {
                     "Sign in to synchronize. Changes stay on this device.",
                 )
             })?;
-        let remote = Remote::new(&binding.server_url, Some(token));
+        let remote = Remote::new(
+            &binding.server_url,
+            binding.certificate.as_deref(),
+            Some(token),
+        );
         let outcome: Result<bool> = (|| {
             remote.status()?;
             self.push(&remote, &binding, &account)?;

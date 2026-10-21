@@ -23,6 +23,7 @@ mod remote;
 mod secrets;
 mod session;
 mod sync;
+pub mod tls;
 
 pub use accounts::{
     Account, AccountChange, Authenticated, Credentials, Household, Role, ServerStatus, Session,
@@ -53,7 +54,8 @@ pub use remote::PROTOCOL_VERSION;
 pub use secrets::FileSecrets;
 pub use secrets::{MemorySecrets, Secrets};
 pub use session::{
-    AccountInfo, JoinReview, JoinSelection, PendingJoin, ServerAuthentication, ServerProbe,
+    AccountInfo, JoinReview, JoinSelection, PendingJoin, ServerAuthentication, ServerCertificate,
+    ServerProbe,
 };
 pub use sync::{PendingChange, SyncStatus};
 

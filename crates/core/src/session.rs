@@ -14,6 +14,7 @@ use crate::{
     recipes,
     remote::{Remote, server_url},
     sync::{self, session_key},
+    tls,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -41,6 +42,9 @@ pub struct HouseholdInfo {
 #[serde(rename_all = "camelCase")]
 struct StoredJoin {
     server_url: String,
+    /// The confirmed fingerprint of the server's own certificate.
+    #[serde(default)]
+    certificate: Option<String>,
     setup_required: bool,
     token: Option<String>,
     account: Option<AccountInfo>,
@@ -52,6 +56,7 @@ struct StoredJoin {
 #[serde(rename_all = "camelCase")]
 pub struct PendingJoin {
     pub server_url: String,
+    pub certificate: Option<String>,
     pub setup_required: bool,
     pub account: Option<AccountInfo>,
     pub household: Option<HouseholdInfo>,
@@ -62,6 +67,21 @@ pub struct PendingJoin {
 pub struct ServerProbe {
     pub server_url: String,
     pub setup_required: bool,
+    /// The server presented a certificate that is not publicly trusted.
+    /// Nothing was stored: the person compares this fingerprint with the one
+    /// the server shows, then connects again with it.
+    pub untrusted_certificate: Option<String>,
+}
+
+/// The certificate a joined household's server presents now, beside the one
+/// this profile confirmed.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerCertificate {
+    pub confirmed: Option<String>,
+    pub presented: Option<String>,
+    /// The presented certificate is publicly trusted.
+    pub trusted: bool,
 }
 
 #[derive(Serialize)]
@@ -213,6 +233,7 @@ impl Core {
     pub(crate) fn pending_join(&self) -> Result<Option<PendingJoin>> {
         Ok(self.stored_join()?.map(|join| PendingJoin {
             server_url: join.server_url,
+            certificate: join.certificate,
             setup_required: join.setup_required,
             account: join.account,
             household: join.household,
@@ -241,14 +262,32 @@ impl Core {
         })
     }
 
-    /// Checks that `server_url` is a compatible Forkcast server.
-    pub fn connect_server(&self, server_url_text: &str) -> Result<ServerProbe> {
+    /// Checks that `server_url` is a compatible Forkcast server. A server
+    /// with its own certificate is used only once `certificate` names the
+    /// fingerprint the person confirmed.
+    pub fn connect_server(
+        &self,
+        server_url_text: &str,
+        certificate: Option<&str>,
+    ) -> Result<ServerProbe> {
         self.require_unbound_profile()?;
         let url = server_url(server_url_text)?;
-        let setup_required = Remote::new(&url, None).status()?;
+        let certificate = certificate.map(tls::parse_fingerprint).transpose()?;
+        if certificate.is_none() && url.starts_with("https://") {
+            let presented = tls::probe(&url)?;
+            if !presented.trusted {
+                return Ok(ServerProbe {
+                    server_url: url,
+                    setup_required: false,
+                    untrusted_certificate: Some(presented.fingerprint),
+                });
+            }
+        }
+        let setup_required = Remote::new(&url, certificate.as_deref(), None).status()?;
         self.discard_pending_join();
         self.store_join(&StoredJoin {
             server_url: url.clone(),
+            certificate,
             setup_required,
             token: None,
             account: None,
@@ -257,6 +296,7 @@ impl Core {
         Ok(ServerProbe {
             server_url: url,
             setup_required,
+            untrusted_certificate: None,
         })
     }
 
@@ -270,7 +310,8 @@ impl Core {
         if let Ok(Some(join)) = self.stored_join()
             && let Some(token) = join.token
         {
-            let _ = Remote::new(&join.server_url, Some(token)).call("DELETE", "/session", None);
+            let _ = Remote::new(&join.server_url, join.certificate.as_deref(), Some(token))
+                .call("DELETE", "/session", None);
         }
         let _ = self.inner.secrets.delete(PENDING_JOIN);
     }
@@ -287,7 +328,7 @@ impl Core {
         let mut join = self
             .stored_join()?
             .ok_or_else(|| Error::conflict("Connect to a backend first."))?;
-        let remote = Remote::new(&join.server_url, None);
+        let remote = Remote::new(&join.server_url, join.certificate.as_deref(), None);
         let body = if setup {
             json!({"householdName": household_name.unwrap_or_default(), "username": username, "password": password})
         } else {
@@ -327,7 +368,7 @@ impl Core {
         ) else {
             return Err(Error::unauthenticated());
         };
-        let remote = Remote::new(&join.server_url, Some(token));
+        let remote = Remote::new(&join.server_url, join.certificate.as_deref(), Some(token));
         Ok((join, remote, account, household))
     }
 
@@ -483,8 +524,8 @@ impl Core {
                 }
             }
             db.execute(
-                "INSERT INTO sync_binding (singleton, server_url, remote_household_id) VALUES (1, ?, ?)",
-                params![join.server_url, household.id],
+                "INSERT INTO sync_binding (singleton, server_url, server_certificate, remote_household_id) VALUES (1, ?, ?, ?)",
+                params![join.server_url, join.certificate, household.id],
             )?;
             db.execute(
                 "INSERT INTO sync_state (singleton, active_account, signed_out, paused, planning_revision) VALUES (1, ?, 0, 0, ?)",
@@ -591,7 +632,7 @@ impl Core {
         let binding = self
             .read(sync::binding)?
             .ok_or_else(|| Error::conflict("This profile has not joined a household."))?;
-        let remote = Remote::new(&binding.server_url, None);
+        let remote = Remote::new(&binding.server_url, binding.certificate.as_deref(), None);
         remote.status()?;
         let signed = remote.call(
             "POST",
@@ -602,7 +643,12 @@ impl Core {
             .map_err(|_| Error::invalid("The server sent an account this app cannot read."))?;
         let token = signed["token"].as_str().unwrap_or_default().to_owned();
         if signed["household"]["id"].as_str() != Some(binding.remote_household_id.as_str()) {
-            let _ = Remote::new(&binding.server_url, Some(token)).call("DELETE", "/session", None);
+            let _ = Remote::new(
+                &binding.server_url,
+                binding.certificate.as_deref(),
+                Some(token),
+            )
+            .call("DELETE", "/session", None);
             return Err(Error::conflict(
                 "This profile is linked to another household. Use a separate local profile for another household.",
             ));
@@ -648,8 +694,12 @@ impl Core {
         if let Some(account) = &state.active_account {
             if let Some(token) = self.inner.secrets.get(&session_key(account))? {
                 // Revocation is best effort; the local session ends regardless.
-                let _ =
-                    Remote::new(&binding.server_url, Some(token)).call("DELETE", "/session", None);
+                let _ = Remote::new(
+                    &binding.server_url,
+                    binding.certificate.as_deref(),
+                    Some(token),
+                )
+                .call("DELETE", "/session", None);
             }
             self.inner.secrets.delete(&session_key(account))?;
         }
@@ -679,6 +729,54 @@ impl Core {
         self.sync_status()
     }
 
+    /// Shows which certificate the household's server presents now. Sends
+    /// nothing to the server.
+    pub fn check_server_certificate(&self) -> Result<ServerCertificate> {
+        let binding = self
+            .read(sync::binding)?
+            .ok_or_else(|| Error::conflict("This profile has not joined a household."))?;
+        let presented = if binding.server_url.starts_with("https://") {
+            Some(tls::probe(&binding.server_url)?)
+        } else {
+            None
+        };
+        Ok(ServerCertificate {
+            confirmed: binding.certificate,
+            trusted: presented.as_ref().is_some_and(|p| p.trusted),
+            presented: presented.map(|p| p.fingerprint),
+        })
+    }
+
+    /// Accepts a replaced server certificate once the person has confirmed
+    /// its fingerprint. The household link, accounts, and pending changes
+    /// stay as they are.
+    pub fn trust_server_certificate(&self, certificate: &str) -> Result<sync::SyncStatus> {
+        let certificate = tls::parse_fingerprint(certificate)?;
+        let _guard = self.inner.sync.lock.lock().expect("sync lock poisoned");
+        let binding = self
+            .read(sync::binding)?
+            .ok_or_else(|| Error::conflict("This profile has not joined a household."))?;
+        if !binding.server_url.starts_with("https://") {
+            return Err(Error::invalid("This server does not use HTTPS."));
+        }
+        if tls::probe(&binding.server_url)?.fingerprint != certificate {
+            return Err(Error::conflict(
+                "The server now presents a different certificate than the one you confirmed. Check it again.",
+            ));
+        }
+        let principal = self.current_principal()?;
+        self.write(|db, effects| {
+            db.execute(
+                "UPDATE sync_binding SET server_certificate = ?",
+                [&certificate],
+            )?;
+            effects.household(&principal, Topic::Sync);
+            Ok(())
+        })?;
+        drop(_guard);
+        self.sync_status()
+    }
+
     fn active_remote(&self) -> Result<Remote> {
         let (binding, state) = self.read(|db| Ok((sync::binding(db)?, sync::state(db)?)))?;
         let (Some(binding), Some(state)) = (binding, state) else {
@@ -694,7 +792,11 @@ impl Core {
                 "Sign in to your household to manage its accounts.",
             )
         })?;
-        Ok(Remote::new(&binding.server_url, Some(token)))
+        Ok(Remote::new(
+            &binding.server_url,
+            binding.certificate.as_deref(),
+            Some(token),
+        ))
     }
 
     /// Account administration reaches the server with the active session.

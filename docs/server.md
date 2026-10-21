@@ -30,11 +30,14 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/n-sim/forkcast/main/depl
 It shows its defaults (1 core, 512 MiB, 4 GiB, DHCP on `vmbr0`) and asks
 before creating anything; **Advanced** changes them, and the variables at the
 top of [`deploy/proxmox/forkcast.sh`](../deploy/proxmox/forkcast.sh) set them
-without questions (`FORKCAST_YES=1`). Give it a public name
-(`FORKCAST_DOMAIN`) that points at the container to get automatic HTTPS from
-Caddy; without one it serves plain HTTP on port 8787, which browsers can use
-but installed apps need a reverse proxy for (see below). The database is in
-`/var/lib/forkcast` and the settings in `/etc/forkcast/forkcast.env`.
+without questions (`FORKCAST_YES=1`). Without further setup the server serves
+HTTPS itself on port 8787 with its own certificate, and the script ends by
+printing the address and the certificate's fingerprint for installed apps to
+confirm (see below). With a public name (`FORKCAST_DOMAIN`) that points at the
+container, Caddy gets a publicly trusted certificate for it instead. The
+database and certificate are in `/var/lib/forkcast`, the settings in
+`/etc/forkcast/forkcast.env`, and `pct exec <CTID> -- forkcast-fingerprint`
+shows the fingerprint again.
 `pct exec <CTID> -- forkcast-update` upgrades to the latest release, keeping a
 copy of the database in `/var/lib/forkcast/backups` first. The installer
 inside the container, [`deploy/proxmox/forkcast-install.sh`](../deploy/proxmox/forkcast-install.sh),
@@ -54,6 +57,8 @@ FORKCAST_BIND=127.0.0.1:8787 target/release/forkcast-backend
 | `FORKCAST_BIND` | `127.0.0.1:8787` | Address to listen on. |
 | `FORKCAST_DATABASE` | `forkcast.sqlite3` | SQLite file. Back it up like any database (stop the server or copy with the `.backup` command). |
 | `FORKCAST_SECRETS_FILE` | the database path with a `.secrets` extension | Owner-only file (`0600`) holding members' ChatGPT sessions. Keep it with the data volume but out of database backups you share; it is what lets the server run AI for its accounts. Members set it up from the installed app (**Settings → ChatGPT**); no SSH or token copying is needed. |
+| `FORKCAST_TLS` | unset | `self-signed` serves HTTPS with the server's own certificate, created on first start beside the database (`forkcast.tls.crt` and the owner-only `forkcast.tls.key`). Unset or `off` serves plain HTTP for a reverse proxy. |
+| `FORKCAST_TLS_CERT`, `FORKCAST_TLS_KEY` | unset | PEM certificate chain and private key to serve HTTPS with (for example a certificate from your own CA or ACME client). With `FORKCAST_TLS=self-signed` they name where the self-signed pair is kept instead. |
 | `FORKCAST_STATIC_DIR` | unset | A built frontend to serve at `/`. Unset serves the API only. |
 | `FORKCAST_ALLOWED_ORIGINS` | the Vite dev origins | Extra browser origins allowed to call the API cross-origin. Not needed when the frontend is served by the server itself. |
 
@@ -77,15 +82,49 @@ If the current frontend is opened from an address without a household server
 version), it says so and points to the installed app and the household
 server; it never opens, changes, or deletes data stored in that browser.
 
-## HTTPS and reverse proxies
+## HTTPS
 
-The server speaks plain HTTP and expects TLS to end at a reverse proxy.
-`deploy/Caddyfile` (used by the compose file) and `deploy/nginx.conf.example`
-are complete examples. Both disable response buffering for `/api/changes`, the
-server-sent event stream that tells clients to reload. Installed apps accept
-`https://` servers, or `http://` on the same machine; a LAN deployment should
-still use HTTPS (a private certificate authority or a name with a public
-certificate).
+Installed apps accept `https://` servers, or `http://` on the same machine.
+Passwords, session tokens, and members' ChatGPT sessions travel over this
+connection, so plain `http://` LAN addresses are refused. There are two ways
+to serve HTTPS.
+
+**The server's own certificate**, for a home network without a domain name or
+reverse proxy. Set `FORKCAST_TLS=self-signed`: on first start the server
+creates a certificate beside its database, keeps it across restarts and
+upgrades, and prints its SHA-256 fingerprint:
+
+```text
+Certificate SHA-256 fingerprint: 45:9C:29:25:…:D3:B1:F3:F5
+Forkcast backend listening on https://0.0.0.0:8787
+```
+
+`forkcast-backend --fingerprint` (with the same settings) prints it again.
+When an installed app connects to `https://<address>:8787`, Settings shows the
+fingerprint the server presented; compare it with the one above and confirm.
+The app then accepts only that certificate from this server, whatever its
+address, name, or expiry date, and refuses to send anything to a server that
+presents another one. Browsers show a certificate warning for the address
+once; accept it after checking the same fingerprint in the browser's
+certificate details.
+
+If the certificate files are lost or replaced (for example when only the
+database is restored onto a new server), joined apps stop synchronizing and
+say the server presented a different certificate; their changes stay on the
+device. **Check the server's certificate** in Settings then shows the new
+fingerprint to confirm, and synchronization resumes. Back up
+`forkcast.tls.crt` and `forkcast.tls.key` with the database to avoid this,
+and keep them as private as the database.
+
+**A reverse proxy with a publicly trusted certificate**, for a server with a
+public name. `deploy/Caddyfile` (used by the compose file) and
+`deploy/nginx.conf.example` are complete examples. Both disable response
+buffering for `/api/changes`, the server-sent event stream that tells clients
+to reload. Installed apps check such certificates against the public
+certificate authorities they ship with; authorities installed on the device
+are not consulted. A certificate from your own authority can instead be served
+by the server itself with `FORKCAST_TLS_CERT` and `FORKCAST_TLS_KEY`, and apps
+confirm its fingerprint as above.
 
 ## Upgrades
 

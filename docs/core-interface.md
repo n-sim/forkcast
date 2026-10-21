@@ -84,6 +84,8 @@ methods.
 | `aiRetryTransfer` / `aiCancelTransfer` | | `aiStatus`; resumes or cancels an unfinished handoff to the server |
 | `aiModels` | | `[{slug, displayName}]` |
 | `aiExecute` | `model`, `instructions`, `input` | `{text}`; the one execution interface every AI workflow uses |
+| `connectServer` | `serverUrl`, `certificate?` | `{serverUrl, setupRequired, untrustedCertificate}`. `https://` (or `http://` on loopback) only. A server whose certificate is not publicly trusted returns its SHA-256 fingerprint as `untrustedCertificate` and stores nothing; once the person confirms it, connecting again with it as `certificate` pins that certificate for the server (`pendingJoin.certificate`, then `syncStatus.serverCertificate`) |
+| `checkServerCertificate` / `trustServerCertificate` | / `certificate` | `{confirmed, presented, trusted}` for a joined profile's server, sending nothing to it / `syncStatus` after pinning a replaced certificate, refused unless the server presents exactly `certificate` |
 | `syncState` / `joinServer` / `acknowledgeSync` | `serverUrl`, `remoteHouseholdId`, `remoteAccountId` / `ids` | `{binding, pending}` |
 
 Server-only entry points are Rust methods and HTTP endpoints, not bridge operations:

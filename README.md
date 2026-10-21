@@ -121,7 +121,9 @@ hashes, the database stores only hashes of random bearer tokens, sessions last 3
 failed sign-ins for a username block further attempts for a minute (surviving restarts).
 
 **Joining from the app.** In **Settings → Backend & accounts**, enter the server's address, then
-set up or sign in. **Enable data synchronization** opens a review before anything is published or
+set up or sign in. A server with its own certificate shows its fingerprint first; compare it with
+the one the server prints and confirm, and the app then accepts only that certificate from it.
+**Enable data synchronization** opens a review before anything is published or
 replaced:
 
 - choose which local recipes to contribute (recipes whose IDs the household already has join as

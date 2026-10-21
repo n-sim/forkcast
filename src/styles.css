@@ -1123,3 +1123,9 @@ dialog .form-actions {
     padding-bottom: 16px;
   }
 }
+
+/* A certificate fingerprint is one long token; let it wrap anywhere. */
+.fingerprint {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, monospace;
+}

@@ -29,6 +29,10 @@ pub fn remove(path: &Path) {
 /// The household server, restartable on the same address and database.
 pub struct Server {
     pub url: String,
+    /// The fingerprint of the server's self-signed certificate, when it
+    /// serves HTTPS itself.
+    pub certificate: Option<String>,
+    tls: bool,
     secrets: Arc<MemorySecrets>,
     issuer: Option<String>,
     database: PathBuf,
@@ -45,7 +49,24 @@ impl Server {
             "127.0.0.1:0".parse().unwrap(),
             None,
             Default::default(),
+            false,
         )
+    }
+
+    /// A server that serves HTTPS itself with a self-signed certificate.
+    pub fn with_own_certificate() -> Self {
+        Self::start_on(
+            temp("server"),
+            "127.0.0.1:0".parse().unwrap(),
+            None,
+            Default::default(),
+            true,
+        )
+    }
+
+    /// The server's certificate files.
+    pub fn certificate_files(&self) -> forkcast_backend::tls::CertificateFiles {
+        forkcast_backend::tls::CertificateFiles::beside(&self.database)
     }
 
     /// A server whose ChatGPT sign-in talks to a fixture provider.
@@ -55,12 +76,13 @@ impl Server {
             "127.0.0.1:0".parse().unwrap(),
             Some(issuer.to_owned()),
             Default::default(),
+            false,
         )
     }
 
     /// A brand-new household server answering at `address`.
     pub fn fresh_at(address: SocketAddr) -> Self {
-        Self::start_on(temp("server"), address, None, Default::default())
+        Self::start_on(temp("server"), address, None, Default::default(), false)
     }
 
     /// The database file's bytes, for leak checks.
@@ -79,7 +101,15 @@ impl Server {
         address: SocketAddr,
         issuer: Option<String>,
         secrets: Arc<MemorySecrets>,
+        tls: bool,
     ) -> Self {
+        let identity = tls.then(|| {
+            forkcast_backend::tls::Identity::load_or_create(
+                &forkcast_backend::tls::CertificateFiles::beside(&database),
+            )
+            .unwrap()
+        });
+        let certificate = identity.as_ref().map(|identity| identity.fingerprint());
         let (ready, receive) = std::sync::mpsc::channel();
         let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
         let db = database.clone();
@@ -98,17 +128,34 @@ impl Server {
                 let core = Core::open(config).unwrap();
                 let listener = tokio::net::TcpListener::bind(address).await.unwrap();
                 ready.send(listener.local_addr().unwrap()).unwrap();
-                axum::serve(listener, router(core, vec![], None))
-                    .with_graceful_shutdown(async {
-                        let _ = stopped.await;
-                    })
-                    .await
-                    .unwrap();
+                let app = router(core, vec![], None);
+                let shutdown = async {
+                    let _ = stopped.await;
+                };
+                match identity {
+                    Some(identity) => {
+                        let listener = forkcast_backend::tls::TlsListener::new(
+                            listener,
+                            identity.acceptor().unwrap(),
+                        )
+                        .unwrap();
+                        axum::serve(listener, app)
+                            .with_graceful_shutdown(shutdown)
+                            .await
+                            .unwrap()
+                    }
+                    None => axum::serve(listener, app)
+                        .with_graceful_shutdown(shutdown)
+                        .await
+                        .unwrap(),
+                }
             });
         });
         let address = receive.recv().unwrap();
         Self {
-            url: format!("http://{address}"),
+            url: format!("{}://{address}", if tls { "https" } else { "http" }),
+            certificate,
+            tls,
             secrets,
             issuer,
             database,
@@ -136,6 +183,7 @@ impl Server {
             self.address,
             self.issuer.clone(),
             self.secrets.clone(),
+            self.tls,
         );
         let mut old = std::mem::replace(self, restarted);
         // The database now belongs to the restarted server.
@@ -215,6 +263,11 @@ impl Drop for OtherRelease {
 impl Drop for Server {
     fn drop(&mut self) {
         self.stop();
+        if !self.database.as_os_str().is_empty() {
+            let files = self.certificate_files();
+            let _ = std::fs::remove_file(files.certificate);
+            let _ = std::fs::remove_file(files.key);
+        }
         remove(&self.database);
     }
 }
@@ -305,7 +358,9 @@ impl Device {
     /// Sets up the server's first household and joins it, contributing
     /// everything on this device.
     pub fn found_household(&self, server: &Server) -> SyncStatus {
-        self.core.connect_server(&server.url).unwrap();
+        self.core
+            .connect_server(&server.url, server.certificate.as_deref())
+            .unwrap();
         self.core
             .authenticate_server(true, "admin", "correct horse battery", Some("Home"))
             .unwrap();
@@ -313,7 +368,9 @@ impl Device {
     }
 
     pub fn join_as(&self, server: &Server, username: &str, password: &str) -> SyncStatus {
-        self.core.connect_server(&server.url).unwrap();
+        self.core
+            .connect_server(&server.url, server.certificate.as_deref())
+            .unwrap();
         self.core
             .authenticate_server(false, username, password, None)
             .unwrap();
