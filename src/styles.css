@@ -1238,3 +1238,16 @@ dialog .form-actions {
   object-fit: contain;
   border-radius: 6px;
 }
+.recent-recipes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.recent-recipes .section-note {
+  flex-basis: 100%;
+  margin: 0;
+}
+.recent-recipes [aria-pressed='true'] {
+  outline: 2px solid currentColor;
+}

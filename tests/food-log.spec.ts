@@ -533,3 +533,76 @@ test('compare each day against the dated nutrition goals that applied then, acro
       .getByRole('heading'),
   ).toHaveText(['From 1 October 2026']);
 });
+
+test('quick-log a recently cooked recipe with its own date and portions without cooking logging intake', async ({
+  page,
+}) => {
+  await page.clock.setFixedTime(new Date(2026, 9, 20, 12, 0));
+  await page.goto('/');
+  for (const name of ['Lentil soup', 'Simple salad']) {
+    await page.getByRole('button', { name: 'New recipe', exact: true }).click();
+    await page.getByLabel('Recipe name', { exact: true }).fill(name);
+    await page.getByLabel('Ingredient 1 name', { exact: true }).fill('Base');
+    await page.getByLabel('Ingredient 1 quantity', { exact: true }).fill('100');
+    await page
+      .getByLabel('Step 1 instruction', { exact: true })
+      .fill('Prepare it.');
+    await page
+      .getByRole('button', { name: 'Save recipe', exact: true })
+      .click();
+    await expect(
+      page.getByRole('heading', { name, exact: true }),
+    ).toBeVisible();
+    if (name === 'Lentil soup')
+      await page
+        .getByRole('button', { name: 'Mark cooked', exact: true })
+        .click();
+    await expect(
+      page.getByRole('region', { name: 'Cooking history' }),
+    ).toContainText(name === 'Lentil soup' ? 'Cooked 1 time' : 'Not cooked');
+  }
+
+  await page.getByRole('link', { name: 'Food log', exact: true }).click();
+  await expect(
+    page.getByText('No food logged for this day.', { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole('button', { name: 'Log recipe portions', exact: true })
+    .click();
+  const recent = page.getByRole('group', { name: 'Recently cooked' });
+  // Only cooked recipes are suggested.
+  await expect(recent.getByRole('button')).toHaveCount(1);
+  await recent.getByRole('button', { name: /Lentil soup/ }).click();
+  await expect(
+    recent.getByRole('button', { name: /Lentil soup/ }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    page.getByLabel('Recipe', { exact: true }).locator('option:checked'),
+  ).toHaveText('Lentil soup');
+  await page
+    .getByLabel('Consumed at', { exact: true })
+    .fill('2026-10-19T19:30');
+  await page.getByLabel('Portions eaten', { exact: true }).fill('0.5');
+  await page.getByRole('button', { name: 'Save entry', exact: true }).click();
+  await expect(
+    page.getByRole('status', { name: 'Food log status', exact: true }),
+  ).toContainText('Food-log entry saved');
+  await expect(page.getByLabel('Food log date', { exact: true })).toHaveValue(
+    '2026-10-19',
+  );
+  const entries = page.getByRole('list', {
+    name: 'Food-log entries',
+    exact: true,
+  });
+  await expect(entries.getByRole('heading')).toHaveText(['Lentil soup']);
+  await expect(entries).toContainText('0.5 portions eaten');
+
+  // The cooked-but-uneaten salad day and the unrelated day stay empty.
+  await page.getByLabel('Food log date', { exact: true }).fill('2026-10-20');
+  await expect(
+    page.getByText('No food logged for this day.', { exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByLabel('Food log date', { exact: true }).fill('2026-10-19');
+  await expect(entries.getByRole('heading')).toHaveText(['Lentil soup']);
+});
