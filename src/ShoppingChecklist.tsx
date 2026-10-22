@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatQuantity, unitLabels } from './domain';
-import { shoppingComplete } from './shopping';
+import { shoppingComplete, type GeneratedShoppingItem } from './shopping';
 import {
   checkShoppingItem,
   completeShoppingList,
@@ -98,6 +98,9 @@ export function ShoppingChecklistView() {
                   <span>
                     {item.name}, {formatQuantity(item.quantity)}{' '}
                     {unitLabels[item.unit]}
+                    {(item as GeneratedShoppingItem).convertedFrom?.length
+                      ? ' (estimated)'
+                      : ''}
                   </span>
                 </label>
               ))}

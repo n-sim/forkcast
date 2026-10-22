@@ -1,5 +1,8 @@
 import {
   validateShoppingItem,
+  type ConversionDimension,
+  type ConversionOffer,
+  type IngredientConversion,
   type ShoppingItem,
   type ShoppingList,
   type ShoppingSourceStatus,
@@ -12,12 +15,14 @@ export type EditableShoppingList = ShoppingList & {
   sourceStatus: ShoppingSourceStatus;
   /** Contributing recipes archived since the list was generated. */
   archivedRecipeIds: string[];
+  conversionOffers: ConversionOffer[];
 };
 
 interface ShoppingListView {
   list: ShoppingList;
   sourceStatus: ShoppingSourceStatus;
   archivedRecipeIds: string[];
+  conversionOffers: ConversionOffer[];
   editBase: PlanningEditBase | null;
 }
 
@@ -27,6 +32,7 @@ function editable(view: ShoppingListView): EditableShoppingList {
     editBase: view.editBase ?? undefined,
     sourceStatus: view.sourceStatus,
     archivedRecipeIds: view.archivedRecipeIds,
+    conversionOffers: view.conversionOffers,
   };
 }
 
@@ -116,6 +122,52 @@ export async function completeShoppingList(
   return editable(
     await execute<ShoppingListView>('completeShoppingList', {
       listId,
+      editBase: editBase ?? null,
+    }),
+  );
+}
+
+/**
+ * Asks the core for an AI estimate of an ingredient's mass. It is a
+ * suggestion: nothing changes until the person accepts it.
+ */
+export const estimateIngredientConversion = (
+  model: string,
+  name: string,
+  dimension: ConversionDimension,
+) =>
+  execute<IngredientConversion>(
+    'estimateIngredientConversion',
+    { model, name, dimension },
+    // An estimate can legitimately take minutes.
+    200_000,
+  );
+
+export async function acceptIngredientConversion(
+  listId: string,
+  conversion: IngredientConversion,
+  editBase?: PlanningEditBase,
+): Promise<EditableShoppingList> {
+  return editable(
+    await execute<ShoppingListView>('acceptIngredientConversion', {
+      listId,
+      conversion,
+      editBase: editBase ?? null,
+    }),
+  );
+}
+
+export async function declineIngredientConversion(
+  listId: string,
+  name: string,
+  dimension: ConversionDimension,
+  editBase?: PlanningEditBase,
+): Promise<EditableShoppingList> {
+  return editable(
+    await execute<ShoppingListView>('declineIngredientConversion', {
+      listId,
+      name,
+      dimension,
       editBase: editBase ?? null,
     }),
   );

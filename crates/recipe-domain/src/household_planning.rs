@@ -49,6 +49,7 @@ pub fn validate(data: &Value) -> Result<(), String> {
             "contributions",
             "manualItems",
             "completed",
+            "conversions",
         ],
     )?;
     let start = list["startDate"].as_str().ok_or_else(invalid)?;
@@ -108,6 +109,7 @@ pub fn validate(data: &Value) -> Result<(), String> {
             }
         }
     }
+    let conversion_ids = validate_conversions(list)?;
     let mut ids = BTreeSet::new();
     for kind in ["items", "manualItems"] {
         for item in list[kind].as_array().ok_or_else(invalid)? {
@@ -120,6 +122,7 @@ pub fn validate(data: &Value) -> Result<(), String> {
                     "checked",
                     "sources",
                     "needsReview",
+                    "convertedFrom",
                 ][..]
             } else {
                 &["id", "name", "quantity", "unit", "checked"][..]
@@ -140,6 +143,22 @@ pub fn validate(data: &Value) -> Result<(), String> {
             if kind == "items" {
                 if !item["needsReview"].is_boolean() {
                     return Err(invalid());
+                }
+                if let Some(origins) = item.get("convertedFrom") {
+                    for origin in origins.as_array().ok_or_else(invalid)? {
+                        fields(origin, &["quantity", "unit", "conversionId"])?;
+                        let quantity = origin["quantity"].as_f64();
+                        let unit =
+                            serde_json::from_value::<crate::recipe::Unit>(origin["unit"].clone());
+                        if !quantity.is_some_and(|n| n.is_finite() && n > 0.0)
+                            || unit.is_err()
+                            || !origin["conversionId"]
+                                .as_str()
+                                .is_some_and(|id| conversion_ids.contains(id))
+                        {
+                            return Err(invalid());
+                        }
+                    }
                 }
                 for source in item["sources"].as_array().ok_or_else(invalid)? {
                     fields(source, &["cookingId", "ingredientId"])?;
@@ -162,6 +181,67 @@ pub fn validate(data: &Value) -> Result<(), String> {
     Ok(())
 }
 
+/// The list's accepted and declined ingredient conversions, by identity.
+fn validate_conversions(list: &Value) -> Result<BTreeSet<&str>, String> {
+    use crate::ingredient_conversion::{
+        EstimatedDimension, IngredientConversion, validate_conversion,
+    };
+    let invalid = || "Check the shared meal plan and shopping list.".to_owned();
+    let mut ids = BTreeSet::new();
+    let Some(conversions) = list.get("conversions") else {
+        return Ok(ids);
+    };
+    for conversion in conversions.as_array().ok_or_else(invalid)? {
+        fields(
+            conversion,
+            &[
+                "id",
+                "name",
+                "dimension",
+                "status",
+                "source",
+                "grams",
+                "note",
+            ],
+        )?;
+        let id = conversion["id"]
+            .as_str()
+            .filter(|id| !id.trim().is_empty())
+            .ok_or_else(invalid)?;
+        let dimension: EstimatedDimension =
+            serde_json::from_value(conversion["dimension"].clone()).map_err(|_| invalid())?;
+        let name = conversion["name"].as_str().ok_or_else(invalid)?;
+        match conversion["status"].as_str() {
+            Some("accepted") => {
+                if conversion["source"] != "ai" {
+                    return Err(invalid());
+                }
+                validate_conversion(IngredientConversion {
+                    name: name.to_owned(),
+                    dimension,
+                    grams: conversion["grams"].as_f64().ok_or_else(invalid)?,
+                    note: conversion["note"].as_str().map(str::to_owned),
+                })
+                .map_err(|_| invalid())?;
+            }
+            Some("declined") => {
+                if name.trim().is_empty()
+                    || ["grams", "note", "source"]
+                        .iter()
+                        .any(|field| conversion.get(field).is_some())
+                {
+                    return Err(invalid());
+                }
+            }
+            _ => return Err(invalid()),
+        }
+        if !ids.insert(id) {
+            return Err(invalid());
+        }
+    }
+    Ok(ids)
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Conflict {
@@ -177,6 +257,18 @@ pub struct Merged {
 
 pub fn empty() -> Value {
     json!({"cookings": {}, "shoppingList": null})
+}
+
+/// Records identified by `id`, without the checklist default items carry.
+fn keyed_records(records: &Value) -> Value {
+    Value::Object(
+        records
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|record| Some((record.get("id")?.as_str()?.to_owned(), record.clone())))
+            .collect(),
+    )
 }
 
 fn keyed(items: &Value) -> Value {
@@ -223,6 +315,10 @@ fn normalize(data: &Value) -> Value {
             .or_insert(Value::Bool(false));
         let manual = requirements.remove("manualItems").unwrap_or(json!([]));
         requirements.insert("items".into(), keyed(&requirements["items"]));
+        if let Some(conversions) = requirements.get("conversions") {
+            let conversions = keyed_records(conversions);
+            requirements.insert("conversions".into(), conversions);
+        }
         data["shoppingList"] = json!({"requirements": requirements, "manualItems": keyed(&manual)});
     }
     data
@@ -250,6 +346,10 @@ fn denormalize(mut data: Value) -> Value {
             requirements.remove("completed");
         }
         requirements.insert("items".into(), unkey(&requirements["items"]));
+        if let Some(conversions) = requirements.get("conversions") {
+            let conversions = unkey(conversions);
+            requirements.insert("conversions".into(), conversions);
+        }
         requirements.insert("manualItems".into(), unkey(&list["manualItems"]));
         data["shoppingList"] = Value::Object(requirements);
     }
@@ -497,7 +597,7 @@ pub fn choose(data: &Value, path: &[String], value: &Value) -> Option<Value> {
     let object = node.as_object_mut()?;
     let record = matches!(
         parents.last().map(String::as_str),
-        Some("cookings" | "items" | "manualItems")
+        Some("cookings" | "items" | "manualItems" | "conversions")
     );
     if value.is_null() && record {
         object.remove(last);

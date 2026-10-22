@@ -4,13 +4,16 @@
 
 use crate::{
     AccountChange, AiRequest, ApplyCookingPlan, ArchiveRecipe, CookingChoice, CookingOutcome, Core,
-    Credentials, CurrentChoice, EditBase, EstimateFood, GenerateCookingPlan, JoinSelection,
-    LogManualFood, LogRecipeFood, MarkCooked, Photo, PlanningChoice, Principal, ScheduleCookings,
-    ServerSelection, SetCoverPhoto, ShoppingItemKind, StartCooking,
+    Credentials, CurrentChoice, EditBase, EstimateConversion, EstimateFood, GenerateCookingPlan,
+    JoinSelection, LogManualFood, LogRecipeFood, MarkCooked, Photo, PlanningChoice, Principal,
+    ScheduleCookings, ServerSelection, SetCoverPhoto, ShoppingItemKind, StartCooking,
     error::{Error, Result},
 };
 use forkcast_recipe_domain::{
-    nutrition_goals::NutritionGoals, planning::PlannedCooking, shopping::ShoppingItem,
+    ingredient_conversion::{EstimatedDimension, IngredientConversion},
+    nutrition_goals::NutritionGoals,
+    planning::PlannedCooking,
+    shopping::ShoppingItem,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -100,6 +103,21 @@ pub enum Operation {
     },
     CompleteShoppingList {
         list_id: String,
+        edit_base: Option<EditBase>,
+    },
+    EstimateIngredientConversion {
+        #[serde(flatten)]
+        request: EstimateConversion,
+    },
+    AcceptIngredientConversion {
+        list_id: String,
+        conversion: IngredientConversion,
+        edit_base: Option<EditBase>,
+    },
+    DeclineIngredientConversion {
+        list_id: String,
+        name: String,
+        dimension: EstimatedDimension,
         edit_base: Option<EditBase>,
     },
     CookingSessions,
@@ -343,6 +361,26 @@ impl Core {
             } => json(self.check_shopping_item(principal, &list_id, &item_id, checked, edit_base)?),
             CompleteShoppingList { list_id, edit_base } => {
                 json(self.complete_shopping_list(principal, &list_id, edit_base)?)
+            }
+            EstimateIngredientConversion { request } => {
+                json(self.estimate_ingredient_conversion(principal, request)?)
+            }
+            AcceptIngredientConversion {
+                list_id,
+                conversion,
+                edit_base,
+            } => {
+                json(self.accept_ingredient_conversion(principal, &list_id, conversion, edit_base)?)
+            }
+            DeclineIngredientConversion {
+                list_id,
+                name,
+                dimension,
+                edit_base,
+            } => {
+                json(self.decline_ingredient_conversion(
+                    principal, &list_id, &name, dimension, edit_base,
+                )?)
             }
             CookingSessions => json(self.cooking_sessions(principal)?),
             StartCooking { start } => json(self.start_cooking(principal, start)?),

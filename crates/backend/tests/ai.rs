@@ -1231,3 +1231,343 @@ fn invalid_requests_images_and_replies_never_log_anything() {
         600.0
     );
 }
+
+// Ingredient-dependent conversions: AI estimates for shopping quantities that
+// differ in kind, applied only when the person accepts them.
+
+const LIST_DAY: &str = "2030-05-06";
+
+fn measured_recipe(id: &str, name: &str, quantity: f64, unit: &str) -> Value {
+    json!({
+        "id": id, "name": name, "basePortions": 2,
+        "ingredients": [{"id": "oil", "name": "Olive oil", "quantity": quantity, "unit": unit}],
+        "steps": [{
+            "id": "mix", "instruction": "Mix.",
+            "allocations": [{"ingredientId": "oil", "quantity": quantity, "unit": unit}],
+        }],
+        "difficulty": "easy", "activeMinutes": 5, "totalMinutes": 10,
+    })
+}
+
+/// A list whose olive oil is measured by volume in one recipe and by mass in another.
+fn oil_list(device: &Device, volume_unit: &str, volume: f64) -> Value {
+    for (id, recipe) in [
+        (
+            "dressing",
+            measured_recipe("dressing", "Dressing", volume, volume_unit),
+        ),
+        ("frying", measured_recipe("frying", "Frying", 30.0, "g")),
+    ] {
+        device.op(json!({"operation": "saveRecipe", "recipe": recipe}));
+        plan(device, &format!("cook-{id}"), id, LIST_DAY, 2.0);
+    }
+    device.op(json!({
+        "operation": "generateShoppingList", "startDate": LIST_DAY, "endDate": LIST_DAY,
+        "replacingListId": null, "editBase": null,
+    }))
+}
+
+fn oil_items(view: &Value) -> Vec<(f64, String)> {
+    view["list"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| {
+            (
+                item["quantity"].as_f64().unwrap(),
+                item["unit"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect()
+}
+
+fn estimate_conversion(
+    device: &Device,
+    name: &str,
+    dimension: &str,
+) -> forkcast_core::Result<Value> {
+    device.try_op(json!({
+        "operation": "estimateIngredientConversion", "model": "fixture-recipe",
+        "name": name, "dimension": dimension,
+    }))
+}
+
+fn accept_conversion(device: &Device, view: &Value, grams: f64) -> forkcast_core::Result<Value> {
+    device.try_op(json!({
+        "operation": "acceptIngredientConversion", "listId": view["list"]["id"],
+        "conversion": {"name": "Olive oil", "dimension": "volume", "grams": grams, "note": "about 0.91 g/ml"},
+        "editBase": view["editBase"],
+    }))
+}
+
+#[test]
+fn an_estimate_is_reviewed_and_only_an_accepted_one_combines_shopping_quantities() {
+    let provider = Provider::start();
+    let device = Device::with_provider(&provider.issuer);
+    let view = oil_list(&device, "tbsp", 2.0);
+    let volume = 2.0 * 236.588_236_5 / 16.0;
+
+    // Mass and volume of one ingredient stay separate, and offer an estimate.
+    assert_eq!(oil_items(&view).len(), 2);
+    assert_eq!(view["conversionOffers"].as_array().unwrap().len(), 1);
+    let offer = &view["conversionOffers"][0];
+    assert_eq!(
+        (offer["name"].as_str(), offer["dimension"].as_str()),
+        (Some("Olive oil"), Some("volume"))
+    );
+    assert_eq!(offer["declined"], false);
+    assert!(
+        view["list"]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["needsReview"] == true)
+    );
+
+    // Without an AI connection nothing combines and the list is unchanged.
+    assert_eq!(
+        estimate_conversion(&device, "Olive oil", "volume")
+            .unwrap_err()
+            .kind,
+        ErrorKind::ConnectionRequired
+    );
+    let unchanged = device.op(json!({"operation": "shoppingList"}));
+    assert_eq!(unchanged, view);
+
+    // An estimate is a suggestion: it changes nothing and carries its note.
+    connect(&device, &provider);
+    provider.with(|s| s.reply = json!({"grams": 91, "note": "Olive oil is about 0.91 g/ml."}));
+    let estimate = estimate_conversion(&device, " Olive oil ", "volume").unwrap();
+    assert_eq!(
+        estimate,
+        json!({"name": "Olive oil", "dimension": "volume", "grams": 91.0, "note": "Olive oil is about 0.91 g/ml."})
+    );
+    let request = provider.with(|s| s.requests.last().cloned().unwrap());
+    let sent = request["input"][0]["content"].as_str().unwrap().to_owned();
+    assert!(
+        sent.contains("Olive oil") && sent.contains("100 millilitres"),
+        "{sent}"
+    );
+    assert_eq!(device.op(json!({"operation": "shoppingList"})), view);
+
+    // Declining keeps the quantities separate and the decision is retained.
+    let mut declined = device.op(json!({
+        "operation": "declineIngredientConversion", "listId": view["list"]["id"],
+        "name": "Olive oil", "dimension": "volume", "editBase": view["editBase"],
+    }));
+    assert_eq!(oil_items(&declined).len(), 2);
+    assert_eq!(declined["conversionOffers"][0]["declined"], true);
+    assert_eq!(declined["list"]["conversions"][0]["status"], "declined");
+    let mut device = device;
+    device.restart();
+    declined = device.op(json!({"operation": "shoppingList"}));
+    assert_eq!(declined["conversionOffers"][0]["declined"], true);
+    assert_eq!(oil_items(&declined).len(), 2);
+
+    // Accepting a new estimate applies it to the scaled recipe totals.
+    let accepted = accept_conversion(&device, &declined, 91.0).unwrap();
+    assert_eq!(accepted["conversionOffers"], json!([]));
+    let items = accepted["list"]["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    let expected = 30.0 + volume / 100.0 * 91.0;
+    assert!((items[0]["quantity"].as_f64().unwrap() - expected).abs() < 1e-9);
+    assert_eq!(items[0]["unit"], "g");
+    assert_eq!(items[0]["needsReview"], false);
+    assert_eq!(items[0]["sources"].as_array().unwrap().len(), 2);
+    assert_eq!(items[0]["convertedFrom"][0]["unit"], "ml");
+    let conversions = accepted["list"]["conversions"].as_array().unwrap();
+    assert_eq!(conversions.len(), 1);
+    assert_eq!(
+        (
+            conversions[0]["status"].as_str(),
+            conversions[0]["source"].as_str()
+        ),
+        (Some("accepted"), Some("ai"))
+    );
+    assert_eq!(
+        items[0]["convertedFrom"][0]["conversionId"],
+        conversions[0]["id"]
+    );
+
+    // Recipe totals and step allocations stay authoritative, and so do the
+    // list's recorded contributions and source status.
+    for (id, quantity, unit) in [("dressing", 2.0, "tbsp"), ("frying", 30.0, "g")] {
+        let recipes = device.op(json!({"operation": "recipes"}));
+        let recipe = recipes
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["recipe"]["id"] == id)
+            .unwrap();
+        let ingredient = &recipe["recipe"]["ingredients"][0];
+        assert_eq!(
+            (ingredient["quantity"].as_f64(), ingredient["unit"].as_str()),
+            (Some(quantity), Some(unit))
+        );
+        assert_eq!(
+            recipe["recipe"]["steps"][0]["allocations"][0]["quantity"].as_f64(),
+            Some(quantity)
+        );
+    }
+    assert_eq!(
+        accepted["list"]["contributions"],
+        view["list"]["contributions"]
+    );
+    assert_eq!(accepted["sourceStatus"], "unchanged");
+
+    // Acceptance survives a restart; a stale second acceptance changes nothing.
+    device.restart();
+    assert_eq!(device.op(json!({"operation": "shoppingList"})), accepted);
+    assert_eq!(
+        accept_conversion(&device, &accepted, 91.0)
+            .unwrap_err()
+            .kind,
+        ErrorKind::Invalid
+    );
+
+    // Regenerating reviews the recipe requirements afresh, without the estimate.
+    let regenerated = device.op(json!({
+        "operation": "generateShoppingList", "startDate": LIST_DAY, "endDate": LIST_DAY,
+        "replacingListId": accepted["list"]["id"], "editBase": accepted["editBase"],
+    }));
+    assert_eq!(oil_items(&regenerated).len(), 2);
+    assert!(regenerated["list"].get("conversions").is_none());
+}
+
+#[test]
+fn compatible_dimensions_combine_exactly_without_asking_ai() {
+    let provider = Provider::start();
+    let device = Device::with_provider(&provider.issuer);
+    connect(&device, &provider);
+    let before = provider.with(|s| s.requests.len());
+    // Tablespoons and millilitres of one ingredient are both volume.
+    for (id, recipe) in [
+        (
+            "dressing",
+            measured_recipe("dressing", "Dressing", 2.0, "tbsp"),
+        ),
+        ("frying", measured_recipe("frying", "Frying", 30.0, "ml")),
+    ] {
+        device.op(json!({"operation": "saveRecipe", "recipe": recipe}));
+        plan(&device, &format!("cook-{id}"), id, LIST_DAY, 2.0);
+    }
+    let view = device.op(json!({
+        "operation": "generateShoppingList", "startDate": LIST_DAY, "endDate": LIST_DAY,
+        "replacingListId": null, "editBase": null,
+    }));
+    let items = oil_items(&view);
+    assert_eq!(items.len(), 1);
+    assert!((items[0].0 - (30.0 + 2.0 * 236.588_236_5 / 16.0)).abs() < 1e-9);
+    assert_eq!(items[0].1, "ml");
+    assert_eq!(view["conversionOffers"], json!([]));
+    assert_eq!(provider.with(|s| s.requests.len()), before);
+}
+
+#[test]
+fn invalid_estimates_and_acceptances_never_change_the_list() {
+    let provider = Provider::start();
+    let device = Device::with_provider(&provider.issuer);
+    let view = oil_list(&device, "ml", 40.0);
+    connect(&device, &provider);
+    let sent = || provider.with(|s| s.requests.len());
+    let before = sent();
+    for request in [("   ", "volume"), (&"x".repeat(201), "count")] {
+        assert_eq!(
+            estimate_conversion(&device, request.0, request.1)
+                .unwrap_err()
+                .kind,
+            ErrorKind::Invalid,
+            "{request:?}"
+        );
+    }
+    assert_eq!(sent(), before, "invalid requests reached the provider");
+    for reply in [
+        json!("About 91 g."),
+        json!({"note": "no weight"}),
+        json!({"grams": 0}),
+        json!({"grams": -4}),
+        json!({"grams": 91000}),
+        json!({"grams": 91, "density": 0.91}),
+    ] {
+        provider.with(|s| s.reply = reply.clone());
+        let failure = estimate_conversion(&device, "Olive oil", "volume").unwrap_err();
+        assert_eq!(failure.kind, ErrorKind::Invalid, "{reply}");
+        assert!(
+            failure.message.contains("shopping list was not changed"),
+            "{}",
+            failure.message
+        );
+    }
+    provider.with(|s| s.failure = Some("http".into()));
+    assert!(estimate_conversion(&device, "Olive oil", "volume").is_err());
+    for grams in [0.0, -1.0, 100_000.0] {
+        assert!(accept_conversion(&device, &view, grams).is_err(), "{grams}");
+    }
+    // Only an ingredient that really needs a conversion can be accepted.
+    let other = device.try_op(json!({
+        "operation": "acceptIngredientConversion", "listId": view["list"]["id"],
+        "conversion": {"name": "Salt", "dimension": "volume", "grams": 90}, "editBase": null,
+    }));
+    assert_eq!(other.unwrap_err().kind, ErrorKind::Invalid);
+    assert_eq!(device.op(json!({"operation": "shoppingList"})), view);
+}
+
+#[test]
+fn joined_devices_and_browsers_share_estimates_and_synchronize_accepted_conversions() {
+    let home = household();
+    set_up_on_server(&home, &home.admin);
+    home.provider
+        .with(|s| s.reply = json!({"grams": 91, "note": "About 0.91 g/ml."}));
+    let view = oil_list(&home.admin, "ml", 40.0);
+    home.admin.sync();
+
+    // A browser estimates and accepts through the server's core.
+    let token = login(&home.server, "admin");
+    let operation = |body: Value| {
+        api(
+            "POST",
+            &format!("{}/api/operations", home.server.url),
+            Some(&token),
+            Some(&body),
+        )
+    };
+    let (code, listed) = operation(json!({"operation": "shoppingList"}));
+    assert_eq!(code, 200, "{listed}");
+    assert_eq!(listed["conversionOffers"][0]["dimension"], "volume");
+    let (code, estimate) = operation(json!({
+        "operation": "estimateIngredientConversion", "model": "fixture-recipe",
+        "name": "Olive oil", "dimension": "volume",
+    }));
+    assert_eq!(code, 200, "{estimate}");
+    assert_eq!(estimate["grams"], 91.0);
+    let (code, accepted) = operation(json!({
+        "operation": "acceptIngredientConversion", "listId": view["list"]["id"],
+        "conversion": estimate, "editBase": listed["editBase"],
+    }));
+    assert_eq!(code, 200, "{accepted}");
+    assert_eq!(accepted["list"]["items"].as_array().unwrap().len(), 1);
+
+    // The installed app receives the accepted conversion with its uncertainty.
+    home.admin.sync();
+    let synced = home.admin.op(json!({"operation": "shoppingList"}));
+    assert_eq!(synced["list"]["items"], accepted["list"]["items"]);
+    assert_eq!(
+        synced["list"]["conversions"],
+        accepted["list"]["conversions"]
+    );
+    assert_eq!(synced["list"]["conversions"][0]["source"], "ai");
+    assert_eq!(synced["list"]["items"][0]["convertedFrom"][0]["unit"], "ml");
+    assert_eq!(synced["conversionOffers"], json!([]));
+
+    // The app's own acceptance synchronizes the other way, too.
+    let second = home.admin.op(json!({
+        "operation": "generateShoppingList", "startDate": LIST_DAY, "endDate": LIST_DAY,
+        "replacingListId": synced["list"]["id"], "editBase": synced["editBase"],
+    }));
+    assert_eq!(oil_items(&second).len(), 2);
+    let applied = accept_conversion(&home.admin, &second, 91.0).unwrap();
+    home.admin.sync();
+    let (_, seen) = operation(json!({"operation": "shoppingList"}));
+    assert_eq!(seen["list"]["items"], applied["list"]["items"]);
+    assert_eq!(seen["list"]["conversions"], applied["list"]["conversions"]);
+}

@@ -3,7 +3,7 @@
 //! conflict is retained for review rather than overwritten.
 
 use crate::{
-    Core,
+    AiRequest, Core,
     changes::{Effects, Topic},
     error::{Error, Result},
     principal::Principal,
@@ -13,6 +13,9 @@ use crate::{
 use forkcast_recipe_domain::{
     calendar::cooking_time_rank,
     household_planning::{self, Conflict, GenerationAlias},
+    ingredient_conversion::{
+        self, ConversionOffer, EstimatedDimension, IngredientConversion, read_conversion_estimate,
+    },
     planning::{PlannedCooking, validate_planned_cooking},
     recipe::RecipeDraft,
     shopping::{self, RecipeContribution, ShoppingItem},
@@ -341,6 +344,21 @@ pub(crate) fn edit(
     Ok(saved)
 }
 
+const MAX_CONVERSION_NAME_CHARS: usize = 200;
+
+const CONVERSION_CONTRACT: &str = r#"Estimate how much a food ingredient weighs, so a shopping list can add an amount measured by volume or by count to an amount measured by mass.
+Return only a JSON object, without Markdown, in this structure: {"grams":91,"note":"Olive oil is about 0.91 g/ml."}.
+grams is the mass in grams of the reference amount named in the request, a positive finite number for a typical form of the ingredient. note states the assumption in up to 200 characters, or is null. Do not include any other fields."#;
+
+/// An AI estimate of an ingredient's mass for one reference amount.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EstimateConversion {
+    pub model: String,
+    pub name: String,
+    pub dimension: EstimatedDimension,
+}
+
 #[derive(Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum ShoppingItemKind {
@@ -375,6 +393,9 @@ pub struct ShoppingListView {
     /// Contributing recipes archived since the list was generated. Their
     /// contributions and the reviewed items stay as they are.
     pub archived_recipe_ids: Vec<String>,
+    /// Generated items that need an accepted estimate before they can combine
+    /// with the same ingredient measured another way.
+    pub conversion_offers: Vec<ConversionOffer>,
     pub edit_base: Option<EditBase>,
 }
 
@@ -622,6 +643,7 @@ impl Core {
             list: data["shoppingList"].clone(),
             source_status: status,
             archived_recipe_ids,
+            conversion_offers: ingredient_conversion::conversion_offers(&data["shoppingList"]),
             edit_base: view_base(db, &data)?,
         }))
     }
@@ -774,6 +796,75 @@ impl Core {
         self.change_list(principal, list_id, base, |list| {
             list["completed"] = Value::Bool(true);
             Ok(())
+        })
+    }
+
+    /// Asks the person's AI connection how much an ingredient weighs, as a
+    /// suggestion to review. Stores nothing and changes no quantity: only
+    /// [`Core::accept_ingredient_conversion`] applies an estimate.
+    pub fn estimate_ingredient_conversion(
+        &self,
+        principal: &Principal,
+        input: EstimateConversion,
+    ) -> Result<IngredientConversion> {
+        principal.require_personal()?;
+        let name = input.name.trim();
+        if name.is_empty() || name.chars().count() > MAX_CONVERSION_NAME_CHARS {
+            return Err(Error::invalid("Name the ingredient to convert."));
+        }
+        let reference = match input.dimension {
+            EstimatedDimension::Volume => "100 millilitres",
+            EstimatedDimension::Count => "1 piece (one whole item)",
+        };
+        let text = self.ai_execute(
+            principal,
+            AiRequest {
+                model: input.model,
+                instructions: CONVERSION_CONTRACT.to_owned(),
+                input: format!("Ingredient: {name}\nReference amount: {reference}"),
+                image: None,
+            },
+        )?;
+        read_conversion_estimate(&text, name, input.dimension).map_err(|detail| {
+            Error::invalid(format!(
+                "ChatGPT returned an invalid conversion estimate. {detail} Try again. Your shopping list was not changed."
+            ))
+        })
+    }
+
+    /// Applies an estimate the person accepted: the item measured by volume
+    /// or count becomes grams and combines with the ingredient's mass.
+    pub fn accept_ingredient_conversion(
+        &self,
+        principal: &Principal,
+        list_id: &str,
+        conversion: IngredientConversion,
+        base: Option<EditBase>,
+    ) -> Result<ShoppingListView> {
+        self.change_list(principal, list_id, base, |list| {
+            ingredient_conversion::accept_conversion(list, conversion, &Uuid::new_v4().to_string())
+                .map_err(Error::invalid)
+        })
+    }
+
+    /// Records that the person declined an estimate. The quantities stay
+    /// separate, as they do when no AI connection exists.
+    pub fn decline_ingredient_conversion(
+        &self,
+        principal: &Principal,
+        list_id: &str,
+        name: &str,
+        dimension: EstimatedDimension,
+        base: Option<EditBase>,
+    ) -> Result<ShoppingListView> {
+        self.change_list(principal, list_id, base, |list| {
+            ingredient_conversion::decline_conversion(
+                list,
+                name,
+                dimension,
+                &Uuid::new_v4().to_string(),
+            )
+            .map_err(Error::invalid)
         })
     }
 }

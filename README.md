@@ -353,6 +353,15 @@ compatible mass, volume, and piece quantities combine using the shared Rust conv
 Mass, volume, and pieces remain separate when a density or piece weight is unknown,
 with a **Review conversion** notice. Different ingredient names are not guessed to match.
 
+With ChatGPT connected, a volume or piece amount flagged for review offers **Estimate
+conversion**: ChatGPT estimates what 100 ml or one piece of that ingredient weighs, for
+example olive oil tablespoons to grams. The estimate is a suggestion that changes nothing.
+**Accept estimate** converts that amount to grams and adds it to the ingredient's mass;
+the item then notes the estimated conversion it includes. **Decline estimate** keeps the
+quantities separate, and without ChatGPT they also stay separate. Recipe ingredient totals
+and step allocations never change: the estimate only affects how the shopping list combines
+their scaled amounts, and regenerating the list reviews the requirements afresh.
+
 Use **Save quantity** or **Remove item** to review generated requirements. Each item's
 **From:** note links directly to its source recipes and retains the cooking dates and
 planned portions captured when generated. **Add manual item**

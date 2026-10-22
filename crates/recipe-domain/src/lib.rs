@@ -2,6 +2,7 @@ pub mod calendar;
 pub mod cooking;
 pub mod food_log;
 pub mod household_planning;
+pub mod ingredient_conversion;
 pub mod nutrition;
 pub mod nutrition_goals;
 pub mod plan_generation;
