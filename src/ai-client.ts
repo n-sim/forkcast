@@ -84,6 +84,8 @@ export interface AiPreferences {
   recipePrompt: string;
   recipeModel: string | null;
   planPrompt: string;
+  /** How supermarket products are chosen when filling a Gurkerl cart. */
+  cartPrompt: string;
 }
 
 export const loadAiPreferences = () => execute<AiPreferences>('aiPreferences');

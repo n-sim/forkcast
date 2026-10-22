@@ -2,6 +2,7 @@
 //! Real installed cores and a real household server, over real HTTP and
 //! SQLite, for the synchronization journeys.
 
+pub mod gurkerl;
 pub mod provider;
 
 use forkcast_backend::router;
@@ -285,42 +286,67 @@ pub struct Device {
     database: PathBuf,
     secrets: Arc<MemorySecrets>,
     issuer: Option<String>,
+    supermarket: Option<String>,
 }
 
 impl Device {
     pub fn new() -> Self {
-        Self::build(None)
+        Self::build(None, None)
     }
 
     /// An installed app whose ChatGPT sign-in talks to a fixture provider.
     pub fn with_provider(issuer: &str) -> Self {
-        Self::build(Some(issuer.to_owned()))
+        Self::build(Some(issuer.to_owned()), None)
     }
 
-    fn build(issuer: Option<String>) -> Self {
+    /// An installed app whose ChatGPT and Gurkerl sign-ins talk to fixtures.
+    pub fn with_supermarket(issuer: &str, supermarket: &str) -> Self {
+        Self::build(Some(issuer.to_owned()), Some(supermarket.to_owned()))
+    }
+
+    fn build(issuer: Option<String>, supermarket: Option<String>) -> Self {
         let database = temp("device");
         let secrets = Arc::new(MemorySecrets::default());
-        let core = Self::open(&database, &secrets, issuer.as_deref());
+        let core = Self::open(
+            &database,
+            &secrets,
+            issuer.as_deref(),
+            supermarket.as_deref(),
+        );
         Self {
             core,
             database,
             secrets,
             issuer,
+            supermarket,
         }
     }
 
-    fn open(database: &PathBuf, secrets: &Arc<MemorySecrets>, issuer: Option<&str>) -> Core {
+    fn open(
+        database: &PathBuf,
+        secrets: &Arc<MemorySecrets>,
+        issuer: Option<&str>,
+        supermarket: Option<&str>,
+    ) -> Core {
         let mut config = Config::new(database);
         config.secrets = secrets.clone();
         if let Some(issuer) = issuer {
             config.ai = forkcast_core::AiConfig::fixture(issuer).unwrap();
+        }
+        if let Some(server) = supermarket {
+            config.supermarket = forkcast_core::SupermarketConfig::fixture(server).unwrap();
         }
         Core::open(config).unwrap()
     }
 
     /// Closes and reopens the app, as a restart does.
     pub fn restart(&mut self) {
-        self.core = Self::open(&self.database, &self.secrets, self.issuer.as_deref());
+        self.core = Self::open(
+            &self.database,
+            &self.secrets,
+            self.issuer.as_deref(),
+            self.supermarket.as_deref(),
+        );
     }
 
     /// What this app's protected storage holds, for leak checks.

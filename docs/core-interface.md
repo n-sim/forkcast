@@ -94,13 +94,17 @@ methods.
 | `nutritionGoals` | none | the person's goal sets `{effectiveFrom, targets}`, newest first |
 | `setNutritionGoals` | `effectiveFrom`, `targets` (`calories`, `protein`, `fat`, `carbohydrates`; `null` sets no goal, others must be above zero, at least one set) | none. Applies from `effectiveFrom` until the next set; the same date replaces that set only, so earlier days keep their goals |
 | `removeNutritionGoals` | `effectiveFrom` | none; the previous set applies again |
-| `aiPreferences` / `setRecipePrompt` / `setPlanPrompt` / `setRecipeModel` | `prompt` (up to 8000 characters) / `model?` | `{recipePrompt, recipeModel, planPrompt}`; never credentials or tokens. Synchronized to the account like ratings |
+| `aiPreferences` / `setRecipePrompt` / `setPlanPrompt` / `setCartPrompt` / `setRecipeModel` | `prompt` (up to 8000 characters) / `model?` | `{recipePrompt, recipeModel, planPrompt, cartPrompt}`; never credentials or tokens. `cartPrompt` is the product selection prompt for Gurkerl cart handoffs. Synchronized to the account like ratings |
 | `aiStatus` | | `{state, target, email, message, serverUrl, account, canAuthorize, canRetry}` for the principal's execution target (`device` or `server`) |
 | `aiAuthorize` | `serverUrl?`, `accountId?` | `{authorizationUrl}`; starts the loopback listener first. A joined app must name its server and account. Refused on a server host |
 | `aiCancelAuthorization` / `aiSignOut` | | `aiStatus` |
 | `aiRetryTransfer` / `aiCancelTransfer` | | `aiStatus`; resumes or cancels an unfinished handoff to the server |
 | `aiModels` | | `[{slug, displayName}]` |
 | `aiExecute` | `model`, `instructions`, `input`, `image?` | `{text}`; the one execution interface every AI workflow uses. `image` (as for `estimateFood`) is sent to the provider with this request only |
+| `supermarketStatus` | | `{state, message, canConnect}`: the person's Gurkerl connection on this device (`unconfigured`, `authorizing`, `connected`, `denied`, `expired`, `reconnect_required`). `canConnect` is false on a server host |
+| `supermarketAuthorize` | | `{authorizationUrl}`; starts the loopback listener first. Refused (`forbidden`) on a server host |
+| `supermarketCancelAuthorization` / `supermarketSignOut` | | `supermarketStatus` |
+| `fillSupermarketCart` | `listId`, `model` | `{listId, complete, message, items: [{itemId, name, quantity, unit, status, product, note}]}`, `status` being `added`, `failed`, `not_added`, or `skipped` (already checked off). Fills the person's Gurkerl cart from the reviewed list; never changes the list, checks out, or orders. Fails as a whole when nothing was added; once Gurkerl confirmed an addition, an early stop returns `complete: false` with `message`. A replaced list fails with `conflict`; a server host refuses it (`forbidden`) |
 | `connectServer` | `serverUrl`, `certificate?` | `{serverUrl, setupRequired, untrustedCertificate}`. `https://` (or `http://` on loopback) only. A server whose certificate is not publicly trusted returns its SHA-256 fingerprint as `untrustedCertificate` and stores nothing; once the person confirms it, connecting again with it as `certificate` pins that certificate for the server (`pendingJoin.certificate`, then `syncStatus.serverCertificate`) |
 | `checkServerCertificate` / `trustServerCertificate` | / `certificate` | `{confirmed, presented, trusted}` for a joined profile's server, sending nothing to it / `syncStatus` after pinning a replaced certificate, refused unless the server presents exactly `certificate` |
 | `syncState` / `joinServer` / `acknowledgeSync` | `serverUrl`, `remoteHouseholdId`, `remoteAccountId` / `ids` | `{binding, pending}` |
@@ -228,7 +232,8 @@ household changes to everyone in the household, personal changes only to that pe
 Rolled-back operations publish nothing. A change says what to reload, not what changed.
 
 Topics: `recipes`, `ratings`, `planning` (meal plan and shopping list), `cookingSessions`,
-`foodLog`, `preferences`, `sync`, `ai` (connection state, never credentials). Scope is `{"kind": "household"|"person", "id": "..."}`.
+`foodLog`, `preferences`, `sync`, `ai` (connection state, never credentials), `supermarket`
+(Gurkerl connection state on this device, never credentials). Scope is `{"kind": "household"|"person", "id": "..."}`.
 
 - Native bridge: deliver each `Change` from `try_next` / `next_timeout` to the frontend.
 - HTTP: `GET /api/changes` is a Server-Sent Events stream of `change` events with the same
@@ -273,3 +278,28 @@ both hosts, without Axum or any companion process. Connections are keyed by pers
 
 Resumption: hosts call `core.resume_ai_handoff()` at launch, focus, and resume.
 `connection_required` (412, never 401, so a browser keeps its login) means connect again.
+
+## Gurkerl cart handoff
+
+`crates/core/src/supermarket` fills a person's Gurkerl cart from the reviewed shopping list
+through Gurkerl's MCP server (`https://mcp.gurkerl.at/mcp`), without a companion process.
+
+- **Authorization** follows the MCP authorization specification: protected-resource metadata
+  (which must name this server), authorization-server metadata (S256 required), dynamic
+  registration of a public client for the loopback redirect, and a PKCE authorization-code grant
+  with the server as `resource`. The session is keyed by person and held in `Secrets` on the
+  installed app that signed in. It is never stored in SQLite, synchronized, transferred to a
+  household server, or returned to the frontend; a server host refuses to connect or fill carts.
+- **Handoff** reads the shopping list (generated and manual items at their reviewed quantities,
+  skipping checked items), lists the MCP server's tools, and lets the person's AI connection
+  choose tool calls through `aiExecute`, with the person's `cartPrompt` and the list as input.
+  Only tools that read (MCP `readOnlyHint` or a reading verb such as `get`/`search`) or add to
+  the cart are offered; checkout, ordering, payment, delivery slots, claims, and removing or
+  clearing cart contents are never offered and refused if requested. An item counts as added only
+  when Gurkerl confirmed a cart call naming it; what the AI claims does not.
+- The shopping list is read, never written: cart population does not check items or complete
+  the list.
+
+Release builds always use Gurkerl's server. Debug builds alone accept
+`FORKCAST_GURKERL_TEST_SERVER` (an HTTP `127.0.0.1` MCP and authorization fixture) for the
+desktop app.

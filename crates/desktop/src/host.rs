@@ -93,6 +93,14 @@ impl Host {
         {
             config.ai = forkcast_core::AiConfig::fixture(&issuer).map_err(|error| error.message)?;
         }
+        // Likewise for a loopback Gurkerl MCP fixture; released builds always
+        // use Gurkerl's own server.
+        if cfg!(debug_assertions)
+            && let Ok(server) = std::env::var("FORKCAST_GURKERL_TEST_SERVER")
+        {
+            config.supermarket = forkcast_core::SupermarketConfig::fixture(&server)
+                .map_err(|error| error.message)?;
+        }
         Core::open(config).map_err(|error| error.message)
     }
 }

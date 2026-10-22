@@ -43,6 +43,7 @@ import { AiConnection } from './AiConnection';
 import { RecipeGeneration } from './RecipeGeneration';
 import { AiModelSetting } from './AiModelSetting';
 import { AiPrompts } from './AiPrompts';
+import { GurkerlSettings } from './GurkerlSettings';
 import { FoodLog } from './FoodLog';
 import { localDateTime } from './food-log';
 import { adoptCurrentFoodNutrition } from './food-log-store';
@@ -882,6 +883,10 @@ export function App({
               <AiConnection sync={isNative ? status : null} />
               <AiModelSetting key={accountKey} enabled={personalAvailable} />
               <AiPrompts key={accountKey} enabled={personalAvailable} />
+              <GurkerlSettings
+                key={`gurkerl-${accountKey}`}
+                enabled={personalAvailable}
+              />
               {isNative ? (
                 <>
                   <HouseholdSettings status={status} refresh={refreshSync} />

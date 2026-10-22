@@ -12,7 +12,8 @@ export type Topic =
   | 'foodLog'
   | 'preferences'
   | 'sync'
-  | 'ai';
+  | 'ai'
+  | 'supermarket';
 
 export interface CoreChange {
   scope: { kind: 'household' | 'person'; id: string };

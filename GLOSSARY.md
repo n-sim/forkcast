@@ -71,6 +71,13 @@ An ingredient-dependent change between mass, volume, or pieces, such as olive oi
 **Manual shopping item**:
 An item a person adds directly to a shopping list, independently of recipe contributions.
 
+**Cart handoff**:
+Filling a person's supermarket (Gurkerl) delivery cart from a reviewed shopping list. It leaves the shopping list available and is separate from completing shopping; it never checks out or places an order.
+_Avoid_: Shopping completion
+
+**Product selection prompt**:
+A person's editable instructions for choosing supermarket products during a cart handoff, such as preferring the cheapest or previously bought products.
+
 **Food log**:
 A person's record of food actually eaten, including when and how much was consumed. It can include recipes and other food, independently of the meal plan.
 _Avoid_: Meal plan

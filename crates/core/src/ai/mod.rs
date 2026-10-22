@@ -21,7 +21,7 @@
 //! Credentials live only in [`crate::Secrets`]: never in the database, in
 //! operation results, in change notifications, or in logs.
 
-mod loopback;
+pub(crate) mod loopback;
 mod provider;
 
 use crate::{
