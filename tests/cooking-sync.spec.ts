@@ -143,6 +143,11 @@ test('progress made offline on both devices survives a cold reopen and competing
 
   await backend.stop();
   // The computer moves to step 2 and is closed and reopened offline.
+  await computer.goto('/#/');
+  await computer
+    .getByRole('region', { name: 'Suspended cooking' })
+    .getByRole('link', { name: 'Resume cooking', exact: true })
+    .click();
   await computer
     .getByRole('button', { name: 'Next step', exact: true })
     .click();
