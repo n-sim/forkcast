@@ -189,6 +189,16 @@ const MIGRATIONS: &[&str] = &[
     // Version 5: the confirmed fingerprint of a household server's own
     // (not publicly trusted) certificate.
     "ALTER TABLE sync_binding ADD COLUMN server_certificate TEXT;",
+    // Version 6: cooking sessions synchronize between a person's devices.
+    // Sessions started on two devices while apart both stay until the person
+    // decides, so one unfinished session per person is no longer a storage
+    // rule; starting cooking still asks about every unfinished one. Applied
+    // session changes are remembered so a redelivery changes nothing.
+    "DROP INDEX one_unfinished_cooking;
+     CREATE TABLE cooking_session_mutations (
+         id TEXT PRIMARY KEY,
+         person_id TEXT NOT NULL REFERENCES people(id)
+     );",
 ];
 
 pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;

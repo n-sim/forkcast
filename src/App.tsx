@@ -16,6 +16,7 @@ import {
   saveCookingSession,
   beginCookingSession,
   endCookingSession,
+  resolveCookingSession,
   loadCookingSessions,
   subscribeToCookingChanges,
   loadCookingHistory,
@@ -620,6 +621,20 @@ export function App({
     leaveCooking(session, startedAt);
   }
 
+  async function resolveSession(
+    session: CookingSession,
+    keep: 'current' | 'alternative',
+  ) {
+    const startedAt = currentRoute();
+    const resolved = await resolveCookingSession(session.id, keep);
+    const ended = resolved.completedAt != null || resolved.canceledAt != null;
+    setSessions((current) => [
+      ...current.filter((item) => item.id !== session.id),
+      ...(ended ? [] : [resolved]),
+    ]);
+    if (ended) leaveCooking(session, startedAt);
+  }
+
   async function suspendSession(session: CookingSession) {
     const startedAt = currentRoute();
     await saveSession(session);
@@ -889,6 +904,7 @@ export function App({
               onFinish={() => endSession(selectedSession, 'finished')}
               onCancel={() => endSession(selectedSession, 'canceled')}
               onSuspend={() => suspendSession(selectedSession)}
+              onResolve={(keep) => resolveSession(selectedSession, keep)}
             />
           ) : route === '#/recipes/generate' ? (
             <RecipeGeneration

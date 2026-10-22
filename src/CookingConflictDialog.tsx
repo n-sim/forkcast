@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { CookingSession } from './cooking';
+import { progressSummary, type CookingSession } from './cooking';
 
 export function CookingConflictDialog({
   sessions,
@@ -48,8 +48,10 @@ export function CookingConflictDialog({
       <ul>
         {sessions.map((session) => (
           <li key={session.id}>
-            {session.recipe.name} · Step {session.currentStep + 1} of{' '}
-            {session.recipe.steps.length}
+            {session.recipe.name} ·{' '}
+            {session.conflict
+              ? 'Changed on two devices'
+              : progressSummary(session, session.recipe.steps.length)}
           </li>
         ))}
       </ul>

@@ -9,7 +9,11 @@ import {
   type TimerAction,
   type Recipe,
 } from './domain';
-import type { CookingSession } from './cooking';
+import {
+  progressSummary,
+  type CookingSession,
+  type SessionProgress,
+} from './cooking';
 import { StepTimer } from './StepTimer';
 
 export function CookingView({
@@ -19,6 +23,7 @@ export function CookingView({
   onFinish,
   onCancel,
   onSuspend,
+  onResolve,
 }: {
   session: CookingSession;
   currentRecipe?: Recipe;
@@ -26,6 +31,7 @@ export function CookingView({
   onFinish: () => Promise<void>;
   onCancel: () => Promise<void>;
   onSuspend: () => Promise<void>;
+  onResolve: (keep: 'current' | 'alternative') => Promise<void>;
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -82,6 +88,65 @@ export function CookingView({
           ),
         },
       }),
+    );
+  }
+
+  if (session.conflict) {
+    return (
+      <article>
+        <div className="page-heading">
+          <div>
+            <p className="eyebrow">Guided cooking</p>
+            <h1>{session.recipe.name}</h1>
+            <p>
+              Cooking {session.portions}{' '}
+              {session.portions === 1 ? 'portion' : 'portions'}
+            </p>
+          </div>
+        </div>
+        <section
+          className="panel"
+          role="region"
+          aria-labelledby="cooking-progress-conflict-title"
+        >
+          <h2 id="cooking-progress-conflict-title">
+            Cooking changed on two devices
+          </h2>
+          <p>
+            This cooking session was changed on another of your devices at the
+            same time. Choose which progress to keep. Both use the ingredients
+            and instructions captured when cooking started.
+          </p>
+          <ul aria-label="Competing cooking progress">
+            <li>Current: {describe(session, session.recipe.steps.length)}</li>
+            <li>
+              Other device:{' '}
+              {describe(session.conflict.progress, session.recipe.steps.length)}
+            </li>
+          </ul>
+          {error && (
+            <p className="error-banner" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="form-actions">
+            <button
+              className="button secondary"
+              disabled={saving}
+              onClick={() => void persist(() => onResolve('current'))}
+            >
+              Keep current progress
+            </button>
+            <button
+              className="button primary"
+              disabled={saving}
+              onClick={() => void persist(() => onResolve('alternative'))}
+            >
+              Use other device’s progress
+            </button>
+          </div>
+        </section>
+      </article>
     );
   }
 
@@ -267,5 +332,13 @@ export function CookingView({
         Progress is saved on this device as you go.
       </p>
     </article>
+  );
+}
+
+function describe(progress: SessionProgress, stepCount: number) {
+  const timers = Object.keys(progress.timers ?? {}).length;
+  return (
+    progressSummary(progress, stepCount) +
+    (timers ? ` · ${timers} ${timers === 1 ? 'timer' : 'timers'}` : '')
   );
 }
