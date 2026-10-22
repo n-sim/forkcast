@@ -451,6 +451,103 @@ fn each_day_is_compared_against_the_nutrition_goals_that_applied_then() {
     );
 }
 
+#[test]
+fn use_current_nutrition_updates_only_the_chosen_food_log_entry() {
+    let database = TempDatabase::new();
+    let core = database.open();
+    let me = core.standalone().unwrap();
+    let older = save(&core, &me, risotto()).current.recipe["nutritionVersionId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let log = |id: &str, at: &str| LogRecipeFood {
+        id: Some(id.into()),
+        recipe_id: "veggie-pumpkin-risotto".into(),
+        nutrition_version_id: older.clone(),
+        consumed_at: at.into(),
+        portions: Some(1.0),
+    };
+    core.log_recipe_food(&me, log("lunch", "2030-05-06T12:00"))
+        .unwrap();
+    core.log_recipe_food(&me, log("dinner", "2030-05-06T19:00"))
+        .unwrap();
+    core.log_recipe_food(&me, log("next-day", "2030-05-07T12:00"))
+        .unwrap();
+    let newer = {
+        let mut recipe = risotto();
+        recipe["nutrition"]["calories"] = json!(2400.0);
+        save(&core, &me, recipe).current.recipe["nutritionVersionId"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    assert_ne!(newer, older);
+    let references = |date: &str| -> Vec<(String, String, Value)> {
+        let day = serde_json::to_value(core.food_log(&me, date).unwrap()).unwrap();
+        day["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| {
+                (
+                    entry["id"].as_str().unwrap().to_owned(),
+                    entry["nutritionVersionId"].as_str().unwrap().to_owned(),
+                    entry["nutrition"]["calories"].clone(),
+                )
+            })
+            .collect()
+    };
+    // Every entry still references the older version: 2000 kcal for 4 portions.
+    for (_, version, calories) in references("2030-05-06")
+        .into_iter()
+        .chain(references("2030-05-07"))
+    {
+        assert_eq!(version, older);
+        assert_eq!(calories, 500.0);
+    }
+
+    let changes = core.subscribe(&me);
+    assert!(core.use_current_food_nutrition(&me, "dinner").unwrap());
+    assert_eq!(
+        changes.next_timeout(Duration::from_secs(1)).unwrap().topic,
+        Topic::FoodLog
+    );
+    assert_eq!(
+        references("2030-05-06"),
+        vec![
+            ("lunch".into(), older.clone(), json!(500.0)),
+            ("dinner".into(), newer.clone(), json!(600.0)),
+        ]
+    );
+    assert_eq!(
+        references("2030-05-07"),
+        vec![("next-day".into(), older.clone(), json!(500.0))]
+    );
+    // Repeating it changes nothing, and the update survives a restart.
+    assert!(!core.use_current_food_nutrition(&me, "dinner").unwrap());
+    drop(changes);
+    drop(core);
+    let core = database.open();
+    let operation = |value: Value| -> Operation { serde_json::from_value(value).unwrap() };
+    assert_eq!(
+        core.execute(
+            &me,
+            operation(json!({"operation": "useCurrentFoodNutrition", "entryId": "lunch"})),
+        )
+        .unwrap(),
+        json!({"changed": true})
+    );
+    let day = serde_json::to_value(core.food_log(&me, "2030-05-07").unwrap()).unwrap();
+    assert_eq!(day["entries"][0]["nutritionVersionId"], older.as_str());
+    assert_eq!(
+        core.use_current_food_nutrition(&me, "missing")
+            .err()
+            .unwrap()
+            .kind,
+        ErrorKind::NotFound
+    );
+}
+
 fn server(database: &TempDatabase) -> (Core, Principal, Principal) {
     let core = database.open();
     let admin = core
@@ -543,6 +640,28 @@ fn household_records_are_shared_and_personal_records_are_not() {
     .unwrap();
     assert!(core.nutrition_goals(&member).unwrap().is_empty());
     assert_eq!(core.food_log(&member, "2030-05-06").unwrap().goals, None);
+    let version = save(&core, &admin, risotto()).current.recipe["nutritionVersionId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    core.log_recipe_food(
+        &admin,
+        LogRecipeFood {
+            id: Some("admin-lunch".into()),
+            recipe_id: "veggie-pumpkin-risotto".into(),
+            nutrition_version_id: version,
+            consumed_at: "2030-05-06T12:00".into(),
+            portions: Some(1.0),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        core.use_current_food_nutrition(&member, "admin-lunch")
+            .err()
+            .unwrap()
+            .kind,
+        ErrorKind::Forbidden
+    );
     core.set_recipe_prompt(&admin, "Admin only").unwrap();
     assert_ne!(
         core.ai_preferences(&member).unwrap().recipe_prompt,
@@ -599,6 +718,7 @@ fn every_operation_shape_parses_from_the_serialized_contract() {
         json!({"operation": "cookingHistory"}),
         json!({"operation": "logRecipeFood", "recipeId": "r", "nutritionVersionId": "v",
                "consumedAt": "2030-05-06T19:00", "portions": 1.0}),
+        json!({"operation": "useCurrentFoodNutrition", "entryId": "e"}),
         json!({"operation": "logManualFood", "description": "Tea", "consumedAt": "2030-05-06T19:00",
                "nutrition": {"calories": null, "protein": null, "fat": null, "carbohydrates": null}}),
         json!({"operation": "connectServer", "serverUrl": "https://x.example"}),

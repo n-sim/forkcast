@@ -505,6 +505,9 @@ h2 {
   overflow-wrap: anywhere;
 }
 .cooking-plan-days ul,
+.nutrition-version-notice > p {
+  margin: 0 0 8px;
+}
 .nutrition-version-notice ul {
   margin: 6px 0 0;
   padding-left: 20px;

@@ -193,6 +193,101 @@ test('link food-log recipes to current contents and explain older nutrition with
   await expect(notice).toHaveCount(0);
 });
 
+test('use current nutrition for one food-log entry at a time, leaving every other entry unchanged, including offline', async ({
+  page,
+  app,
+}) => {
+  await createRecipe(page);
+  const recipeUrl = page.url();
+  await page.getByRole('link', { name: 'Food log', exact: true }).click();
+  await logRecipe(page, '2026-10-14T08:00', '1');
+  await logRecipe(page, '2026-10-13T08:00', '1');
+  await logRecipe(page, '2026-10-13T12:00', '1');
+  await page.goto(`${recipeUrl}/edit`);
+  await page.getByLabel('Calories (kcal)', { exact: true }).fill('2400');
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await expect(
+    page.getByRole('heading', {
+      name: 'Household pasta',
+      exact: true,
+      level: 1,
+    }),
+  ).toBeVisible();
+  await page.getByRole('link', { name: 'Food log', exact: true }).click();
+  await expect(page.getByLabel('Food log date', { exact: true })).toHaveValue(
+    '2026-10-13',
+  );
+  const entries = page.getByRole('list', {
+    name: 'Food-log entries',
+    exact: true,
+  });
+  const breakfast = entries.getByRole('listitem').filter({ hasText: '08:00' });
+  const lunch = entries.getByRole('listitem').filter({ hasText: '12:00' });
+  const calories = page
+    .getByRole('region', { name: 'Daily nutrition', exact: true })
+    .getByRole('group', { name: 'Calories total', exact: true });
+  for (const entry of [breakfast, lunch]) {
+    await expect(entry).toContainText('Newer recipe nutrition available');
+    await expect(entry).toContainText('500 kcal');
+  }
+  await expect(calories).toContainText('1,000 kcal');
+
+  // Updating one entry changes only that entry's reference.
+  await lunch
+    .getByRole('button', { name: 'Use current nutrition', exact: true })
+    .click();
+  await expect(
+    page.getByRole('status', { name: 'Food log status', exact: true }),
+  ).toContainText('now uses the current recipe nutrition');
+  await expect(lunch).not.toContainText('Newer recipe nutrition available');
+  await expect(lunch).toContainText('600 kcal');
+  await expect(breakfast).toContainText('Newer recipe nutrition available');
+  await expect(breakfast).toContainText('500 kcal');
+  await expect(calories).toContainText('1,100 kcal');
+
+  // From the current recipe, the explanation offers the same explicit update.
+  await breakfast
+    .getByRole('link', { name: 'Household pasta', exact: true })
+    .click();
+  const notice = page.getByRole('status', {
+    name: 'Food-log nutrition',
+    exact: true,
+  });
+  await expect(notice).toContainText(
+    'This food-log entry uses older nutrition.',
+  );
+  await page
+    .getByRole('button', { name: 'Use current nutrition', exact: true })
+    .click();
+  await expect(
+    page.getByRole('status', { name: 'Food-log entry update', exact: true }),
+  ).toContainText('now uses the current recipe nutrition');
+  await expect(notice).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Use current nutrition', exact: true }),
+  ).toHaveCount(0);
+
+  // The update is stored by the app's own core and survives reopening offline.
+  const reopened = await app.restart();
+  await reopened.goto(recipeUrl.replace(/#.*$/, '#/food-log'));
+  const after = reopened.getByRole('list', {
+    name: 'Food-log entries',
+    exact: true,
+  });
+  await expect(after).not.toContainText('Newer recipe nutrition available');
+  await expect(after.getByRole('listitem')).toHaveCount(2);
+  await expect(
+    reopened.getByRole('group', { name: 'Calories total', exact: true }),
+  ).toContainText('1,200 kcal');
+  await reopened
+    .getByLabel('Food log date', { exact: true })
+    .fill('2026-10-14');
+  const untouched = after.getByRole('listitem');
+  await expect(untouched).toHaveCount(1);
+  await expect(untouched).toContainText('Newer recipe nutrition available');
+  await expect(untouched).toContainText('500 kcal');
+});
+
 test('identify older nutrition versions even when a later correction restores the same values', async ({
   page,
 }) => {

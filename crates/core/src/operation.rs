@@ -132,6 +132,9 @@ pub enum Operation {
         #[serde(flatten)]
         entry: LogManualFood,
     },
+    UseCurrentFoodNutrition {
+        entry_id: String,
+    },
     FoodLogDate,
     SetFoodLogDate {
         date: String,
@@ -357,6 +360,9 @@ impl Core {
             LogManualFood { entry } => {
                 self.log_manual_food(principal, entry)?;
                 Ok(Value::Null)
+            }
+            UseCurrentFoodNutrition { entry_id } => {
+                json(json!({"changed": self.use_current_food_nutrition(principal, &entry_id)?}))
             }
             FoodLogDate => json(self.food_log_date(principal)?),
             SetFoodLogDate { date } => {

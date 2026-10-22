@@ -280,6 +280,58 @@ impl Core {
         })
     }
 
+    /// Points one recipe entry at its recipe's current nutrition version, at
+    /// the person's explicit request. Other entries keep their references.
+    /// Returns whether the entry changed; an entry already on the current
+    /// version is left as it is.
+    pub fn use_current_food_nutrition(
+        &self,
+        principal: &Principal,
+        entry_id: &str,
+    ) -> Result<bool> {
+        principal.require_personal()?;
+        self.write(|db, effects| {
+            let stored: Option<(String, String)> = db
+                .query_row(
+                    "SELECT person_id, payload FROM recipe_food_log_entries WHERE id = ?",
+                    [entry_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()?;
+            let (owner, payload) =
+                stored.ok_or_else(|| Error::not_found("This food-log entry no longer exists."))?;
+            principal.require_person(&owner)?;
+            let mut entry: RecipeFoodLogEntry = serde_json::from_str(&payload)?;
+            let view = recipes::current_recipe(db, principal.household_id(), &entry.recipe_id)?
+                .ok_or_else(|| {
+                    Error::not_found("This recipe is no longer available, so the entry keeps its nutrition.")
+                })?;
+            let current = view.recipe["nutritionVersionId"]
+                .as_str()
+                .ok_or_else(Error::internal)?
+                .to_owned();
+            if entry.nutrition_version_id == current {
+                return Ok(false);
+            }
+            entry.nutrition_version_id = current;
+            // The shared calculation must accept the new reference.
+            let probe: RecipeFoodLogEntry = serde_json::from_str(&serde_json::to_string(&entry)?)?;
+            daily_food_log(
+                vec![],
+                vec![probe],
+                versions(db, std::slice::from_ref(&entry.nutrition_version_id))?,
+                &entry.consumed_at[..10],
+            )
+            .map_err(Error::invalid)?;
+            db.execute(
+                "UPDATE recipe_food_log_entries SET nutrition_version_id = ?, payload = ? WHERE id = ?",
+                params![entry.nutrition_version_id, serde_json::to_string(&entry)?, entry.id],
+            )?;
+            effects.person(principal, Topic::FoodLog);
+            Ok(true)
+        })
+    }
+
     pub fn log_manual_food(&self, principal: &Principal, input: LogManualFood) -> Result<()> {
         principal.require_personal()?;
         let entry = validate_manual_entry(ManualFoodLogEntry {

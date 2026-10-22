@@ -79,6 +79,7 @@ methods.
 | `markCooked` | `recipeId`, `id?`, `sessionId?` | the recipe's history. Records one occurrence for the household; an identical `id`, or a `sessionId` that already has one, counts nothing more. Finishing a guided session records its occurrence once (retrying `endCooking` is accepted); canceling records none. Creates no food-log entry |
 | `foodLog` | `date` | `{entries, totals, incomplete, goals}` computed from retained nutrition versions; `recipeArchived` marks entries whose recipe was archived. `goals` is the set in effect on `date` (or `null`), and each total carries its `target` from it |
 | `logRecipeFood` | `id?`, `recipeId`, `nutritionVersionId`, `consumedAt`, `portions` | none; an identical retry of the same `id` is accepted |
+| `useCurrentFoodNutrition` | `entryId` | `{changed}`; points one of the person's recipe entries at its recipe's current nutrition version, leaving every other entry's reference unchanged. `changed` is `false` when it already used it; `notFound` once the recipe is archived |
 | `logManualFood` | `id?`, `description`, `consumedAt`, `nutrition` | none |
 | `foodLogDate` / `setFoodLogDate` | `date` | the remembered day |
 | `nutritionGoals` | none | the person's goal sets `{effectiveFrom, targets}`, newest first |
