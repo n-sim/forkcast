@@ -137,12 +137,16 @@ test('progress made offline on both devices survives a cold reopen and competing
   await computer
     .getByRole('button', { name: 'Start cooking', exact: true })
     .click();
-  await expect(step(computer)).toContainText('Step 1 of 3');
+  // Both devices know the session at step 2 before going offline.
+  await computer
+    .getByRole('button', { name: 'Next step', exact: true })
+    .click();
+  await expect(step(computer)).toContainText('Step 2 of 3');
   await syncNow(computer);
   await syncNow(tablet);
 
   await backend.stop();
-  // The computer moves to step 2 and is closed and reopened offline.
+  // The computer moves on to step 3 and is closed and reopened offline.
   await computer.goto('/#/');
   await computer
     .getByRole('region', { name: 'Suspended cooking' })
@@ -151,30 +155,32 @@ test('progress made offline on both devices survives a cold reopen and competing
   await computer
     .getByRole('button', { name: 'Next step', exact: true })
     .click();
-  await expect(step(computer)).toContainText('Step 2 of 3');
+  await expect(step(computer)).toContainText('Step 3 of 3');
   const reopened = await computerApp.restart();
   await reopened.goto('/#/');
   await expect(
     reopened.getByRole('region', { name: 'Suspended cooking' }),
-  ).toContainText('Step 2 of 3');
-  // The tablet, also offline, moves to step 3.
+  ).toContainText('Step 3 of 3');
+  // The tablet, also offline, goes back to step 1.
   await tablet.goto('/#/');
   await tablet
     .getByRole('region', { name: 'Suspended cooking' })
     .getByRole('link', { name: 'Resume cooking', exact: true })
     .click();
-  await tablet.getByRole('button', { name: 'Next step', exact: true }).click();
-  await tablet.getByRole('button', { name: 'Next step', exact: true }).click();
-  await expect(step(tablet)).toContainText('Step 3 of 3');
+  await expect(step(tablet)).toContainText('Step 2 of 3');
+  await tablet.getByRole('button', { name: 'Back step', exact: true }).click();
+  await expect(step(tablet)).toContainText('Step 1 of 3');
 
   await backend.restart();
   await reopened.getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(
     reopened.getByRole('button', { name: 'Sync now', exact: true }),
   ).toBeEnabled({ timeout: 20_000 });
+  // Whichever change arrives first, both devices pull after both arrived.
   await syncNow(reopened);
   await syncNow(tablet);
   await syncNow(reopened);
+  await syncNow(tablet);
 
   // Neither step silently wins; the tablet decides.
   await tablet.goto('/#/');
@@ -187,8 +193,8 @@ test('progress made offline on both devices survives a cold reopen and competing
   const choices = decision.getByRole('list', {
     name: 'Competing cooking progress',
   });
-  await expect(choices).toContainText(/Current: Step [23] of 3/);
-  await expect(choices).toContainText(/Other device: Step [23] of 3/);
+  await expect(choices).toContainText(/Current: Step [13] of 3/);
+  await expect(choices).toContainText(/Other device: Step [13] of 3/);
   const other = (await choices.getByText(/Other device:/).textContent())!.match(
     /Step (\d) of 3/,
   )![0];
