@@ -1,12 +1,35 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { FieldError, Recipe } from './domain';
 import {
+  formatDay,
   localDateTime,
   validateRecipeFoodLogEntry,
   type RecipeFoodLogEntry,
 } from './food-log';
 import { recipeNutrition } from './nutrition';
 import { NutritionBrief } from './NutritionBrief';
+import {
+  loadCookingHistory,
+  subscribeToCookingHistoryChanges,
+  type RecipeHistory,
+} from './recipe-store';
+
+/** How many recently cooked recipes are offered as quick suggestions. */
+const suggestionLimit = 5;
+
+/** The recipes cooked most recently, newest first. */
+function recentlyCooked(
+  recipes: Recipe[],
+  history: Record<string, RecipeHistory>,
+): { recipe: Recipe; lastCookedAt: number }[] {
+  return recipes
+    .flatMap((recipe) => {
+      const cooked = history[recipe.id];
+      return cooked ? [{ recipe, lastCookedAt: cooked.lastCookedAt }] : [];
+    })
+    .sort((a, b) => b.lastCookedAt - a.lastCookedAt)
+    .slice(0, suggestionLimit);
+}
 
 export function RecipeFoodLogForm({
   date,
@@ -29,6 +52,14 @@ export function RecipeFoodLogForm({
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const summary = useRef<HTMLDivElement>(null);
+  const [history, setHistory] = useState<Record<string, RecipeHistory>>({});
+  useEffect(() => {
+    // Suggestions are a convenience: without them the recipe list still works.
+    const load = () => void loadCookingHistory().then(setHistory, () => {});
+    load();
+    return subscribeToCookingHistoryChanges(load);
+  }, []);
+  const suggestions = recentlyCooked(recipes, history);
   const recipe = recipes.find((recipe) => recipe.id === recipeId);
   const perPortion = recipe ? recipeNutrition(recipe) : null;
 
@@ -111,6 +142,36 @@ export function RecipeFoodLogForm({
           </div>
         )}
         <fieldset disabled={saving} className="food-entry-fields">
+          {suggestions.length > 0 && (
+            <div
+              role="group"
+              aria-label="Recently cooked"
+              className="recent-recipes"
+            >
+              <p className="section-note">
+                Recently cooked. Choosing one only picks the recipe; you still
+                enter what you ate.
+              </p>
+              {suggestions.map(({ recipe, lastCookedAt }) => (
+                <button
+                  key={recipe.id}
+                  type="button"
+                  className="button secondary"
+                  aria-pressed={recipe.id === recipeId}
+                  onClick={() => setRecipeId(recipe.id)}
+                >
+                  {recipe.name}
+                  <small>
+                    {' '}
+                    · cooked{' '}
+                    {formatDay(
+                      localDateTime(new Date(lastCookedAt)).slice(0, 10),
+                    )}
+                  </small>
+                </button>
+              ))}
+            </div>
+          )}
           <label className="name-field">
             Recipe
             <select
