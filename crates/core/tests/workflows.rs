@@ -367,6 +367,90 @@ fn planning_shopping_cooking_and_food_log_work_end_to_end() {
     );
 }
 
+#[test]
+fn each_day_is_compared_against_the_nutrition_goals_that_applied_then() {
+    let database = TempDatabase::new();
+    let core = database.open();
+    let me = core.standalone().unwrap();
+    let operation = |value: Value| -> Operation { serde_json::from_value(value).unwrap() };
+    let set = |from: &str, targets: Value| {
+        core.execute(
+            &me,
+            operation(json!({"operation": "setNutritionGoals", "effectiveFrom": from, "targets": targets})),
+        )
+    };
+    let day = |date: &str| serde_json::to_value(core.food_log(&me, date).unwrap()).unwrap();
+
+    let invalid = set(
+        "2030-05-01",
+        json!({"calories": 0.0, "protein": null, "fat": null, "carbohydrates": null}),
+    )
+    .err()
+    .unwrap();
+    assert_eq!(invalid.kind, ErrorKind::Invalid);
+    assert!(core.nutrition_goals(&me).unwrap().is_empty());
+
+    set(
+        "2030-05-01",
+        json!({"calories": 2000.0, "protein": 120.0, "fat": null, "carbohydrates": 250.0}),
+    )
+    .unwrap();
+    core.log_manual_food(&me, manual_food("soup")).unwrap();
+    // A later change applies from its own date only.
+    set(
+        "2030-05-10",
+        json!({"calories": 1800.0, "protein": 140.0, "fat": 60.0, "carbohydrates": null}),
+    )
+    .unwrap();
+
+    let before = day("2030-04-30");
+    assert_eq!(before["goals"], Value::Null);
+    assert_eq!(before["totals"]["calories"]["target"], Value::Null);
+    let earlier = day("2030-05-06");
+    assert_eq!(earlier["goals"]["effectiveFrom"], "2030-05-01");
+    assert_eq!(earlier["totals"]["calories"]["target"], 2000.0);
+    assert_eq!(earlier["totals"]["fat"]["target"], Value::Null);
+    // Unknown intake stays unknown and the day stays incomplete.
+    assert_eq!(earlier["totals"]["calories"]["knownValue"], 100.0);
+    assert_eq!(earlier["totals"]["protein"]["knownValue"], Value::Null);
+    assert_eq!(earlier["incomplete"], true);
+    assert_eq!(day("2030-05-09")["totals"]["calories"]["target"], 2000.0);
+    let later = day("2030-05-10");
+    assert_eq!(later["totals"]["calories"]["target"], 1800.0);
+    assert_eq!(later["totals"]["fat"]["target"], 60.0);
+    assert_eq!(later["totals"]["carbohydrates"]["target"], Value::Null);
+
+    // Goals survive a restart, newest first; the same date replaces its set.
+    let core = database.open();
+    set(
+        "2030-05-10",
+        json!({"calories": 1900.0, "protein": null, "fat": null, "carbohydrates": null}),
+    )
+    .unwrap();
+    let history = core
+        .execute(&me, operation(json!({"operation": "nutritionGoals"})))
+        .unwrap();
+    assert_eq!(history.as_array().unwrap().len(), 2);
+    assert_eq!(history[0]["effectiveFrom"], "2030-05-10");
+    assert_eq!(history[0]["targets"]["calories"], 1900.0);
+    assert_eq!(day("2030-05-06")["totals"]["calories"]["target"], 2000.0);
+
+    // Removing a set lets the previous one apply again.
+    core.execute(
+        &me,
+        operation(json!({"operation": "removeNutritionGoals", "effectiveFrom": "2030-05-10"})),
+    )
+    .unwrap();
+    assert_eq!(day("2030-05-20")["totals"]["calories"]["target"], 2000.0);
+    assert_eq!(
+        core.remove_nutrition_goals(&me, "2030-05-10")
+            .err()
+            .unwrap()
+            .kind,
+        ErrorKind::NotFound
+    );
+}
+
 fn server(database: &TempDatabase) -> (Core, Principal, Principal) {
     let core = database.open();
     let admin = core
@@ -448,6 +532,17 @@ fn household_records_are_shared_and_personal_records_are_not() {
             .kind,
         ErrorKind::Forbidden
     );
+    core.execute(
+        &admin,
+        serde_json::from_value(
+            json!({"operation": "setNutritionGoals", "effectiveFrom": "2030-05-01",
+            "targets": {"calories": 2000.0, "protein": null, "fat": null, "carbohydrates": null}}),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(core.nutrition_goals(&member).unwrap().is_empty());
+    assert_eq!(core.food_log(&member, "2030-05-06").unwrap().goals, None);
     core.set_recipe_prompt(&admin, "Admin only").unwrap();
     assert_ne!(
         core.ai_preferences(&member).unwrap().recipe_prompt,

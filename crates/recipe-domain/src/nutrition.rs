@@ -1,7 +1,7 @@
 use crate::recipe::FieldError;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Default, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct Nutrition {
     pub calories: Option<f64>,
     pub protein: Option<f64>,

@@ -9,7 +9,9 @@ use crate::{
     ShoppingItemKind, StartCooking,
     error::{Error, Result},
 };
-use forkcast_recipe_domain::{planning::PlannedCooking, shopping::ShoppingItem};
+use forkcast_recipe_domain::{
+    nutrition_goals::NutritionGoals, planning::PlannedCooking, shopping::ShoppingItem,
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -133,6 +135,14 @@ pub enum Operation {
     FoodLogDate,
     SetFoodLogDate {
         date: String,
+    },
+    NutritionGoals,
+    SetNutritionGoals {
+        #[serde(flatten)]
+        goals: NutritionGoals,
+    },
+    RemoveNutritionGoals {
+        effective_from: String,
     },
     AiPreferences,
     SetRecipePrompt {
@@ -351,6 +361,15 @@ impl Core {
             FoodLogDate => json(self.food_log_date(principal)?),
             SetFoodLogDate { date } => {
                 self.set_food_log_date(principal, &date)?;
+                Ok(Value::Null)
+            }
+            NutritionGoals => json(self.nutrition_goals(principal)?),
+            SetNutritionGoals { goals } => {
+                self.set_nutrition_goals(principal, goals)?;
+                Ok(Value::Null)
+            }
+            RemoveNutritionGoals { effective_from } => {
+                self.remove_nutrition_goals(principal, &effective_from)?;
                 Ok(Value::Null)
             }
             AiPreferences => json(self.ai_preferences(principal)?),

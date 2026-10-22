@@ -1,6 +1,7 @@
 use crate::{
     calendar::{valid_date, valid_time},
     nutrition::{Nutrition, NutritionVersion},
+    nutrition_goals::NutritionGoals,
     recipe::FieldError,
 };
 use serde::{Deserialize, Serialize};
@@ -128,6 +129,8 @@ pub struct FoodLogEntry {
 pub struct NutrientTotal {
     pub known_value: Option<f64>,
     pub unknown_entries: usize,
+    /// The day's goal for this nutrient, from the goals that applied then.
+    pub target: Option<f64>,
 }
 
 #[derive(Serialize)]
@@ -143,6 +146,22 @@ pub struct DailyFoodLog {
     pub entries: Vec<FoodLogEntry>,
     pub totals: DailyNutrition,
     pub incomplete: bool,
+    /// The nutrition goals in effect on this day, if any.
+    pub goals: Option<NutritionGoals>,
+}
+
+impl DailyFoodLog {
+    /// Compares the day against the goals that applied on it. Totals stay
+    /// sums of known values; an incomplete day stays marked incomplete.
+    pub fn with_goals(mut self, goals: Option<&NutritionGoals>) -> Self {
+        let targets = goals.map(|goals| goals.targets.clone()).unwrap_or_default();
+        self.totals.calories.target = targets.calories;
+        self.totals.protein.target = targets.protein;
+        self.totals.fat.target = targets.fat;
+        self.totals.carbohydrates.target = targets.carbohydrates;
+        self.goals = goals.cloned();
+        self
+    }
 }
 
 pub fn daily_food_log(
@@ -217,6 +236,7 @@ pub fn daily_food_log(
         Ok(NutrientTotal {
             known_value,
             unknown_entries,
+            target: None,
         })
     };
     let totals = DailyNutrition {
@@ -237,5 +257,6 @@ pub fn daily_food_log(
         entries: selected,
         totals,
         incomplete,
+        goals: None,
     })
 }
