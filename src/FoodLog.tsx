@@ -43,7 +43,13 @@ function goalProgress(
     : `${goal} · ${nutritionValue(-difference, unit)} over`;
 }
 
-export function FoodLog({ recipes }: { recipes: Recipe[] }) {
+export function FoodLog({
+  recipes,
+  aiAvailable = true,
+}: {
+  recipes: Recipe[];
+  aiAvailable?: boolean;
+}) {
   const [daily, setDaily] = useState<DailyFoodLog | null>(null);
   const [goalHistory, setGoalHistory] = useState<NutritionGoals[]>([]);
   const [date, setDate] = useState('');
@@ -261,6 +267,7 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
       {adding === 'manual' && (
         <ManualFoodLogForm
           date={date}
+          aiAvailable={aiAvailable}
           onSave={save}
           onCancel={() => setAdding(null)}
         />

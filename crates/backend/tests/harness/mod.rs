@@ -85,9 +85,15 @@ impl Server {
         Self::start_on(temp("server"), address, None, Default::default(), false)
     }
 
-    /// The database file's bytes, for leak checks.
+    /// The database file's bytes and its write-ahead log, for leak checks.
     pub fn stored(&self) -> String {
-        String::from_utf8_lossy(&std::fs::read(&self.database).unwrap()).to_string()
+        let mut all = String::from_utf8_lossy(&std::fs::read(&self.database).unwrap()).to_string();
+        let mut wal = self.database.clone().into_os_string();
+        wal.push("-wal");
+        if let Ok(bytes) = std::fs::read(wal) {
+            all.push_str(&String::from_utf8_lossy(&bytes));
+        }
+        all
     }
 
     /// What the server's protected storage holds, for leak checks.

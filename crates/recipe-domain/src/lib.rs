@@ -14,6 +14,15 @@ pub mod shopping;
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
+/// An AI reply's JSON, tolerating a Markdown code fence around it.
+pub(crate) fn unfenced(text: &str) -> &str {
+    let text = text.trim();
+    text.strip_prefix("```")
+        .and_then(|fenced| fenced.strip_suffix("```"))
+        .map(|fenced| fenced.trim_start_matches("json").trim())
+        .unwrap_or(text)
+}
+
 #[wasm_bindgen]
 pub fn merge_household_planning(
     base: JsValue,

@@ -82,6 +82,7 @@ methods.
 | `logRecipeFood` | `id?`, `recipeId`, `nutritionVersionId`, `consumedAt`, `portions` | none; an identical retry of the same `id` is accepted |
 | `useCurrentFoodNutrition` | `entryId` | `{changed}`; points one of the person's recipe entries at its recipe's current nutrition version, leaving every other entry's reference unchanged. `changed` is `false` when it already used it; `notFound` once the recipe is archived |
 | `logManualFood` | `id?`, `description`, `consumedAt`, `nutrition` | none |
+| `estimateFood` | `model`, `description?` (up to 2000 characters), `image?` (`{mime, data}`: base64 JPEG, PNG or WebP up to 8 MB) | `{description, nutrition}` for a manual entry; needs a description, an image, or both. Runs through `aiExecute` and stores nothing: the estimate is logged only by a later `logManualFood`, and the image is never retained by any runtime (database, synchronization, migration data, or logs), unlike a recipe cover photo. An invalid reply fails with `invalid` |
 | `foodLogDate` / `setFoodLogDate` | `date` | the remembered day |
 | `nutritionGoals` | none | the person's goal sets `{effectiveFrom, targets}`, newest first |
 | `setNutritionGoals` | `effectiveFrom`, `targets` (`calories`, `protein`, `fat`, `carbohydrates`; `null` sets no goal, others must be above zero, at least one set) | none. Applies from `effectiveFrom` until the next set; the same date replaces that set only, so earlier days keep their goals |
@@ -92,7 +93,7 @@ methods.
 | `aiCancelAuthorization` / `aiSignOut` | | `aiStatus` |
 | `aiRetryTransfer` / `aiCancelTransfer` | | `aiStatus`; resumes or cancels an unfinished handoff to the server |
 | `aiModels` | | `[{slug, displayName}]` |
-| `aiExecute` | `model`, `instructions`, `input` | `{text}`; the one execution interface every AI workflow uses |
+| `aiExecute` | `model`, `instructions`, `input`, `image?` | `{text}`; the one execution interface every AI workflow uses. `image` (as for `estimateFood`) is sent to the provider with this request only |
 | `connectServer` | `serverUrl`, `certificate?` | `{serverUrl, setupRequired, untrustedCertificate}`. `https://` (or `http://` on loopback) only. A server whose certificate is not publicly trusted returns its SHA-256 fingerprint as `untrustedCertificate` and stores nothing; once the person confirms it, connecting again with it as `certificate` pins that certificate for the server (`pendingJoin.certificate`, then `syncStatus.serverCertificate`) |
 | `checkServerCertificate` / `trustServerCertificate` | / `certificate` | `{confirmed, presented, trusted}` for a joined profile's server, sending nothing to it / `syncStatus` after pinning a replaced certificate, refused unless the server presents exactly `certificate` |
 | `syncState` / `joinServer` / `acknowledgeSync` | `serverUrl`, `remoteHouseholdId`, `remoteAccountId` / `ids` | `{binding, pending}` |

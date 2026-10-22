@@ -1212,3 +1212,29 @@ dialog .form-actions {
   overflow-wrap: anywhere;
   font-family: ui-monospace, monospace;
 }
+.food-estimate {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  margin: 8px 0 16px;
+}
+.food-estimate h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.food-estimate [role='status'] {
+  font-size: 12px;
+  color: var(--muted);
+}
+.food-photo {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.food-photo img {
+  display: block;
+  max-width: min(100%, 320px);
+  max-height: 240px;
+  object-fit: contain;
+  border-radius: 6px;
+}

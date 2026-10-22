@@ -47,6 +47,8 @@ use uuid::Uuid;
 
 const HOST_KEY: &str = "ai-host";
 const MAX_FIELD: usize = 64_000;
+/// The largest estimation image a request may carry, decoded.
+pub const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
 /// Refresh slightly early so a request never starts with a nearly dead token.
 const REFRESH_MARGIN: u64 = 60;
 
@@ -159,6 +161,49 @@ pub struct AiRequest {
     pub model: String,
     pub instructions: String,
     pub input: String,
+    /// An image the input refers to. It is sent to the provider with this one
+    /// request and never stored by any runtime.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<AiImage>,
+}
+
+/// A transient image for one AI request, such as a photo of food to
+/// estimate. Unlike a recipe cover [`crate::Photo`], it is never retained:
+/// not in the database, synchronization, migration data, or logs.
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AiImage {
+    /// `image/jpeg`, `image/png`, or `image/webp`.
+    pub mime: String,
+    /// The image bytes, base64-encoded.
+    pub data: String,
+}
+
+impl AiImage {
+    /// Checks the type, size, and that the bytes are an image of that type.
+    pub(crate) fn validate(&self) -> Result<()> {
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        let invalid = || {
+            Error::invalid(format!(
+                "Choose a JPEG, PNG, or WebP image of up to {} MB.",
+                MAX_IMAGE_BYTES / (1024 * 1024)
+            ))
+        };
+        if self.data.len() > MAX_IMAGE_BYTES.div_ceil(3) * 4 {
+            return Err(invalid());
+        }
+        let bytes = STANDARD.decode(&self.data).map_err(|_| invalid())?;
+        let matches = match self.mime.as_str() {
+            "image/jpeg" => bytes.starts_with(&[0xFF, 0xD8, 0xFF]),
+            "image/png" => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
+            "image/webp" => bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP",
+            _ => false,
+        };
+        if !matches || bytes.len() > MAX_IMAGE_BYTES {
+            return Err(invalid());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -297,6 +342,9 @@ fn validate_request(request: &AiRequest) -> Result<()> {
         return Err(Error::invalid(
             "Provide a model and instructions within the request limits.",
         ));
+    }
+    if let Some(image) = &request.image {
+        image.validate()?;
     }
     Ok(())
 }
@@ -1349,6 +1397,7 @@ impl Core {
                         "model": request.model,
                         "instructions": request.instructions,
                         "input": request.input,
+                        "image": request.image,
                     })),
                 )?;
                 value["text"]
@@ -1363,6 +1412,7 @@ impl Core {
                         &request.model,
                         &request.instructions,
                         &request.input,
+                        request.image.as_ref(),
                     )
                 })
             }

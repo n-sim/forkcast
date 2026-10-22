@@ -260,3 +260,81 @@ pub fn daily_food_log(
         goals: None,
     })
 }
+
+/// The longest food description an estimate may suggest.
+pub const MAX_ESTIMATED_DESCRIPTION_CHARS: usize = 200;
+
+/// What an AI estimated for food a person ate: a description of the food
+/// and amount, and nutrition for that amount. A suggestion for a manual
+/// entry; nothing is logged until the person saves the entry.
+#[derive(Serialize)]
+pub struct FoodEstimate {
+    pub description: String,
+    pub nutrition: Nutrition,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EstimateReply {
+    description: String,
+    calories: Option<f64>,
+    protein: Option<f64>,
+    fat: Option<f64>,
+    carbohydrates: Option<f64>,
+}
+
+/// Reads an AI reply as a food estimate. A reply that is not the requested
+/// object, has no description, estimates no nutrient, or holds an invalid
+/// amount is rejected as a whole.
+pub fn read_food_estimate(text: &str) -> Result<FoodEstimate, String> {
+    let reply: EstimateReply = serde_json::from_str(crate::unfenced(text)).map_err(|_| {
+        "The reply was not a nutrition estimate in the requested format.".to_owned()
+    })?;
+    let description = reply.description.trim();
+    if description.is_empty() || description.chars().count() > MAX_ESTIMATED_DESCRIPTION_CHARS {
+        return Err("The reply did not describe the food.".to_owned());
+    }
+    let nutrition = Nutrition {
+        calories: reply.calories,
+        protein: reply.protein,
+        fat: reply.fat,
+        carbohydrates: reply.carbohydrates,
+    };
+    if nutrition.is_unknown() {
+        return Err("The reply did not estimate any nutrition.".to_owned());
+    }
+    let mut errors = vec![];
+    nutrition.validate(&mut errors);
+    if !errors.is_empty() {
+        return Err("The reply contained an invalid nutrition amount.".to_owned());
+    }
+    Ok(FoodEstimate {
+        description: description.to_owned(),
+        nutrition,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_an_estimate_and_rejects_anything_else() {
+        let estimate = read_food_estimate(
+            "```json\n{\"description\":\" Two slices of pizza \",\"calories\":540,\"protein\":22,\"fat\":20,\"carbohydrates\":null}\n```",
+        )
+        .unwrap();
+        assert_eq!(estimate.description, "Two slices of pizza");
+        assert_eq!(estimate.nutrition.calories, Some(540.0));
+        assert_eq!(estimate.nutrition.carbohydrates, None);
+        for reply in [
+            "Roughly 500 kcal.",
+            r#"{"description":"Pizza"}"#,
+            r#"{"description":"","calories":500}"#,
+            r#"{"description":"Pizza","calories":-1}"#,
+            r#"{"description":"Pizza","calories":500,"recipe":{}}"#,
+        ] {
+            assert!(read_food_estimate(reply).is_err(), "{reply}");
+        }
+    }
+}

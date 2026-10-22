@@ -93,14 +93,7 @@ pub fn read_generated_plan(
     dates: &[String],
     mut new_id: impl FnMut() -> String,
 ) -> Result<Vec<PlannedCooking>, String> {
-    let text = text.trim();
-    // Tolerate a Markdown code fence around the JSON object.
-    let text = text
-        .strip_prefix("```")
-        .and_then(|fenced| fenced.strip_suffix("```"))
-        .map(|fenced| fenced.trim_start_matches("json").trim())
-        .unwrap_or(text);
-    let plan: GeneratedPlan = serde_json::from_str(text)
+    let plan: GeneratedPlan = serde_json::from_str(crate::unfenced(text))
         .map_err(|_| "The reply was not a cooking plan in the requested format.".to_owned())?;
     if plan.cookings.is_empty() {
         return Err("The reply did not plan any cooking.".to_owned());

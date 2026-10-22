@@ -875,7 +875,7 @@ export function App({
               <ShoppingListView />
             )
           ) : foodLogOpen ? (
-            <FoodLog recipes={recipes} />
+            <FoodLog recipes={recipes} aiAvailable={personalAvailable} />
           ) : settingsOpen ? (
             <article>
               <h1>Settings</h1>

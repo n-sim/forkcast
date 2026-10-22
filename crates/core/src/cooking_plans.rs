@@ -339,6 +339,7 @@ impl Core {
                     preferences.plan_prompt
                 ),
                 input: format!("Collection and period:\n{context}\n\nRequest:\n{request}"),
+                image: None,
             },
         )?;
         let planned = read_generated_plan(&text, &recipes, &dates, || {

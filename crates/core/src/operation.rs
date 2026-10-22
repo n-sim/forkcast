@@ -4,9 +4,9 @@
 
 use crate::{
     AccountChange, AiRequest, ApplyCookingPlan, ArchiveRecipe, CookingChoice, CookingOutcome, Core,
-    Credentials, CurrentChoice, EditBase, GenerateCookingPlan, JoinSelection, LogManualFood,
-    LogRecipeFood, MarkCooked, Photo, PlanningChoice, Principal, ScheduleCookings, ServerSelection,
-    SetCoverPhoto, ShoppingItemKind, StartCooking,
+    Credentials, CurrentChoice, EditBase, EstimateFood, GenerateCookingPlan, JoinSelection,
+    LogManualFood, LogRecipeFood, MarkCooked, Photo, PlanningChoice, Principal, ScheduleCookings,
+    ServerSelection, SetCoverPhoto, ShoppingItemKind, StartCooking,
     error::{Error, Result},
 };
 use forkcast_recipe_domain::{
@@ -138,6 +138,10 @@ pub enum Operation {
     },
     UseCurrentFoodNutrition {
         entry_id: String,
+    },
+    EstimateFood {
+        #[serde(flatten)]
+        request: EstimateFood,
     },
     FoodLogDate,
     SetFoodLogDate {
@@ -371,6 +375,7 @@ impl Core {
             UseCurrentFoodNutrition { entry_id } => {
                 json(json!({"changed": self.use_current_food_nutrition(principal, &entry_id)?}))
             }
+            EstimateFood { request } => json(self.estimate_food(principal, request)?),
             FoodLogDate => json(self.food_log_date(principal)?),
             SetFoodLogDate { date } => {
                 self.set_food_log_date(principal, &date)?;

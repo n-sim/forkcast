@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { FieldError } from './domain';
 import {
   localDateTime,
@@ -6,13 +6,17 @@ import {
   validateManualFoodLogEntry,
   type ManualFoodLogEntry,
 } from './food-log';
+import { estimateFood, prepareEstimationPhoto } from './food-estimation';
+import { AiModelNotice, useAiModel } from './use-ai-model';
 
 export function ManualFoodLogForm({
   date,
+  aiAvailable = true,
   onSave,
   onCancel,
 }: {
   date: string;
+  aiAvailable?: boolean;
   onSave: (entry: ManualFoodLogEntry) => Promise<void>;
   onCancel: () => void;
 }) {
@@ -31,6 +35,79 @@ export function ManualFoodLogForm({
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const summary = useRef<HTMLDivElement>(null);
+  const ai = useAiModel(aiAvailable);
+  // The estimation photo is held only here, for this form, and never saved.
+  const [photo, setPhoto] = useState<Blob | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string>();
+  const [estimating, setEstimating] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [estimateError, setEstimateError] = useState('');
+  const [estimateNotice, setEstimateNotice] = useState('');
+  const closed = useRef(false);
+  useEffect(
+    () => () => {
+      closed.current = true;
+    },
+    [],
+  );
+  useEffect(() => {
+    if (!photo) return setPhotoUrl(undefined);
+    const url = URL.createObjectURL(photo);
+    setPhotoUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [photo]);
+
+  async function choosePhoto(file: File) {
+    setEstimateError('');
+    try {
+      setPhoto(await prepareEstimationPhoto(file));
+    } catch (failure) {
+      setEstimateError(
+        failure instanceof Error ? failure.message : 'Choose another photo.',
+      );
+    }
+  }
+
+  function requestEstimate() {
+    setEstimateError('');
+    setEstimateNotice('');
+    if (!draft.description.trim() && !photo) {
+      setEstimateError(
+        'Describe the food or add a photo to estimate its nutrition.',
+      );
+      return;
+    }
+    if (Object.values(draft.nutrition).some((value) => value !== null))
+      setConfirming(true);
+    else void estimate();
+  }
+
+  async function estimate() {
+    if (!ai.ready || estimating) return;
+    setEstimating(true);
+    try {
+      const result = await estimateFood(ai.model, draft.description, photo);
+      if (closed.current) return;
+      setDraft((current) => ({
+        ...current,
+        description: result.description,
+        nutrition: result.nutrition,
+      }));
+      setErrors([]);
+      setEstimateNotice(
+        'Description and nutrition estimated by ChatGPT. They are not measured: review and edit them, then save the entry.',
+      );
+    } catch (failure) {
+      if (closed.current) return;
+      setEstimateError(
+        failure instanceof Error
+          ? failure.message
+          : 'The estimate could not be completed. Try again, or enter nutrition manually.',
+      );
+    } finally {
+      if (!closed.current) setEstimating(false);
+    }
+  }
 
   function fieldStatus(path: string) {
     return {
@@ -115,7 +192,7 @@ export function ManualFoodLogForm({
             </ul>
           </div>
         )}
-        <fieldset disabled={saving} className="food-entry-fields">
+        <fieldset disabled={saving || estimating} className="food-entry-fields">
           <label className="name-field">
             Food description
             <input
@@ -138,6 +215,83 @@ export function ManualFoodLogForm({
               }
             />
           </label>
+          <section
+            className="food-estimate"
+            aria-labelledby="food-estimate-heading"
+          >
+            <h3 id="food-estimate-heading">Estimate with AI</h3>
+            {!aiAvailable && (
+              <p className="section-note">
+                Sign in to your backend account to estimate nutrition with AI.
+                You can always enter nutrition manually.
+              </p>
+            )}
+            {aiAvailable &&
+              ai.loaded &&
+              ai.connection?.state !== 'connected' && (
+                <p className="section-note">
+                  Connect ChatGPT in <a href="#/settings">Settings</a> to
+                  estimate nutrition from a description or photo. You can always
+                  enter nutrition manually.
+                </p>
+              )}
+            {ai.connection?.state === 'connected' && (
+              <>
+                <p className="section-note" id="food-photo-help">
+                  ChatGPT estimates from the food description, a photo, or both.
+                  The photo is used only for this estimate and is never saved.
+                </p>
+                {ai.error && !ai.ready && (
+                  <p role="alert" className="error-banner">
+                    {ai.error}
+                  </p>
+                )}
+                <AiModelNotice choice={ai} />
+                <label htmlFor="food-photo">Food photo</label>
+                <input
+                  id="food-photo"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  aria-describedby="food-photo-help"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (file) void choosePhoto(file);
+                  }}
+                />
+                {photoUrl && (
+                  <div className="food-photo">
+                    <img src={photoUrl} alt="Food photo for this estimate" />
+                    <button
+                      className="button secondary"
+                      type="button"
+                      onClick={() => setPhoto(null)}
+                    >
+                      Remove photo
+                    </button>
+                  </div>
+                )}
+                {estimateError && (
+                  <p role="alert" className="error-banner">
+                    {estimateError}
+                  </p>
+                )}
+                {estimateNotice && (
+                  <p role="status" aria-label="Food estimate status">
+                    {estimateNotice}
+                  </p>
+                )}
+                <button
+                  className="button secondary"
+                  type="button"
+                  disabled={!ai.ready}
+                  onClick={requestEstimate}
+                >
+                  {estimating ? 'Estimating…' : 'Estimate nutrition'}
+                </button>
+              </>
+            )}
+          </section>
           <div className="metadata-fields">
             {nutrients.map(({ key, label, unit }) => (
               <label key={key}>
@@ -184,6 +338,60 @@ export function ManualFoodLogForm({
           </div>
         </fieldset>
       </form>
+      {confirming && (
+        <ReplaceDialog
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => {
+            setConfirming(false);
+            void estimate();
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function ReplaceDialog({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const element = dialog.current!;
+    element.showModal();
+    return () => element.close();
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      aria-labelledby="food-estimate-confirm-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        onCancel();
+      }}
+    >
+      <h2 id="food-estimate-confirm-title">Replace nutrition values?</h2>
+      <p>
+        This entry already has nutrition values. The AI estimate replaces the
+        description and every nutrition value in this form. Nothing is logged
+        until you save the entry.
+      </p>
+      <div className="form-actions">
+        <button
+          className="button secondary"
+          type="button"
+          autoFocus
+          onClick={onCancel}
+        >
+          Keep my values
+        </button>
+        <button className="button primary" type="button" onClick={onConfirm}>
+          Replace with AI estimate
+        </button>
+      </div>
+    </dialog>
   );
 }
