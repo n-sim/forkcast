@@ -96,10 +96,13 @@ confirmed.
 
 Recipe generation, nutrition and metadata estimation, ad hoc text/image estimation, cooking-plan
 generation, and conversion assistance all use one execution interface (`aiExecute`: model,
-instructions, input → text) so no workflow needs its own provider integration; each validates
+instructions, input and an optional transient image → text) so no workflow needs its own provider integration; each validates
 the returned text with the shared Rust/WebAssembly contracts before anything is saved. Today
 **Generate recipe** uses it: describe a dish, choose a model, and a valid recipe is saved through
-the core, and **Generate plan** on the meal plan proposes a cooking plan from the collection (the
+the core, **Estimate nutrition** in a manual food-log entry suggests a description and nutrition
+from what you describe, a photo, or both (the photo travels with that one request and is never
+saved, unlike a recipe cover photo; nothing is logged until you save the entry), and **Generate
+plan** on the meal plan proposes a cooking plan from the collection (the
 core builds the request and validates the reply). **Settings → Personal AI prompts** (recipe and
 cooking plan defaults) and your last chosen model are ordinary personal
 settings: they work offline, synchronize with your account across devices, and are never another

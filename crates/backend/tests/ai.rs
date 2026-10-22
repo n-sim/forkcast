@@ -1002,3 +1002,232 @@ fn invalid_or_failed_plan_generation_never_changes_the_plan() {
         .unwrap();
     assert_eq!(proposal["cookings"][0]["recipeId"], "soup");
 }
+
+/// A PNG whose bytes carry a marker, so any retained copy can be found.
+fn estimation_photo() -> (Value, String) {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+    bytes.extend_from_slice(b"ESTIMATION_PHOTO_MARKER_");
+    bytes.extend((0..3000u32).map(|n| (n % 251) as u8));
+    let data = STANDARD.encode(&bytes);
+    (json!({"mime": "image/png", "data": data}), data)
+}
+
+fn assert_photo_not_stored(stored: &str, data: &str) {
+    assert!(
+        !stored.contains("ESTIMATION_PHOTO_MARKER"),
+        "photo bytes kept"
+    );
+    assert!(!stored.contains(&data[16..96]), "encoded photo kept");
+}
+
+fn estimate_food(device: &Device, request: Value) -> forkcast_core::Result<Value> {
+    let mut operation = json!({"operation": "estimateFood", "model": "fixture-recipe"});
+    operation
+        .as_object_mut()
+        .unwrap()
+        .extend(request.as_object().unwrap().clone());
+    device.try_op(operation)
+}
+
+fn pizza() -> Value {
+    json!({
+        "description": "2 slices of margherita pizza (about 250 g)",
+        "calories": 600, "protein": 25, "fat": 22, "carbohydrates": null,
+    })
+}
+
+/// Saves an estimate as the person would: a manual entry with its own nutrition.
+fn log_estimate(device: &Device, estimate: &Value) {
+    device.op(json!({
+        "operation": "logManualFood", "id": "estimated-pizza",
+        "description": estimate["description"], "consumedAt": "2030-05-06T12:30",
+        "nutrition": estimate["nutrition"],
+    }));
+}
+
+#[test]
+fn standalone_estimates_from_text_or_a_photo_become_manual_entries_without_keeping_the_photo() {
+    let provider = Provider::start();
+    let device = Device::with_provider(&provider.issuer);
+    connect(&device, &provider);
+    provider.with(|s| s.reply = pizza());
+
+    // From a description: the request carries the text alone.
+    let estimate = estimate_food(&device, json!({"description": "Two slices of pizza"})).unwrap();
+    assert_eq!(
+        estimate,
+        json!({
+            "description": "2 slices of margherita pizza (about 250 g)",
+            "nutrition": {"calories": 600.0, "protein": 25.0, "fat": 22.0, "carbohydrates": null},
+        })
+    );
+    let request = provider.with(|s| s.requests.last().cloned().unwrap());
+    assert!(
+        request["input"][0]["content"]
+            .as_str()
+            .unwrap()
+            .contains("Two slices of pizza")
+    );
+
+    // From a photo: the image goes to the provider with the request.
+    let (photo, data) = estimation_photo();
+    let estimate = estimate_food(&device, json!({"image": photo})).unwrap();
+    let request = provider.with(|s| s.requests.last().cloned().unwrap());
+    let content = &request["input"][0]["content"];
+    assert_eq!(content[0]["type"], "input_text");
+    assert_eq!(content[1]["type"], "input_image");
+    assert_eq!(
+        content[1]["image_url"],
+        format!("data:image/png;base64,{data}")
+    );
+
+    // Estimating stores nothing; saving stores only the entry's own values.
+    let day = || device.op(json!({"operation": "foodLog", "date": "2030-05-06"}));
+    assert_eq!(day()["entries"], json!([]));
+    log_estimate(&device, &estimate);
+    let entries = day()["entries"].clone();
+    assert_eq!(entries.as_array().unwrap().len(), 1);
+    assert_eq!(entries[0]["description"], estimate["description"]);
+    assert_eq!(entries[0]["nutrition"], estimate["nutrition"]);
+    assert_eq!(entries[0]["recipeId"], Value::Null);
+    assert_eq!(day()["totals"]["carbohydrates"]["unknownEntries"], 1);
+    // No recipe, catalog record, or cover photo came from it.
+    assert_eq!(device.op(json!({"operation": "recipes"})), json!([]));
+    assert_photo_not_stored(&device.everything_stored(), &data);
+}
+
+#[test]
+fn joined_and_browser_estimates_run_on_the_server_and_no_runtime_keeps_the_photo() {
+    let home = household();
+    set_up_on_server(&home, &home.admin);
+    home.provider.with(|s| s.reply = pizza());
+    let (photo, data) = estimation_photo();
+
+    // The installed app's estimate executes on the server's session.
+    let estimate = estimate_food(
+        &home.admin,
+        json!({"description": "Pizza for lunch", "image": photo}),
+    )
+    .unwrap();
+    let request = home.provider.with(|s| s.requests.last().cloned().unwrap());
+    let content = &request["input"][0]["content"];
+    assert!(
+        content[0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Pizza for lunch")
+    );
+    assert_eq!(
+        content[1]["image_url"],
+        format!("data:image/png;base64,{data}")
+    );
+    // The entry is saved by the app's own core, which synchronizes as usual.
+    log_estimate(&home.admin, &estimate);
+    home.admin.sync();
+    let logged = home
+        .admin
+        .op(json!({"operation": "foodLog", "date": "2030-05-06"}));
+    assert_eq!(logged["entries"][0]["nutrition"], estimate["nutrition"]);
+
+    // A browser uses the same operation through the server's core.
+    let token = login(&home.server, "admin");
+    let operation = |body: Value| {
+        api(
+            "POST",
+            &format!("{}/api/operations", home.server.url),
+            Some(&token),
+            Some(&body),
+        )
+    };
+    let (code, browser) = operation(json!({
+        "operation": "estimateFood", "model": "fixture-recipe", "image": photo,
+    }));
+    assert_eq!(code, 200, "{browser}");
+    assert_eq!(browser, estimate);
+    let (code, _) = operation(json!({
+        "operation": "logManualFood", "id": "browser-pizza",
+        "description": browser["description"], "consumedAt": "2030-05-07T19:00",
+        "nutrition": browser["nutrition"],
+    }));
+    assert_eq!(code, 200);
+    let (_, day) = operation(json!({"operation": "foodLog", "date": "2030-05-07"}));
+    assert_eq!(day["entries"][0]["nutrition"], estimate["nutrition"]);
+
+    // Neither the app, its synchronization records, nor the server kept it.
+    assert_photo_not_stored(&home.admin.everything_stored(), &data);
+    assert_photo_not_stored(&home.server.stored(), &data);
+    assert_eq!(home.admin.op(json!({"operation": "recipes"})), json!([]));
+}
+
+#[test]
+fn invalid_requests_images_and_replies_never_log_anything() {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    let provider = Provider::start();
+    let device = Device::with_provider(&provider.issuer);
+
+    // Without a connection, estimating needs one; manual logging does not.
+    assert_eq!(
+        estimate_food(&device, json!({"description": "Pizza"}))
+            .unwrap_err()
+            .kind,
+        ErrorKind::ConnectionRequired
+    );
+    connect(&device, &provider);
+    let sent = || provider.with(|s| s.requests.len());
+    let before = sent();
+    let jpeg_named_png =
+        json!({"mime": "image/png", "data": STANDARD.encode([0xFF, 0xD8, 0xFF, 0xE0])});
+    let oversized = json!({
+        "mime": "image/jpeg",
+        "data": STANDARD.encode([&[0xFF, 0xD8, 0xFF][..], &vec![0; 8 * 1024 * 1024]].concat()),
+    });
+    for request in [
+        json!({}),
+        json!({"description": "   "}),
+        json!({"description": "x".repeat(2001)}),
+        json!({"image": {"mime": "image/gif", "data": STANDARD.encode(b"GIF89a")}}),
+        json!({"image": jpeg_named_png}),
+        json!({"image": {"mime": "image/png", "data": "not base64!"}}),
+        json!({"image": oversized}),
+    ] {
+        let failure = estimate_food(&device, request.clone()).unwrap_err();
+        assert_eq!(failure.kind, ErrorKind::Invalid, "{request}");
+    }
+    assert_eq!(sent(), before, "invalid requests reached the provider");
+
+    let day = || device.op(json!({"operation": "foodLog", "date": "2030-05-06"}));
+    let empty = day();
+    for reply in [
+        json!("About 600 kcal."),
+        json!({"description": "Pizza"}),
+        json!({"description": "", "calories": 600}),
+        json!({"description": "Pizza", "calories": -5}),
+        json!({"description": "Pizza", "calories": 600, "recipe": {"name": "Pizza"}}),
+    ] {
+        provider.with(|s| s.reply = reply.clone());
+        let failure = estimate_food(&device, json!({"description": "Pizza"})).unwrap_err();
+        assert_eq!(failure.kind, ErrorKind::Invalid, "{reply}");
+        assert!(
+            failure.message.contains("Nothing was logged."),
+            "{}",
+            failure.message
+        );
+        assert_eq!(day(), empty);
+    }
+    provider.with(|s| s.reply = pizza());
+    for failure in ["http", "failed", "interrupted"] {
+        provider.with(|s| s.failure = Some(failure.into()));
+        assert!(estimate_food(&device, json!({"description": "Pizza"})).is_err());
+        assert_eq!(day(), empty);
+    }
+    // A fenced reply is still read.
+    provider.with(|s| {
+        s.failure = None;
+        s.reply = json!(format!("```json\n{}\n```", pizza()));
+    });
+    assert_eq!(
+        estimate_food(&device, json!({"description": "Pizza"})).unwrap()["nutrition"]["calories"],
+        600.0
+    );
+}

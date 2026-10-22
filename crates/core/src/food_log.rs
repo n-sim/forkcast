@@ -1,8 +1,9 @@
 //! A person's food log: recipe-linked entries that reference a retained
-//! nutrition version, and manual entries with their own nutrition.
+//! nutrition version, and manual entries with their own nutrition, which AI
+//! can estimate from a description or a transient image.
 
 use crate::{
-    Core,
+    AiImage, AiRequest, Core,
     changes::{Effects, Topic},
     error::{Error, Result},
     principal::Principal,
@@ -11,8 +12,8 @@ use crate::{
 use forkcast_recipe_domain::{
     calendar::valid_date,
     food_log::{
-        DailyFoodLog, ManualFoodLogEntry, RecipeFoodLogEntry, daily_food_log,
-        validate_manual_entry, validate_recipe_entry,
+        DailyFoodLog, FoodEstimate, ManualFoodLogEntry, RecipeFoodLogEntry, daily_food_log,
+        read_food_estimate, validate_manual_entry, validate_recipe_entry,
     },
     nutrition::{Nutrition, NutritionVersion},
     nutrition_goals::{NutritionGoals, applicable_goals, validate_goals},
@@ -23,6 +24,11 @@ use serde_json::Value;
 use uuid::Uuid;
 
 const DATE_KEY: &str = "foodLogDate";
+const MAX_ESTIMATE_DESCRIPTION_CHARS: usize = 2000;
+
+const ESTIMATE_CONTRACT: &str = r#"Estimate the nutrition of food a person ate, from their description, a photo, or both. Work from the amounts described or visible; when an amount is not given, assume one typical serving and say so in the description.
+Return only a JSON object, without Markdown, in this structure: {"description":"2 slices of margherita pizza (about 250 g)","calories":600,"protein":25,"fat":22,"carbohydrates":75}.
+description names the food and the amount the nutrition is for, in up to 200 characters. The values are for that whole amount. Calories are in kcal; protein, fat and carbohydrates are in grams. Each value must be a nonnegative finite number; use null for a value you cannot estimate. Do not include any other fields, and never describe a recipe."#;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -43,6 +49,18 @@ pub struct LogManualFood {
     pub description: String,
     pub consumed_at: String,
     pub nutrition: Nutrition,
+}
+
+/// An AI estimate for a manual entry from a description, an image, or
+/// both. The image goes to the provider with this request only.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EstimateFood {
+    pub model: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub image: Option<AiImage>,
 }
 
 fn field_errors(errors: impl serde::Serialize) -> Error {
@@ -329,6 +347,52 @@ impl Core {
             )?;
             effects.person(principal, Topic::FoodLog);
             Ok(true)
+        })
+    }
+
+    /// Asks the person's AI connection to estimate food from a description,
+    /// an image, or both. Returns a suggestion for a manual entry and stores
+    /// nothing: not the estimate, and never the image.
+    pub fn estimate_food(
+        &self,
+        principal: &Principal,
+        input: EstimateFood,
+    ) -> Result<FoodEstimate> {
+        principal.require_personal()?;
+        let description = input
+            .description
+            .as_deref()
+            .map(str::trim)
+            .filter(|description| !description.is_empty());
+        if description.is_none() && input.image.is_none() {
+            return Err(Error::invalid(
+                "Describe the food or add a photo to estimate its nutrition.",
+            ));
+        }
+        if description.is_some_and(|text| text.chars().count() > MAX_ESTIMATE_DESCRIPTION_CHARS) {
+            return Err(Error::invalid(format!(
+                "Describe the food in up to {MAX_ESTIMATE_DESCRIPTION_CHARS} characters."
+            )));
+        }
+        let text = self.ai_execute(
+            principal,
+            AiRequest {
+                model: input.model,
+                instructions: ESTIMATE_CONTRACT.to_owned(),
+                input: match (description, &input.image) {
+                    (Some(description), None) => format!("Food eaten:\n{description}"),
+                    (Some(description), Some(_)) => {
+                        format!("Food eaten, shown in the attached photo:\n{description}")
+                    }
+                    (None, _) => "Food eaten: shown in the attached photo.".to_owned(),
+                },
+                image: input.image,
+            },
+        )?;
+        read_food_estimate(&text).map_err(|detail| {
+            Error::invalid(format!(
+                "ChatGPT returned an invalid nutrition estimate. {detail} Try again, or enter nutrition manually. Nothing was logged."
+            ))
         })
     }
 

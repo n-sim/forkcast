@@ -31,7 +31,7 @@ pub use accounts::{
     SetupServer, SignedIn,
 };
 pub use ai::{
-    AiConfig, AiModel, AiRequest, AiState, AiStatus, CredentialTransfer, ServerSelection,
+    AiConfig, AiImage, AiModel, AiRequest, AiState, AiStatus, CredentialTransfer, ServerSelection,
     TransferAck,
 };
 pub use changes::{Change, Scope, Subscription, Topic};
@@ -44,7 +44,7 @@ pub use cooking_plans::{
 };
 pub use db::SCHEMA_VERSION;
 pub use error::{Error, ErrorKind, Result};
-pub use food_log::{LogManualFood, LogRecipeFood};
+pub use food_log::{EstimateFood, LogManualFood, LogRecipeFood};
 pub use operation::Operation;
 pub use planning::{
     EditBase, MealPlanView, PlanningChoice, PlanningMutation, ShoppingItemKind, ShoppingListView,

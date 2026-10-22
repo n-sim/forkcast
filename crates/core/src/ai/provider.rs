@@ -431,7 +431,18 @@ impl Provider {
         model: &str,
         instructions: &str,
         input: &str,
+        image: Option<&super::AiImage>,
     ) -> Result<String, Failure> {
+        let content = match image {
+            None => json!(input),
+            Some(image) => json!([
+                { "type": "input_text", "text": input },
+                {
+                    "type": "input_image",
+                    "image_url": format!("data:{};base64,{}", image.mime, image.data),
+                },
+            ]),
+        };
         let response = self
             .long
             .post(&self.endpoint("responses"))
@@ -439,7 +450,7 @@ impl Provider {
             .send_json(json!({
                 "model": model,
                 "instructions": instructions,
-                "input": [{ "role": "user", "content": input }],
+                "input": [{ "role": "user", "content": content }],
                 "store": false,
                 "stream": true,
             }))
