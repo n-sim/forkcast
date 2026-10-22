@@ -71,10 +71,11 @@ methods.
 | `generateShoppingList` | `startDate`, `endDate`, `replacingListId?` | the new list; manual items carry over unchecked; `conflict` unless `replacingListId` names the current list |
 | `saveShoppingItem` | `listId`, `kind` (`generated`/`manual`), `item` | the list |
 | `removeShoppingItem` / `checkShoppingItem` / `completeShoppingList` | `listId`, `kind`, `itemId` / `itemId`, `checked` / none | the list |
-| `cookingSessions` | | the person's unfinished sessions; `recipeArchived` marks one whose recipe was archived since it started |
+| `cookingSessions` | | the person's unfinished sessions, plus ended ones whose `conflict` awaits a decision; `recipeArchived` marks one whose recipe was archived since it started |
 | `startCooking` | `recipeId`, `portions`, `displayUnits?`, `cancelSessionIds?` | `{session, conflicts}`; captures the recipe now; `session` is `null` and `conflicts` lists unfinished sessions unless `cancelSessionIds` names exactly them |
 | `saveCookingProgress` | `sessionId`, `step`, `timers` | the session |
 | `endCooking` | `sessionId`, `outcome` (`finished`/`canceled`) | none; finishing needs the last step |
+| `resolveCookingSession` | `sessionId`, `keep` (`current`/`alternative`) | the session. Keeps the shown progress or the competing `conflict.progress` from another of the person's devices; keeping a finished alternative records its occurrence once. `conflict` when nothing is left to decide |
 | `cookingHistory` | | household cooking count and `lastCookedAt` (ms) per cooked recipe: `{recipeId, count, lastCookedAt}` |
 | `markCooked` | `recipeId`, `id?`, `sessionId?` | the recipe's history. Records one occurrence for the household; an identical `id`, or a `sessionId` that already has one, counts nothing more. Finishing a guided session records its occurrence once (retrying `endCooking` is accepted); canceling records none. Creates no food-log entry |
 | `foodLog` | `date` | `{entries, totals, incomplete}` computed from retained nutrition versions; `recipeArchived` marks entries whose recipe was archived |
@@ -95,7 +96,8 @@ methods.
 Server-only entry points are Rust methods and HTTP endpoints, not bridge operations:
 `server_status`, `setup_server`, `sign_in`, `authenticate`, `sign_out`, `session`,
 `accounts`, `create_account`, `change_account`, `ingest_recipe_revision`,
-`apply_rating_changes`, and `submit_planning`. They keep the existing `/api/...` routes,
+`apply_rating_changes`, `submit_planning`, `cooking_session_snapshot`,
+`apply_cooking_session_changes`, `cooking_occurrences`, and `apply_cooking_occurrences`. They keep the existing `/api/...` routes,
 bodies, and messages.
 
 ### Archived recipes
@@ -126,11 +128,41 @@ review is the only way it returns to the collection.
 ### Pending synchronization
 
 Once a profile has joined a server, every `saveRecipe`, `setRecipeCoverPhoto`, `rateRecipe`,
-and planning edit appends to a durable outbox in the same transaction as the change.
-Failed operations leave neither. Each entry keeps the person and household that made it,
-whatever account later signs in. Kinds: `recipeRevision` (a revision, as the server's
-`recipe-revisions` endpoint accepts it), `rating` (a rating change), and `planning`
-(`{baseData, data}`; the synchronization work adds the server revision it was based on).
+planning edit, cooking-session change, and cooking occurrence appends to a durable outbox in
+the same transaction as the change. Failed operations leave neither. Each entry keeps the
+person and household that made it, whatever account later signs in. Kinds: `recipeRevision`
+(a revision, as the server's `recipe-revisions` endpoint accepts it), `rating` (a rating
+change), `planning` (`{baseData, data}`; the synchronization work adds the server revision it
+was based on), `cookingSession`, and `cookingOccurrence`.
+
+### Cooking sessions and occurrences
+
+Sessions are personal and synchronize only between one account's devices
+(`GET`/`POST /api/accounts/{id}/cooking-sessions`, refused for any other account); occurrences
+are household records (`GET`/`POST /api/households/{id}/cooking-occurrences`). The core
+enforces both: a change to another person's session, or an occurrence naming one, is
+`forbidden` whatever path it arrives on.
+
+- A `cookingSession` change is `{id, sessionId, base, progress, session?, resolves?}`, where
+  progress is `{currentStep, timers, completedAt, canceledAt}`. The change that starts a session
+  carries what it captured (`session`); later changes carry progress only, so resuming on
+  another device never recaptures a newer recipe. The server remembers applied change ids, so
+  redelivery changes nothing.
+- The server merges `progress` with its own against `base`: the step, each step's timer, and
+  the outcome combine when only one side changed them. Different changes to the same field,
+  or finishing on one side while cooking continued on the other, keep the server's progress
+  and retain the incoming one as `conflict: {id, progress}` until `resolveCookingSession`. A
+  finished session therefore never resumes without that decision. Sessions started on two
+  devices while apart both stay unfinished; the next `startCooking` names them all.
+- An occurrence is `{id, recipeId, sessionId?, cookedAt}`. The server records it once by `id`
+  and once per `sessionId`, whoever delivers it; devices adopt the server's record of a
+  session's cook in place of their own. Occurrences of recipes a device kept to itself when
+  joining stay on that device. Nothing creates food-log entries or remaining portions.
+- Timers synchronize as persisted timing state (`durationMs`, `remainingMs`, `endsAt`); a
+  device derives what is left in the foreground. Nothing runs or alarms in the background.
+
+Joining with personal records queues the account's unfinished sessions; joining queues the
+recorded cooking of every recipe the device contributes.
 `acknowledgeSync` removes confirmed entries and ignores unknown ids. Rejoining the same
 household resumes; another household returns `conflict` and needs a separate profile.
 Transport, adoption review, and conflict handling for synchronization are separate work.

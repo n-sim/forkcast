@@ -50,7 +50,8 @@ pub struct PendingChange {
     pub id: String,
     pub person_id: String,
     pub household_id: String,
-    /// `recipeRevision`, `rating`, `preference`, or `planning`.
+    /// `recipeRevision`, `rating`, `preference`, `planning`,
+    /// `cookingSession`, or `cookingOccurrence`.
     pub kind: String,
     pub payload: Value,
 }
@@ -674,6 +675,30 @@ impl Core {
                     let ids: Vec<String> = batch.iter().map(|entry| entry.id.clone()).collect();
                     self.acknowledge(&ids)?;
                 }
+                "cookingSession" | "cookingOccurrence" => {
+                    let kind = first.kind.as_str();
+                    // A session change carries a captured recipe, so batches stay small.
+                    let batch: Vec<&Entry> = entries
+                        .iter()
+                        .take_while(|entry| entry.kind == kind)
+                        .take(if kind == "cookingSession" { 20 } else { 100 })
+                        .collect();
+                    let changes: Vec<&Value> = batch.iter().map(|entry| &entry.payload).collect();
+                    let (path, body) = if kind == "cookingSession" {
+                        (
+                            format!("/accounts/{account}/cooking-sessions"),
+                            json!({ "changes": changes }),
+                        )
+                    } else {
+                        (
+                            format!("{household}/cooking-occurrences"),
+                            json!({ "occurrences": changes }),
+                        )
+                    };
+                    remote.call("POST", &path, Some(&body))?;
+                    let ids: Vec<String> = batch.iter().map(|entry| entry.id.clone()).collect();
+                    self.acknowledge(&ids)?;
+                }
                 "planning" => {
                     let snapshot = remote.call(
                         "POST",
@@ -720,6 +745,12 @@ impl Core {
         let planning = remote.call("GET", &format!("{household}/planning"), None)?;
         let preferences =
             remote.call("GET", &format!("/accounts/{account}/ai-preferences"), None)?;
+        let sessions = remote.call(
+            "GET",
+            &format!("/accounts/{account}/cooking-sessions"),
+            None,
+        )?;
+        let occurrences = remote.call("GET", &format!("{household}/cooking-occurrences"), None)?;
         let person = self.acting(account)?;
         self.write(|db, effects| {
             let pending = pending_entries(db)?;
@@ -741,6 +772,24 @@ impl Core {
                 .filter_map(|entry| entry.payload["key"].as_str().map(str::to_owned))
                 .collect();
             crate::preferences::mirror(db, &person, &preferences, &pending_preferences, effects)?;
+            let pending_sessions: HashSet<String> = pending
+                .iter()
+                .filter(|entry| entry.kind == "cookingSession" && entry.person_id == account)
+                .filter_map(|entry| entry.payload["sessionId"].as_str().map(str::to_owned))
+                .collect();
+            crate::cooking::mirror_sessions(db, &person, &sessions, &pending_sessions, effects)?;
+            let pending_occurrences: HashSet<String> = pending
+                .iter()
+                .filter(|entry| entry.kind == "cookingOccurrence")
+                .map(|entry| entry.id.clone())
+                .collect();
+            crate::cooking::mirror_occurrences(
+                db,
+                &person,
+                &occurrences,
+                &pending_occurrences,
+                effects,
+            )?;
             mirror_planning(db, &person, &planning, effects)?;
             // A plan edited here while an archival arrived drops its
             // withdrawn cookings now, as the server does when it merges.

@@ -224,6 +224,16 @@ Finished and canceled sessions no longer appear in the resume links, including
 after reopening. Their saved records remain distinct for later cooking-history work.
 Sessions and their start/replacement checks belong to the current person;
 sharing recipes does not share cooking progress or prevent another person cooking.
+After joining a household server, your sessions synchronize between your own devices:
+**Resume cooking** on another computer or tablet continues with the captured recipe,
+scale, step, and timers, never a newer edit of the recipe, and progress made offline is
+delivered later. When two of your devices change the same session while apart, independent
+changes (such as a timer on one and the next step on the other) combine; competing ones show
+**Cooking changed on two devices**, offering **Keep current progress** or **Use other
+device’s progress**. A session finished on one device is not reopened by another unless you
+choose that. Sessions started on two devices while apart both appear until you choose.
+Each finished guided session, and each **Mark cooked**, counts once in the household's
+cooking history on every device, however often it is retried or delivered.
 
 Each step offers a timer with a duration in minutes, including fractional minutes.
 Timers run independently across steps. **Pause timer** holds the remaining time,

@@ -158,7 +158,7 @@ test('concurrent first-account requests create exactly one administrator and one
   ).toBe(403);
   await backend.restart();
   const status = await request.get(`${backend.url}/api/status`);
-  expect(await status.json()).toEqual({ setupRequired: false, protocol: 1 });
+  expect(await status.json()).toEqual({ setupRequired: false, protocol: 2 });
   expect(
     (
       await request.get(`${backend.url}/api/session`, {

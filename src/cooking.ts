@@ -6,6 +6,11 @@ import {
   type StepTimer,
 } from './domain';
 
+/** What synchronizes of a session between the person's devices. */
+export interface SessionProgress extends CookingProgress {
+  timers: Record<string, StepTimer>;
+}
+
 export interface CookingSession extends CookingProgress {
   id: string;
   recipe: Recipe;
@@ -14,6 +19,20 @@ export interface CookingSession extends CookingProgress {
   timers: Record<string, StepTimer>;
   /** The recipe was archived after cooking started; the session still finishes. */
   recipeArchived?: boolean;
+  /**
+   * Progress from another of the person's devices that competed with this
+   * session's; the person keeps one before cooking continues.
+   */
+  conflict?: { id: string; progress: SessionProgress };
+}
+
+export function progressSummary(
+  progress: CookingProgress,
+  stepCount: number,
+): string {
+  if (progress.completedAt != null) return 'Finished cooking';
+  if (progress.canceledAt != null) return 'Canceled cooking';
+  return `Step ${progress.currentStep + 1} of ${stepCount}`;
 }
 
 export function cookingUrl(id: string) {
