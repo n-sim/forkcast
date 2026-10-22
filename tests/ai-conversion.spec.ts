@@ -146,11 +146,10 @@ test('decline an estimate to keep amounts separate, then accept one to combine t
   await volume(page)
     .getByRole('button', { name: 'Estimate again', exact: true })
     .click();
+  const fresh = page.getByRole('region', { name: 'Conversion estimate' });
+  await expect(fresh).toContainText('weighs about 91 g');
   expect(requests).toHaveLength(2);
-  await page
-    .getByRole('region', { name: 'Conversion estimate' })
-    .getByRole('button', { name: 'Accept estimate' })
-    .click();
+  await fresh.getByRole('button', { name: 'Accept estimate' }).click();
   await expect(requirements(page).getByRole('article')).toHaveCount(1);
   const merged = requirements(page).getByRole('article', {
     name: 'Oil',
