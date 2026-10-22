@@ -340,3 +340,148 @@ async fn changes_stream_announces_committed_changes() {
     assert!(text.contains("event: change"), "{text}");
     assert!(text.contains(r#""topic":"preferences""#), "{text}");
 }
+
+#[tokio::test]
+async fn cooking_sessions_stay_with_their_account_while_occurrences_are_the_households() {
+    let server = Server::new();
+    let (admin, admin_id, household) = signed_in(&server).await;
+    let (status, _) = server
+        .call(
+            Method::POST,
+            "/api/accounts",
+            Some(&admin),
+            Some(json!({"username": "sam", "password": "another long passphrase"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (_, body) = server
+        .call(
+            Method::POST,
+            "/api/login",
+            None,
+            Some(json!({"username": "sam", "password": "another long passphrase"})),
+        )
+        .await;
+    let sam = body["token"].as_str().unwrap().to_owned();
+    let sam_id = body["account"]["id"].as_str().unwrap().to_owned();
+    let operate = |token: String, operation: Value| {
+        let server = &server;
+        async move {
+            server
+                .call(
+                    Method::POST,
+                    "/api/operations",
+                    Some(&token),
+                    Some(operation),
+                )
+                .await
+        }
+    };
+    let (status, _) = operate(
+        admin.clone(),
+        json!({"operation": "saveRecipe", "recipe": risotto()}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, started) = operate(
+        admin.clone(),
+        json!({"operation": "startCooking", "recipeId": "veggie-pumpkin-risotto", "portions": 2}),
+    )
+    .await;
+    let session_id = started["session"]["id"].as_str().unwrap().to_owned();
+
+    // Sam cannot read the administrator's sessions by path ...
+    let (status, _) = server
+        .call(
+            Method::GET,
+            &format!("/api/accounts/{admin_id}/cooking-sessions"),
+            Some(&sam),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    // ... nor change one through Sam's own path.
+    let change = json!({"changes": [{
+        "id": uuid::Uuid::new_v4().to_string(),
+        "sessionId": session_id,
+        "base": {"currentStep": 0, "timers": {}, "completedAt": null, "canceledAt": null},
+        "progress": {"currentStep": 1, "timers": {}, "completedAt": null, "canceledAt": null},
+    }]});
+    let (status, _) = server
+        .call(
+            Method::POST,
+            &format!("/api/accounts/{sam_id}/cooking-sessions"),
+            Some(&sam),
+            Some(change.clone()),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (_, own) = server
+        .call(
+            Method::GET,
+            &format!("/api/accounts/{sam_id}/cooking-sessions"),
+            Some(&sam),
+            None,
+        )
+        .await;
+    assert_eq!(own, json!({"sessions": [], "ended": []}));
+    // Delivered twice, the administrator's change applies once.
+    for _ in 0..2 {
+        let (status, _) = server
+            .call(
+                Method::POST,
+                &format!("/api/accounts/{admin_id}/cooking-sessions"),
+                Some(&admin),
+                Some(change.clone()),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
+    let (_, sessions) = operate(admin.clone(), json!({"operation": "cookingSessions"})).await;
+    assert_eq!(sessions[0]["currentStep"], 1);
+
+    // Occurrences are shared: Sam records one twice, and both see one cook.
+    let occurrence = json!({"occurrences": [{
+        "id": uuid::Uuid::new_v4().to_string(),
+        "recipeId": "veggie-pumpkin-risotto",
+        "cookedAt": 1_900_000_000_000_i64,
+    }]});
+    for _ in 0..2 {
+        let (status, _) = server
+            .call(
+                Method::POST,
+                &format!("/api/households/{household}/cooking-occurrences"),
+                Some(&sam),
+                Some(occurrence.clone()),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
+    let (status, _) = server
+        .call(
+            Method::GET,
+            "/api/households/elsewhere/cooking-occurrences",
+            Some(&sam),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    // Sam cannot attribute a cook to the administrator's session.
+    let (status, _) = server
+        .call(
+            Method::POST,
+            &format!("/api/households/{household}/cooking-occurrences"),
+            Some(&sam),
+            Some(json!({"occurrences": [{
+                "id": uuid::Uuid::new_v4().to_string(),
+                "recipeId": "veggie-pumpkin-risotto",
+                "sessionId": session_id,
+                "cookedAt": 1_900_000_000_000_i64,
+            }]})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (_, history) = operate(admin, json!({"operation": "cookingHistory"})).await;
+    assert_eq!(history[0]["count"], 1);
+    assert_eq!(history[0]["lastCookedAt"], 1_900_000_000_000_i64);
+}

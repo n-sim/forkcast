@@ -609,6 +609,13 @@ impl Core {
                     )?;
                 }
             }
+            crate::cooking::queue_for_join(
+                db,
+                effects,
+                &member,
+                &contributed,
+                selection.adopt_personal,
+            )?;
             effects.queued = true;
             for topic in [Topic::Recipes, Topic::Planning, Topic::Ratings, Topic::Sync] {
                 effects.household(&member, topic);

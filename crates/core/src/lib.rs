@@ -35,7 +35,10 @@ pub use ai::{
     TransferAck,
 };
 pub use changes::{Change, Scope, Subscription, Topic};
-pub use cooking::{BeginCooking, CookingOutcome, MarkCooked, RecipeHistory, StartCooking};
+pub use cooking::{
+    BeginCooking, CookingChoice, CookingOccurrence, CookingOutcome, CookingSessionChange,
+    MarkCooked, RecipeHistory, StartCooking,
+};
 pub use cooking_plans::{
     ApplyCookingPlan, CookingPlanProposal, GenerateCookingPlan, ScheduleCookings,
 };

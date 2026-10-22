@@ -13,7 +13,7 @@ use ureq::unversioned::{
 
 /// The synchronization contract version both sides must share. Bump it for
 /// any change to wire formats or merge rules that older peers cannot handle.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 pub(crate) const PROTOCOL_HEADER: &str = "x-forkcast-protocol";
 
 pub(crate) struct Remote {

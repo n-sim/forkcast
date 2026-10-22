@@ -169,6 +169,14 @@ export async function endCookingSession(
   await execute('endCooking', { sessionId: id, outcome });
 }
 
+/** Keeps the session's current progress or the competing one from another device. */
+export async function resolveCookingSession(
+  id: string,
+  keep: 'current' | 'alternative',
+): Promise<CookingSession> {
+  return execute('resolveCookingSession', { sessionId: id, keep });
+}
+
 export function subscribeToCookingChanges(listener: () => void) {
   // Archiving a recipe changes the notice its unfinished sessions carry.
   return subscribeToTopics(['cookingSessions', 'recipes'], listener);

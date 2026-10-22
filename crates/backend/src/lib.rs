@@ -16,9 +16,10 @@ use axum::{
     routing::{get, post},
 };
 use forkcast_core::{
-    AccountChange, Authenticated, Core, CredentialTransfer, Credentials, CurrentChoice, Error,
-    ErrorKind, Operation, PROTOCOL_VERSION, PlanningChoice, PlanningMutation, PreferenceChange,
-    Principal, RatingChange, Revision, SetupServer,
+    AccountChange, Authenticated, CookingOccurrence, CookingSessionChange, Core,
+    CredentialTransfer, Credentials, CurrentChoice, Error, ErrorKind, Operation, PROTOCOL_VERSION,
+    PlanningChoice, PlanningMutation, PreferenceChange, Principal, RatingChange, Revision,
+    SetupServer,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -303,6 +304,74 @@ async fn save_ai_preferences(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CookingSessionChanges {
+    changes: Vec<CookingSessionChange>,
+}
+
+async fn cooking_sessions(
+    State(core): State<Core>,
+    auth: Auth,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Value>> {
+    blocking(move || {
+        let principal = auth.principal();
+        principal.require_person(&id)?;
+        Ok(Json(core.cooking_session_snapshot(&principal)?))
+    })
+    .await
+}
+
+async fn save_cooking_sessions(
+    State(core): State<Core>,
+    auth: Auth,
+    Path(id): Path<String>,
+    Json(input): Json<CookingSessionChanges>,
+) -> ApiResult<StatusCode> {
+    blocking(move || {
+        let principal = auth.principal();
+        principal.require_person(&id)?;
+        core.apply_cooking_session_changes(&principal, input.changes)
+    })
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CookingOccurrences {
+    occurrences: Vec<CookingOccurrence>,
+}
+
+async fn cooking_occurrences(
+    State(core): State<Core>,
+    auth: Auth,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<CookingOccurrence>>> {
+    blocking(move || {
+        let principal = auth.principal();
+        principal.require_household(&id)?;
+        Ok(Json(core.cooking_occurrences(&principal)?))
+    })
+    .await
+}
+
+async fn save_cooking_occurrences(
+    State(core): State<Core>,
+    auth: Auth,
+    Path(id): Path<String>,
+    Json(input): Json<CookingOccurrences>,
+) -> ApiResult<StatusCode> {
+    blocking(move || {
+        let principal = auth.principal();
+        principal.require_household(&id)?;
+        core.apply_cooking_occurrences(&principal, input.occurrences)
+    })
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// The server's own provider identity, which a session must be issued to
 /// before the server will accept it.
 async fn ai_host(State(core): State<Core>, auth: Auth) -> ApiResult<Json<Value>> {
@@ -476,6 +545,18 @@ pub fn router(core: Core, origins: Vec<HeaderValue>, frontend: Option<PathBuf>) 
         .route(
             "/api/accounts/{id}/ai-preferences",
             get(ai_preferences).post(save_ai_preferences),
+        )
+        .route(
+            "/api/accounts/{id}/cooking-sessions",
+            get(cooking_sessions)
+                .post(save_cooking_sessions)
+                .layer(DefaultBodyLimit::max(16 * MEBIBYTE)),
+        )
+        .route(
+            "/api/households/{id}/cooking-occurrences",
+            get(cooking_occurrences)
+                .post(save_cooking_occurrences)
+                .layer(DefaultBodyLimit::max(MEBIBYTE)),
         )
         .route("/api/ai/host", get(ai_host))
         .route(

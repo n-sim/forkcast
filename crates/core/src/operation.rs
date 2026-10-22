@@ -3,10 +3,10 @@
 //! `POST /api/operations` calls, so both transports share one implementation.
 
 use crate::{
-    AccountChange, AiRequest, ApplyCookingPlan, ArchiveRecipe, CookingOutcome, Core, Credentials,
-    CurrentChoice, EditBase, GenerateCookingPlan, JoinSelection, LogManualFood, LogRecipeFood,
-    MarkCooked, Photo, PlanningChoice, Principal, ScheduleCookings, ServerSelection, SetCoverPhoto,
-    ShoppingItemKind, StartCooking,
+    AccountChange, AiRequest, ApplyCookingPlan, ArchiveRecipe, CookingChoice, CookingOutcome, Core,
+    Credentials, CurrentChoice, EditBase, GenerateCookingPlan, JoinSelection, LogManualFood,
+    LogRecipeFood, MarkCooked, Photo, PlanningChoice, Principal, ScheduleCookings, ServerSelection,
+    SetCoverPhoto, ShoppingItemKind, StartCooking,
     error::{Error, Result},
 };
 use forkcast_recipe_domain::{
@@ -115,6 +115,10 @@ pub enum Operation {
     EndCooking {
         session_id: String,
         outcome: CookingOutcome,
+    },
+    ResolveCookingSession {
+        session_id: String,
+        keep: CookingChoice,
     },
     CookingHistory,
     MarkCooked {
@@ -349,6 +353,9 @@ impl Core {
             } => {
                 self.end_cooking(principal, &session_id, outcome)?;
                 Ok(Value::Null)
+            }
+            ResolveCookingSession { session_id, keep } => {
+                self.resolve_cooking_session(principal, &session_id, keep)
             }
             CookingHistory => json(self.cooking_history(principal)?),
             MarkCooked { cooked } => json(self.mark_cooked(principal, cooked)?),

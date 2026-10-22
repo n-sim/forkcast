@@ -517,7 +517,7 @@ fn release_skew_fails_visibly_and_keeps_pending_work() {
     let address = server.address();
     server.stop();
     save_recipe(&admin, "tea", "Tea");
-    let _newer = OtherRelease::at(address, 2);
+    let _newer = OtherRelease::at(address, forkcast_core::PROTOCOL_VERSION + 1);
     let status = admin.sync();
     let message = status.last_error.unwrap();
     assert!(message.contains("protocol"), "{message}");
