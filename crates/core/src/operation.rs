@@ -5,8 +5,8 @@
 use crate::{
     AccountChange, AiRequest, ApplyCookingPlan, ArchiveRecipe, CookingChoice, CookingOutcome, Core,
     Credentials, CurrentChoice, EditBase, EditFoodLogEntry, EstimateConversion, EstimateFood,
-    FoodLogChoice, GenerateCookingPlan, JoinSelection, LogManualFood, LogRecipeFood, MarkCooked,
-    Photo, PlanningChoice, Principal, ScheduleCookings, ServerSelection, SetCoverPhoto,
+    FillCart, FoodLogChoice, GenerateCookingPlan, JoinSelection, LogManualFood, LogRecipeFood,
+    MarkCooked, Photo, PlanningChoice, Principal, ScheduleCookings, ServerSelection, SetCoverPhoto,
     ShoppingItemKind, StartCooking,
     error::{Error, Result},
 };
@@ -197,6 +197,9 @@ pub enum Operation {
     SetPlanPrompt {
         prompt: String,
     },
+    SetCartPrompt {
+        prompt: String,
+    },
     AiStatus,
     /// A joined installation must name the server and account.
     AiAuthorize {
@@ -211,6 +214,15 @@ pub enum Operation {
     AiExecute {
         #[serde(flatten)]
         request: AiRequest,
+    },
+    SupermarketStatus,
+    SupermarketAuthorize,
+    SupermarketCancelAuthorization,
+    SupermarketSignOut,
+    /// Fills the person's Gurkerl cart from the reviewed shopping list.
+    FillSupermarketCart {
+        #[serde(flatten)]
+        request: FillCart,
     },
     SyncStatus,
     SyncNow,
@@ -459,6 +471,7 @@ impl Core {
             SetRecipePrompt { prompt } => json(self.set_recipe_prompt(principal, &prompt)?),
             SetRecipeModel { model } => json(self.set_recipe_model(principal, model.as_deref())?),
             SetPlanPrompt { prompt } => json(self.set_plan_prompt(principal, &prompt)?),
+            SetCartPrompt { prompt } => json(self.set_cart_prompt(principal, &prompt)?),
             AiStatus => json(self.ai_status(principal)?),
             AiAuthorize {
                 server_url,
@@ -482,6 +495,17 @@ impl Core {
             AiCancelTransfer => json(self.ai_cancel_transfer(principal)?),
             AiModels => json(self.ai_models(principal)?),
             AiExecute { request } => json(json!({"text": self.ai_execute(principal, request)?})),
+            SupermarketStatus => json(self.supermarket_status(principal)?),
+            SupermarketAuthorize => {
+                json(json!({"authorizationUrl": self.supermarket_authorize(principal)?}))
+            }
+            SupermarketCancelAuthorization => {
+                json(self.supermarket_cancel_authorization(principal)?)
+            }
+            SupermarketSignOut => json(self.supermarket_sign_out(principal)?),
+            FillSupermarketCart { request } => {
+                json(self.fill_supermarket_cart(principal, request)?)
+            }
             SyncStatus => json(self.sync_status()?),
             SyncNow => json(self.sync_now()?),
             ConnectServer {

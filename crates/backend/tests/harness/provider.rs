@@ -28,6 +28,8 @@ pub struct State {
     pub refresh_delay_ms: u64,
     pub failure: Option<String>,
     pub reply: Value,
+    /// Replies used once each, in order, before `reply`.
+    pub replies: std::collections::VecDeque<Value>,
     codes: HashMap<String, HashMap<String, String>>,
     refresh_tokens: HashSet<String>,
     access_tokens: HashSet<String>,
@@ -44,14 +46,14 @@ pub struct Provider {
     state: Arc<Mutex<State>>,
 }
 
-struct Request {
-    method: String,
-    path: String,
-    headers: HashMap<String, String>,
-    body: String,
+pub struct Request {
+    pub method: String,
+    pub path: String,
+    pub headers: HashMap<String, String>,
+    pub body: String,
 }
 
-fn read_request(stream: &mut TcpStream) -> Option<Request> {
+pub fn read_request(stream: &mut TcpStream) -> Option<Request> {
     stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
     let mut data = Vec::new();
     let mut buffer = [0u8; 4096];
@@ -92,7 +94,7 @@ fn read_request(stream: &mut TcpStream) -> Option<Request> {
     })
 }
 
-fn respond(stream: &mut TcpStream, status: u16, content_type: &str, body: &str) {
+pub fn respond(stream: &mut TcpStream, status: u16, content_type: &str, body: &str) {
     let _ = write!(
         stream,
         "HTTP/1.1 {status} X\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -100,7 +102,7 @@ fn respond(stream: &mut TcpStream, status: u16, content_type: &str, body: &str) 
     );
 }
 
-fn form(body: &str) -> HashMap<String, String> {
+pub fn form(body: &str) -> HashMap<String, String> {
     url::form_urlencoded::parse(body.as_bytes())
         .into_owned()
         .collect()
@@ -119,6 +121,7 @@ impl Provider {
                 refresh_delay_ms: 0,
                 failure: None,
                 reply: json!({"name": "Tomato soup"}),
+                replies: Default::default(),
                 codes: HashMap::new(),
                 refresh_tokens: HashSet::new(),
                 access_tokens: HashSet::new(),
@@ -388,7 +391,8 @@ impl Provider {
                 body["model"].as_str().unwrap_or("")
             ));
             s.requests.push(body.clone());
-            (s.failure.clone(), s.reply.clone())
+            let reply = s.replies.pop_front().unwrap_or_else(|| s.reply.clone());
+            (s.failure.clone(), reply)
         });
         match failure.as_deref() {
             Some("limited") => {

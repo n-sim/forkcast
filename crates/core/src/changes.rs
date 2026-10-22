@@ -27,6 +27,9 @@ pub enum Topic {
     Sync,
     /// A person's ChatGPT connection state. Never includes credentials.
     Ai,
+    /// A person's supermarket (Gurkerl) connection state on this device.
+    /// Never includes credentials.
+    Supermarket,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]

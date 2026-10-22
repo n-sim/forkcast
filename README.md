@@ -111,6 +111,24 @@ person's. Request-specific instructions are not retained as defaults.
 Release builds always use OpenAI's issuer. Debug builds alone accept `FORKCAST_AI_TEST_ISSUER` (an
 HTTP `127.0.0.1` authorization and inference fixture) for the desktop app and the server.
 
+### Gurkerl cart
+
+In the installed app, **Settings → Gurkerl → Connect Gurkerl** signs in through Gurkerl's own
+page in your browser (the same loopback flow, using the authorization Gurkerl's
+[MCP server](https://mcp.gurkerl.at/mcp) advertises). The session stays in protected storage on
+that device: it is never synchronized, shared with your household, or handed to a household
+server, and browsers cannot fill carts. **Fill Gurkerl cart** on the shopping list then lets
+ChatGPT pick products with Gurkerl's own search, product, and purchase-history tools for every
+unchecked item at its reviewed quantity, manual groceries included, following your editable
+**Product selection prompt** (for example cheapest or previously bought products; it
+synchronizes like your other prompts). Forkcast offers ChatGPT only tools that read or add to the
+cart, so it never checks out, orders, pays, or removes anything. The result lists each item as
+added (with the product), refused by Gurkerl, not added (with why), or skipped; an item counts as
+added only when Gurkerl confirmed it. A failure says whether anything reached your cart. Filling
+the cart leaves the shopping list open: checking items off or **Complete shopping** remains the
+way to finish. Debug builds alone accept `FORKCAST_GURKERL_TEST_SERVER` (an HTTP `127.0.0.1`
+MCP fixture).
+
 ## Household server and synchronization
 
 The household server hosts the same Rust core as the app, with HTTP, first-administrator setup,

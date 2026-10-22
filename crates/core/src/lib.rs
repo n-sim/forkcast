@@ -23,6 +23,7 @@ mod recipes;
 mod remote;
 mod secrets;
 mod session;
+mod supermarket;
 mod sync;
 pub mod tls;
 
@@ -67,6 +68,10 @@ pub use session::{
     AccountInfo, JoinReview, JoinSelection, PendingJoin, ServerAuthentication, ServerCertificate,
     ServerProbe,
 };
+pub use supermarket::{
+    CartHandoff, CartItem, CartItemStatus, FillCart, SupermarketConfig, SupermarketState,
+    SupermarketStatus,
+};
 pub use sync::{PendingChange, SyncStatus};
 
 use changes::{Effects, Hub};
@@ -89,6 +94,9 @@ pub struct Config {
     /// The ChatGPT authorization service. Production unless a debug host
     /// points it at a loopback fixture.
     pub ai: AiConfig,
+    /// The Gurkerl MCP server. Production unless a debug host points it at a
+    /// loopback fixture.
+    pub supermarket: SupermarketConfig,
 }
 
 impl Config {
@@ -97,6 +105,7 @@ impl Config {
             database: database.into(),
             secrets: Arc::new(MemorySecrets::default()),
             ai: AiConfig::production(),
+            supermarket: SupermarketConfig::production(),
             clock: Arc::new(|| {
                 SystemTime::now()
                     .duration_since(UNIX_EPOCH)
@@ -115,6 +124,8 @@ pub(crate) struct Inner {
     pub(crate) sync: sync::SyncControl,
     pub(crate) ai: ai::Runtime,
     pub(crate) ai_config: AiConfig,
+    pub(crate) supermarket: supermarket::Runtime,
+    pub(crate) supermarket_config: SupermarketConfig,
 }
 
 /// Cheap to clone and safe to share between threads. Every operation opens
@@ -140,6 +151,8 @@ impl Core {
                 sync: sync::SyncControl::default(),
                 ai: ai::Runtime::default(),
                 ai_config: config.ai,
+                supermarket: supermarket::Runtime::default(),
+                supermarket_config: config.supermarket,
             }),
         })
     }

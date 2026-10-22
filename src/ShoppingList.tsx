@@ -24,6 +24,7 @@ import {
   IngredientConversionReview,
 } from './IngredientConversionReview';
 import { useAiModel } from './use-ai-model';
+import { GurkerlCart } from './GurkerlCart';
 
 const sourceMessages = {
   changed:
@@ -421,6 +422,7 @@ export function ShoppingListView() {
                   Complete shopping
                 </button>
               </div>
+              <GurkerlCart listId={list.id} disabled={saving} />
             </>
           )}
         </>

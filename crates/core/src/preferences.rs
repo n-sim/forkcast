@@ -18,10 +18,12 @@ use uuid::Uuid;
 const RECIPE_PROMPT: &str = "recipePrompt";
 const RECIPE_MODEL: &str = "recipeModel";
 const PLAN_PROMPT: &str = "planPrompt";
-const KEYS: [&str; 3] = [RECIPE_PROMPT, RECIPE_MODEL, PLAN_PROMPT];
+const CART_PROMPT: &str = "cartPrompt";
+const KEYS: [&str; 4] = [RECIPE_PROMPT, RECIPE_MODEL, PLAN_PROMPT, CART_PROMPT];
 const DEFAULT_RECIPE_PROMPT: &str =
     "Use English and metric quantities. Prefer practical home cooking.";
 const DEFAULT_PLAN_PROMPT: &str = "Prefer variety across the period and practical weekday cooking.";
+const DEFAULT_CART_PROMPT: &str = "Prefer products I have bought before. Otherwise choose the cheapest product that matches the item and quantity.";
 const MAX_PROMPT_CHARS: usize = 8000;
 const MAX_MODEL_CHARS: usize = 200;
 
@@ -32,6 +34,9 @@ pub struct AiPreferences {
     /// The model the person last chose for recipe generation, if any.
     pub recipe_model: Option<String>,
     pub plan_prompt: String,
+    /// How supermarket products are chosen when filling a cart, such as the
+    /// cheapest or previously bought products.
+    pub cart_prompt: String,
 }
 
 /// One synchronized preference change. Unknown keys are refused.
@@ -45,7 +50,7 @@ pub struct PreferenceChange {
 
 fn validate(key: &str, value: Option<&str>) -> Result<()> {
     match (key, value) {
-        (RECIPE_PROMPT | PLAN_PROMPT, Some(prompt))
+        (RECIPE_PROMPT | PLAN_PROMPT | CART_PROMPT, Some(prompt))
             if prompt.chars().count() <= MAX_PROMPT_CHARS =>
         {
             Ok(())
@@ -55,6 +60,9 @@ fn validate(key: &str, value: Option<&str>) -> Result<()> {
         ))),
         (PLAN_PROMPT, _) => Err(Error::invalid(format!(
             "Use a cooking plan prompt of up to {MAX_PROMPT_CHARS} characters."
+        ))),
+        (CART_PROMPT, _) => Err(Error::invalid(format!(
+            "Use a product selection prompt of up to {MAX_PROMPT_CHARS} characters."
         ))),
         (RECIPE_MODEL, None) => Ok(()),
         (RECIPE_MODEL, Some(model))
@@ -146,6 +154,8 @@ impl Core {
                 recipe_model: stored(db, principal.person_id(), RECIPE_MODEL)?,
                 plan_prompt: stored(db, principal.person_id(), PLAN_PROMPT)?
                     .unwrap_or_else(|| DEFAULT_PLAN_PROMPT.to_owned()),
+                cart_prompt: stored(db, principal.person_id(), CART_PROMPT)?
+                    .unwrap_or_else(|| DEFAULT_CART_PROMPT.to_owned()),
             })
         })
     }
@@ -158,6 +168,7 @@ impl Core {
                 RECIPE_PROMPT: stored(db, principal.person_id(), RECIPE_PROMPT)?,
                 RECIPE_MODEL: stored(db, principal.person_id(), RECIPE_MODEL)?,
                 PLAN_PROMPT: stored(db, principal.person_id(), PLAN_PROMPT)?,
+                CART_PROMPT: stored(db, principal.person_id(), CART_PROMPT)?,
             }))
         })
     }
@@ -193,6 +204,10 @@ impl Core {
 
     pub fn set_plan_prompt(&self, principal: &Principal, prompt: &str) -> Result<AiPreferences> {
         self.change_preference(principal, PLAN_PROMPT, Some(prompt))
+    }
+
+    pub fn set_cart_prompt(&self, principal: &Principal, prompt: &str) -> Result<AiPreferences> {
+        self.change_preference(principal, CART_PROMPT, Some(prompt))
     }
 
     pub fn set_recipe_model(
