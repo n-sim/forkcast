@@ -538,9 +538,8 @@ test('quick-log a recently cooked recipe with its own date and portions without 
   page,
 }) => {
   await page.clock.setFixedTime(new Date(2026, 9, 20, 12, 0));
-  await page.goto('/');
   for (const name of ['Lentil soup', 'Simple salad']) {
-    await page.getByRole('button', { name: 'New recipe', exact: true }).click();
+    await page.goto('/#/recipes/new');
     await page.getByLabel('Recipe name', { exact: true }).fill(name);
     await page.getByLabel('Ingredient 1 name', { exact: true }).fill('Base');
     await page.getByLabel('Ingredient 1 quantity', { exact: true }).fill('100');
