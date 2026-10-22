@@ -3,6 +3,7 @@ pub mod cooking;
 pub mod food_log;
 pub mod household_planning;
 pub mod nutrition;
+pub mod nutrition_goals;
 pub mod plan_generation;
 pub mod planning;
 pub mod quantities;
@@ -167,6 +168,29 @@ pub fn validate_manual_food_log_entry(value: JsValue) -> Result<JsValue, JsValue
         },
         Err(errors) => ManualEntryValidation {
             entry: None,
+            errors,
+        },
+    };
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true);
+    Ok(result.serialize(&serializer)?)
+}
+
+#[derive(Serialize)]
+struct GoalsValidation {
+    goals: Option<nutrition_goals::NutritionGoals>,
+    errors: Vec<recipe::FieldError>,
+}
+
+#[wasm_bindgen]
+pub fn validate_nutrition_goals(value: JsValue) -> Result<JsValue, JsValue> {
+    let goals = serde_wasm_bindgen::from_value(value)?;
+    let result = match nutrition_goals::validate_goals(goals) {
+        Ok(goals) => GoalsValidation {
+            goals: Some(goals),
+            errors: vec![],
+        },
+        Err(errors) => GoalsValidation {
+            goals: None,
             errors,
         },
     };

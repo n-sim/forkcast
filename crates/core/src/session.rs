@@ -128,6 +128,7 @@ struct ListSummary {
 struct PersonalSummary {
     ratings: usize,
     food_log_entries: usize,
+    nutrition_goals: usize,
     cooking_sessions: usize,
 }
 
@@ -453,6 +454,9 @@ impl Core {
                     food_log_entries: count(
                         "SELECT (SELECT count(*) FROM manual_food_log_entries WHERE person_id = ?1) + (SELECT count(*) FROM recipe_food_log_entries WHERE person_id = ?1)",
                     )?,
+                    nutrition_goals: count(
+                        "SELECT count(*) FROM nutrition_goals WHERE person_id = ?",
+                    )?,
                     cooking_sessions: count(
                         "SELECT count(*) FROM cooking_sessions WHERE person_id = ? AND ended = 0",
                     )?,
@@ -587,6 +591,7 @@ impl Core {
                     "UPDATE cooking_sessions SET person_id = ?1 WHERE person_id = ?2",
                     "UPDATE manual_food_log_entries SET person_id = ?1 WHERE person_id = ?2",
                     "UPDATE recipe_food_log_entries SET person_id = ?1 WHERE person_id = ?2",
+                    "UPDATE nutrition_goals SET person_id = ?1 WHERE person_id = ?2",
                     "UPDATE person_settings SET person_id = ?1 WHERE person_id = ?2",
                 ] {
                     db.execute(sql, params![account.id, local_person])?;

@@ -426,6 +426,7 @@ function JoinReviewPanel({
   const personal =
     review.personal.ratings +
     review.personal.foodLogEntries +
+    review.personal.nutritionGoals +
     review.personal.cookingSessions;
   return (
     <section className="panel" aria-labelledby="join-review-heading">
@@ -529,7 +530,7 @@ function JoinReviewPanel({
         </label>
         <p className="section-note">
           {personal
-            ? `${review.personal.ratings} ratings, ${review.personal.foodLogEntries} food-log entries, ${review.personal.cookingSessions} unfinished cooking sessions. Personal records never become household records.`
+            ? `${review.personal.ratings} ratings, ${review.personal.foodLogEntries} food-log entries, ${review.personal.nutritionGoals} nutrition goal sets, ${review.personal.cookingSessions} unfinished cooking sessions. Personal records never become household records.`
             : 'This device has no personal records to move.'}{' '}
           Without this they stay on this device and are hidden while you are
           joined.

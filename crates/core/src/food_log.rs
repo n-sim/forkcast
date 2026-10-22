@@ -15,6 +15,7 @@ use forkcast_recipe_domain::{
         validate_manual_entry, validate_recipe_entry,
     },
     nutrition::{Nutrition, NutritionVersion},
+    nutrition_goals::{NutritionGoals, applicable_goals, validate_goals},
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Deserialize;
@@ -125,6 +126,19 @@ fn entries<T: serde::de::DeserializeOwned>(
         .collect()
 }
 
+fn goals(db: &Connection, principal: &Principal) -> Result<Vec<NutritionGoals>> {
+    let mut query = db.prepare(
+        "SELECT payload FROM nutrition_goals WHERE person_id = ? ORDER BY effective_from DESC",
+    )?;
+    let payloads = query
+        .query_map([principal.person_id()], |row| row.get::<_, String>(0))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    payloads
+        .iter()
+        .map(|payload| Ok(serde_json::from_str(payload)?))
+        .collect()
+}
+
 impl Core {
     /// The day's entries and nutrition totals, computed by the shared domain
     /// rules from the nutrition versions each entry retained.
@@ -142,8 +156,10 @@ impl Core {
                 .iter()
                 .map(|entry| entry.nutrition_version_id.clone())
                 .collect();
+            let history = goals(db, principal)?;
             let mut log = daily_food_log(manual, recipe, versions(db, &ids)?, date)
-                .map_err(Error::invalid)?;
+                .map_err(Error::invalid)?
+                .with_goals(applicable_goals(&history, date));
             // Entries keep their retained nutrition; an archived recipe is
             // named but no longer reachable from them.
             let archived = recipes::archived_recipes(db, principal.household_id())?;
@@ -154,6 +170,56 @@ impl Core {
                     .is_some_and(|recipe| archived.contains_key(recipe));
             }
             Ok(log)
+        })
+    }
+
+    /// Every goal set the person has kept, newest effective date first.
+    pub fn nutrition_goals(&self, principal: &Principal) -> Result<Vec<NutritionGoals>> {
+        principal.require_personal()?;
+        self.read(|db| goals(db, principal))
+    }
+
+    /// Sets the goals that apply from their effective date until the next
+    /// set. Setting goals again for the same date replaces that set only;
+    /// earlier days keep the goals that applied to them.
+    pub fn set_nutrition_goals(&self, principal: &Principal, input: NutritionGoals) -> Result<()> {
+        principal.require_personal()?;
+        let goals = validate_goals(input).map_err(|errors| {
+            Error::invalid("Check the nutrition goals before saving.")
+                .with_fields(serde_json::to_value(errors).unwrap_or(Value::Null))
+        })?;
+        self.write(|db, effects| {
+            db.execute(
+                "INSERT INTO nutrition_goals (person_id, effective_from, payload) VALUES (?, ?, ?) ON CONFLICT(person_id, effective_from) DO UPDATE SET payload = excluded.payload",
+                params![
+                    principal.person_id(),
+                    goals.effective_from,
+                    serde_json::to_string(&goals)?
+                ],
+            )?;
+            effects.person(principal, Topic::FoodLog);
+            Ok(())
+        })
+    }
+
+    /// Removes the goal set starting on `effective_from`; the previous set,
+    /// if any, then applies until the next one.
+    pub fn remove_nutrition_goals(
+        &self,
+        principal: &Principal,
+        effective_from: &str,
+    ) -> Result<()> {
+        principal.require_personal()?;
+        self.write(|db, effects| {
+            let removed = db.execute(
+                "DELETE FROM nutrition_goals WHERE person_id = ? AND effective_from = ?",
+                params![principal.person_id(), effective_from],
+            )?;
+            if removed == 0 {
+                return Err(Error::not_found("These nutrition goals no longer exist."));
+            }
+            effects.person(principal, Topic::FoodLog);
+            Ok(())
         })
     }
 

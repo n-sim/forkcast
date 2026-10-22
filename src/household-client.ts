@@ -59,6 +59,7 @@ export interface JoinReview {
   personal: {
     ratings: number;
     foodLogEntries: number;
+    nutritionGoals: number;
     cookingSessions: number;
   };
 }

@@ -34,7 +34,7 @@ personal owner from the principal, never from request content.
 | Kind | Records | Owner |
 | --- | --- | --- |
 | Household | recipes and revisions, cover photos, nutrition versions, meal plan, shopping list | the principal's household |
-| Personal | ratings, cooking sessions, food log, AI preferences | the principal's person |
+| Personal | ratings, cooking sessions, food log, nutrition goals, AI preferences | the principal's person |
 
 Administrators manage accounts only; they get no access to others' personal records.
 Server entry points that name an owner in the request path call
@@ -78,11 +78,14 @@ methods.
 | `resolveCookingSession` | `sessionId`, `keep` (`current`/`alternative`) | the session. Keeps the shown progress or the competing `conflict.progress` from another of the person's devices; keeping a finished alternative records its occurrence once. `conflict` when nothing is left to decide |
 | `cookingHistory` | | household cooking count and `lastCookedAt` (ms) per cooked recipe: `{recipeId, count, lastCookedAt}` |
 | `markCooked` | `recipeId`, `id?`, `sessionId?` | the recipe's history. Records one occurrence for the household; an identical `id`, or a `sessionId` that already has one, counts nothing more. Finishing a guided session records its occurrence once (retrying `endCooking` is accepted); canceling records none. Creates no food-log entry |
-| `foodLog` | `date` | `{entries, totals, incomplete}` computed from retained nutrition versions; `recipeArchived` marks entries whose recipe was archived |
+| `foodLog` | `date` | `{entries, totals, incomplete, goals}` computed from retained nutrition versions; `recipeArchived` marks entries whose recipe was archived. `goals` is the set in effect on `date` (or `null`), and each total carries its `target` from it |
 | `logRecipeFood` | `id?`, `recipeId`, `nutritionVersionId`, `consumedAt`, `portions` | none; an identical retry of the same `id` is accepted |
 | `useCurrentFoodNutrition` | `entryId` | `{changed}`; points one of the person's recipe entries at its recipe's current nutrition version, leaving every other entry's reference unchanged. `changed` is `false` when it already used it; `notFound` once the recipe is archived |
 | `logManualFood` | `id?`, `description`, `consumedAt`, `nutrition` | none |
 | `foodLogDate` / `setFoodLogDate` | `date` | the remembered day |
+| `nutritionGoals` | none | the person's goal sets `{effectiveFrom, targets}`, newest first |
+| `setNutritionGoals` | `effectiveFrom`, `targets` (`calories`, `protein`, `fat`, `carbohydrates`; `null` sets no goal, others must be above zero, at least one set) | none. Applies from `effectiveFrom` until the next set; the same date replaces that set only, so earlier days keep their goals |
+| `removeNutritionGoals` | `effectiveFrom` | none; the previous set applies again |
 | `aiPreferences` / `setRecipePrompt` / `setPlanPrompt` / `setRecipeModel` | `prompt` (up to 8000 characters) / `model?` | `{recipePrompt, recipeModel, planPrompt}`; never credentials or tokens. Synchronized to the account like ratings |
 | `aiStatus` | | `{state, target, email, message, serverUrl, account, canAuthorize, canRetry}` for the principal's execution target (`device` or `server`) |
 | `aiAuthorize` | `serverUrl?`, `accountId?` | `{authorizationUrl}`; starts the loopback listener first. A joined app must name its server and account. Refused on a server host |
@@ -211,7 +214,8 @@ adds people (local or account), cooking sessions, food-log entries, person setti
 synchronization state. Each step runs in one transaction that also records its version,
 then checks foreign keys. Existing account ids, session tokens, ratings and rating-change
 identities, revisions, nutrition versions, competing edits, planning history, and covers
-are copied unchanged.
+are copied unchanged. Version 7 adds each person's dated nutrition goals, one set per
+effective date.
 
 A database newer than the core, or an upgrade that cannot complete, fails `open` with
 `unsupported`. The database is left at its previous version with its data intact; there is

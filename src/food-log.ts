@@ -1,5 +1,6 @@
 import {
   validate_manual_food_log_entry,
+  validate_nutrition_goals,
   validate_recipe_food_log_entry,
 } from '../crates/recipe-domain/pkg/forkcast_recipe_domain';
 import type { FieldError } from './domain';
@@ -39,14 +40,34 @@ export interface FoodLogEntry extends ManualFoodLogEntry {
   recipeArchived: boolean;
 }
 
+/** Daily targets from a date until the next set; a blank target sets no goal. */
+export interface NutritionGoals {
+  effectiveFrom: string;
+  targets: Nutrition;
+}
+
 /** A day's entries and totals, computed by the application core. */
 export interface DailyFoodLog {
   entries: FoodLogEntry[];
   totals: Record<
     keyof Nutrition,
-    { knownValue: number | null; unknownEntries: number }
+    {
+      knownValue: number | null;
+      unknownEntries: number;
+      /** The goal that applied on this day, if any. */
+      target: number | null;
+    }
   >;
   incomplete: boolean;
+  /** The nutrition goals in effect on this day. */
+  goals: NutritionGoals | null;
+}
+
+export function validateNutritionGoals(goals: NutritionGoals): {
+  goals: NutritionGoals | null;
+  errors: FieldError[];
+} {
+  return validate_nutrition_goals(goals);
 }
 
 export function validateRecipeFoodLogEntry(entry: RecipeFoodLogEntryDraft): {
@@ -72,4 +93,16 @@ export function validateManualFoodLogEntry(entry: ManualFoodLogEntry): {
 
 export function localDateTime(now = new Date()): string {
   return `${now.getFullYear().toString().padStart(4, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
+const dayFormat = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+
+/** A local calendar date (`YYYY-MM-DD`) as words, independent of time zone. */
+export function formatDay(date: string): string {
+  return dayFormat.format(new Date(`${date}T00:00:00Z`));
 }

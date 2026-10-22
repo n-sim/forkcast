@@ -1,29 +1,55 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  formatDay,
   localDateTime,
   nutrients,
   type DailyFoodLog,
   type ManualFoodLogEntry,
+  type NutritionGoals,
   type RecipeFoodLogEntry,
 } from './food-log';
 import {
   loadFoodLogDate,
   loadFoodLogDay,
+  loadNutritionGoals,
+  removeNutritionGoals,
   saveFoodLogDate,
   saveManualFoodLogEntry,
+  saveNutritionGoals,
   saveRecipeFoodLogEntry,
   subscribeToFoodLogChanges,
   adoptCurrentFoodNutrition,
 } from './food-log-store';
 import { ManualFoodLogForm } from './ManualFoodLogForm';
+import { NutritionGoalsForm } from './NutritionGoalsForm';
 import { RecipeFoodLogForm } from './RecipeFoodLogForm';
 import type { Recipe } from './domain';
 import { nutritionValue } from './nutrition';
 
+/** How the day's known intake compares with one nutrient's goal. */
+function goalProgress(
+  total: DailyFoodLog['totals'][keyof DailyFoodLog['totals']],
+  unit: string,
+): string {
+  const goal = `Goal ${nutritionValue(total.target, unit)}`;
+  // Unknown values could add to the day, so only state what is known.
+  if (total.knownValue === null) return `${goal} · intake unknown`;
+  if (total.unknownEntries > 0)
+    return `${goal} · at least ${nutritionValue(total.knownValue, unit)} eaten`;
+  const difference = total.target! - total.knownValue;
+  if (Math.abs(difference) < 0.05) return `${goal} · goal reached`;
+  return difference > 0
+    ? `${goal} · ${nutritionValue(difference, unit)} remaining`
+    : `${goal} · ${nutritionValue(-difference, unit)} over`;
+}
+
 export function FoodLog({ recipes }: { recipes: Recipe[] }) {
   const [daily, setDaily] = useState<DailyFoodLog | null>(null);
+  const [goalHistory, setGoalHistory] = useState<NutritionGoals[]>([]);
   const [date, setDate] = useState('');
-  const [adding, setAdding] = useState<'manual' | 'recipe' | null>(null);
+  const [adding, setAdding] = useState<'manual' | 'recipe' | 'goals' | null>(
+    null,
+  );
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
@@ -47,10 +73,14 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
           (await loadFoodLogDate()) ||
           localDateTime().slice(0, 10);
         shown.current = chosen;
-        const log = await loadFoodLogDay(chosen);
+        const [log, goals] = await Promise.all([
+          loadFoodLogDay(chosen),
+          loadNutritionGoals(),
+        ]);
         if (active && request === requests.current) {
           setDate(chosen);
           setDaily(log);
+          setGoalHistory(goals);
           setCalculationError('');
           setError('');
         }
@@ -101,6 +131,27 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
     setError('');
   }
 
+  async function saveGoals(goals: NutritionGoals) {
+    await saveNutritionGoals(goals);
+    refreshDay.current();
+    setAdding(null);
+    setMessage(
+      `Nutrition goals from ${formatDay(goals.effectiveFrom)} saved on this device.`,
+    );
+    setError('');
+  }
+
+  async function removeGoals(effectiveFrom: string) {
+    try {
+      await removeNutritionGoals(effectiveFrom);
+      refreshDay.current();
+      setMessage(`Nutrition goals from ${formatDay(effectiveFrom)} removed.`);
+      setError('');
+    } catch {
+      setError('These nutrition goals could not be removed. Try again.');
+    }
+  }
+
   async function adoptCurrentNutrition(entryId: string) {
     setUpdating(entryId);
     setMessage('');
@@ -148,6 +199,16 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
           >
             + Add manual entry
           </button>
+          <button
+            className="button secondary"
+            disabled={!daily || Boolean(adding)}
+            onClick={() => {
+              setAdding('goals');
+              setMessage('');
+            }}
+          >
+            Set nutrition goals
+          </button>
         </div>
       </div>
       {error && (
@@ -189,6 +250,14 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
           onCancel={() => setAdding(null)}
         />
       )}
+      {adding === 'goals' && daily && (
+        <NutritionGoalsForm
+          date={date}
+          current={daily.goals}
+          onSave={saveGoals}
+          onCancel={() => setAdding(null)}
+        />
+      )}
       {adding === 'manual' && (
         <ManualFoodLogForm
           date={date}
@@ -200,6 +269,11 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
         <>
           <section className="panel" aria-labelledby="daily-nutrition-heading">
             <h2 id="daily-nutrition-heading">Daily nutrition</h2>
+            <p className="section-note">
+              {daily.goals
+                ? `Compared with your goals from ${formatDay(daily.goals.effectiveFrom)}.`
+                : 'No nutrition goals apply to this day.'}
+            </p>
             {daily.incomplete && (
               <p className="nutrition-incomplete">
                 Incomplete nutrition totals: some entries have unknown values.
@@ -211,6 +285,19 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
                 <div key={key} role="group" aria-label={`${label} total`}>
                   <dt>{label}</dt>
                   <dd>{nutritionValue(daily.totals[key].knownValue, unit)}</dd>
+                  {daily.totals[key].target !== null && (
+                    <p className="goal-progress">
+                      <progress
+                        aria-label={`${label} goal progress`}
+                        max={daily.totals[key].target!}
+                        value={Math.min(
+                          daily.totals[key].knownValue ?? 0,
+                          daily.totals[key].target!,
+                        )}
+                      />
+                      {goalProgress(daily.totals[key], unit)}
+                    </p>
+                  )}
                   {daily.totals[key].unknownEntries > 0 && (
                     <p className="nutrition-incomplete">
                       Incomplete · {daily.totals[key].unknownEntries}{' '}
@@ -223,6 +310,48 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
                 </div>
               ))}
             </dl>
+          </section>
+          <section className="panel" aria-labelledby="goal-history-heading">
+            <h2 id="goal-history-heading">Nutrition goal history</h2>
+            {goalHistory.length === 0 ? (
+              <p>
+                No nutrition goals set. Set goals to compare each day with your
+                targets.
+              </p>
+            ) : (
+              <ol className="goal-history" aria-label="Nutrition goal history">
+                {goalHistory.map((goals) => (
+                  <li key={goals.effectiveFrom}>
+                    <h3>
+                      From{' '}
+                      <time dateTime={goals.effectiveFrom}>
+                        {formatDay(goals.effectiveFrom)}
+                      </time>
+                    </h3>
+                    <dl className="recipe-metadata">
+                      {nutrients.map(({ key, label, unit }) => (
+                        <div key={key}>
+                          <dt>{label}</dt>
+                          <dd>
+                            {goals.targets[key] === null
+                              ? 'No goal'
+                              : nutritionValue(goals.targets[key], unit)}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                    <button
+                      className="button secondary"
+                      disabled={Boolean(adding)}
+                      aria-label={`Remove goals from ${formatDay(goals.effectiveFrom)}`}
+                      onClick={() => void removeGoals(goals.effectiveFrom)}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
           </section>
           <section aria-labelledby="food-entries-heading">
             <h2 id="food-entries-heading">Food eaten</h2>

@@ -199,6 +199,14 @@ const MIGRATIONS: &[&str] = &[
          id TEXT PRIMARY KEY,
          person_id TEXT NOT NULL REFERENCES people(id)
      );",
+    // Version 7: a person's dated nutrition goals. One set per effective
+    // date; earlier sets are kept so past days keep their targets.
+    "CREATE TABLE nutrition_goals (
+         person_id TEXT NOT NULL REFERENCES people(id),
+         effective_from TEXT NOT NULL,
+         payload TEXT NOT NULL,
+         PRIMARY KEY (person_id, effective_from)
+     );",
 ];
 
 pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;

@@ -357,3 +357,179 @@ test('cooking a recipe does not log intake and manual intake does not change coo
     page.getByRole('link', { name: 'A separate snack' }),
   ).toHaveCount(0);
 });
+
+async function setGoals(
+  page: Page,
+  effectiveFrom: string,
+  targets: {
+    calories?: string;
+    protein?: string;
+    fat?: string;
+    carbohydrates?: string;
+  },
+) {
+  await page
+    .getByRole('button', { name: 'Set nutrition goals', exact: true })
+    .click();
+  await expect(
+    page.getByLabel('Goals apply from', { exact: true }),
+  ).toHaveValue(await page.getByLabel('Food log date').inputValue());
+  await page
+    .getByLabel('Goals apply from', { exact: true })
+    .fill(effectiveFrom);
+  for (const [key, label] of [
+    ['calories', 'Daily calories goal (kcal)'],
+    ['protein', 'Daily protein goal (g)'],
+    ['fat', 'Daily fat goal (g)'],
+    ['carbohydrates', 'Daily carbohydrates goal (g)'],
+  ] as const) {
+    await page.getByLabel(label, { exact: true }).fill(targets[key] ?? '');
+  }
+  await page.getByRole('button', { name: 'Save goals', exact: true }).click();
+  await expect(
+    page.getByRole('status', { name: 'Food log status', exact: true }),
+  ).toContainText('Nutrition goals from');
+}
+
+test('compare each day against the dated nutrition goals that applied then, across a restart', async ({
+  page,
+  app,
+}) => {
+  // The food log opens on today's date; control which day that is.
+  await page.clock.setFixedTime(new Date(2026, 9, 20, 12, 0));
+  await page.goto('/');
+  await page.getByRole('link', { name: 'Food log', exact: true }).click();
+  await expect(page.getByLabel('Food log date', { exact: true })).toHaveValue(
+    '2026-10-20',
+  );
+  const totals = page.getByRole('region', {
+    name: 'Daily nutrition',
+    exact: true,
+  });
+  const total = (label: string) =>
+    totals.getByRole('group', { name: `${label} total`, exact: true });
+  await expect(totals).toContainText('No nutrition goals apply to this day.');
+  await expect(
+    page.getByText('No nutrition goals set.', { exact: false }),
+  ).toBeVisible();
+
+  await addManualEntry(page, 'Lunch bowl', '2026-10-20T12:30', {
+    calories: '600',
+    protein: '30',
+    carbohydrates: '80',
+  });
+  await page.getByLabel('Food log date', { exact: true }).fill('2026-10-14');
+  await addManualEntry(page, 'Feast', '2026-10-14T19:00', {
+    calories: '2100',
+    protein: '100',
+    fat: '70',
+    carbohydrates: '250',
+  });
+
+  // Validation keeps nothing.
+  await page
+    .getByRole('button', { name: 'Set nutrition goals', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Save goals', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText(
+    'Set at least one daily goal.',
+  );
+  await page.getByLabel('Daily protein goal (g)', { exact: true }).fill('0');
+  await page.getByRole('button', { name: 'Save goals', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText(
+    'Protein goal must be greater than zero, or left blank.',
+  );
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+  await setGoals(page, '2026-10-01', {
+    calories: '2000',
+    protein: '100',
+    carbohydrates: '250',
+  });
+  await expect(totals).toContainText(
+    'Compared with your goals from 1 October 2026.',
+  );
+  await expect(total('Calories')).toContainText(
+    'Goal 2,000 kcal · 100 kcal over',
+  );
+  await expect(total('Protein')).toContainText('Goal 100 g · goal reached');
+  await expect(total('Fat')).not.toContainText('Goal');
+
+  // A change applies from its own date; earlier days keep their goals.
+  await page.getByLabel('Food log date', { exact: true }).fill('2026-10-20');
+  await setGoals(page, '2026-10-15', {
+    calories: '1800',
+    protein: '120',
+    fat: '60',
+  });
+  await expect(totals).toContainText(
+    'Compared with your goals from 15 October 2026.',
+  );
+  await expect(total('Calories')).toContainText(
+    'Goal 1,800 kcal · 1,200 kcal remaining',
+  );
+  await expect(total('Protein')).toContainText('Goal 120 g · 90 g remaining');
+  // Unknown intake is never counted as progress.
+  await expect(total('Fat')).toContainText('Goal 60 g · intake unknown');
+  await expect(total('Fat')).toContainText('Incomplete');
+  await expect(total('Carbohydrates')).not.toContainText('Goal');
+  await addManualEntry(page, 'Snack', '2026-10-20T16:00', {
+    calories: '200',
+    fat: '10',
+  });
+  await expect(total('Protein')).toContainText(
+    'Goal 120 g · at least 30 g eaten',
+  );
+  await expect(total('Calories')).toContainText(
+    'Goal 1,800 kcal · 1,000 kcal remaining',
+  );
+
+  // Date boundaries: the day before a set takes effect keeps the earlier one.
+  await page.getByLabel('Food log date', { exact: true }).fill('2026-10-14');
+  await expect(total('Calories')).toContainText(
+    'Goal 2,000 kcal · 100 kcal over',
+  );
+  await page.getByLabel('Food log date', { exact: true }).fill('2026-10-15');
+  await expect(total('Calories')).toContainText(
+    'Goal 1,800 kcal · 1,800 kcal remaining',
+  );
+  await page.getByLabel('Food log date', { exact: true }).fill('2026-09-30');
+  await expect(totals).toContainText('No nutrition goals apply to this day.');
+
+  const history = page.getByRole('list', {
+    name: 'Nutrition goal history',
+    exact: true,
+  });
+  await expect(history.getByRole('heading')).toHaveText([
+    'From 15 October 2026',
+    'From 1 October 2026',
+  ]);
+
+  const savedUrl = page.url();
+  const reopened = await app.restart();
+  await reopened.goto(savedUrl);
+  await reopened
+    .getByLabel('Food log date', { exact: true })
+    .fill('2026-10-14');
+  await expect(
+    reopened
+      .getByRole('region', { name: 'Daily nutrition', exact: true })
+      .getByRole('group', { name: 'Calories total', exact: true }),
+  ).toContainText('Goal 2,000 kcal · 100 kcal over');
+  await reopened
+    .getByRole('button', { name: 'Remove goals from 15 October 2026' })
+    .click();
+  await reopened
+    .getByLabel('Food log date', { exact: true })
+    .fill('2026-10-20');
+  await expect(
+    reopened
+      .getByRole('region', { name: 'Daily nutrition', exact: true })
+      .getByRole('group', { name: 'Calories total', exact: true }),
+  ).toContainText('Goal 2,000 kcal · 1,200 kcal remaining');
+  await expect(
+    reopened
+      .getByRole('list', { name: 'Nutrition goal history' })
+      .getByRole('heading'),
+  ).toHaveText(['From 1 October 2026']);
+});
