@@ -37,6 +37,13 @@ export async function saveManualFoodLogEntry(
   });
 }
 
+/** Points one recipe entry at its recipe's current nutrition version. */
+export async function adoptCurrentFoodNutrition(
+  entryId: string,
+): Promise<void> {
+  await execute('useCurrentFoodNutrition', { entryId });
+}
+
 export async function saveFoodLogDate(date: string): Promise<void> {
   await execute('setFoodLogDate', { date });
 }

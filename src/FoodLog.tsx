@@ -13,6 +13,7 @@ import {
   saveManualFoodLogEntry,
   saveRecipeFoodLogEntry,
   subscribeToFoodLogChanges,
+  adoptCurrentFoodNutrition,
 } from './food-log-store';
 import { ManualFoodLogForm } from './ManualFoodLogForm';
 import { RecipeFoodLogForm } from './RecipeFoodLogForm';
@@ -27,6 +28,7 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
   const [message, setMessage] = useState('');
 
   const [calculationError, setCalculationError] = useState('');
+  const [updating, setUpdating] = useState<string | null>(null);
 
   // The day being shown, set as soon as it is chosen so that a change
   // notification arriving meanwhile reloads the same day.
@@ -97,6 +99,23 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
     setAdding(null);
     setMessage('Food-log entry saved on this device.');
     setError('');
+  }
+
+  async function adoptCurrentNutrition(entryId: string) {
+    setUpdating(entryId);
+    setMessage('');
+    try {
+      await adoptCurrentFoodNutrition(entryId);
+      refreshDay.current();
+      setMessage('This food-log entry now uses the current recipe nutrition.');
+      setError('');
+    } catch {
+      setError(
+        'This food-log entry could not be updated. It keeps its logged nutrition.',
+      );
+    } finally {
+      setUpdating(null);
+    }
   }
 
   return (
@@ -230,7 +249,7 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
                       <h3>
                         {recipe ? (
                           <a
-                            href={`#/recipes/${recipe.id}?nutritionVersion=${encodeURIComponent(entry.nutritionVersionId!)}`}
+                            href={`#/recipes/${recipe.id}?nutritionVersion=${encodeURIComponent(entry.nutritionVersionId!)}&entry=${encodeURIComponent(entry.id)}`}
                             aria-describedby={
                               olderNutrition ? noticeId : undefined
                             }
@@ -248,10 +267,22 @@ export function FoodLog({ recipes }: { recipes: Recipe[] }) {
                         </p>
                       )}
                       {olderNutrition && (
-                        <p className="nutrition-version-notice" id={noticeId}>
-                          Newer recipe nutrition available. This entry keeps its
-                          logged values.
-                        </p>
+                        <div className="nutrition-version-notice">
+                          <p id={noticeId}>
+                            Newer recipe nutrition available. This entry keeps
+                            its logged values.
+                          </p>
+                          <button
+                            type="button"
+                            className="button secondary"
+                            aria-describedby={noticeId}
+                            disabled={updating !== null}
+                            aria-busy={updating === entry.id}
+                            onClick={() => void adoptCurrentNutrition(entry.id)}
+                          >
+                            Use current nutrition
+                          </button>
+                        </div>
                       )}
                       {entry.portions !== null && (
                         <p>
