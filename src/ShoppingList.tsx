@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { localDateTime } from './food-log';
 import {
+  acceptIngredientConversion,
+  declineIngredientConversion,
   generateShoppingList,
   saveShoppingItem,
   removeShoppingItem,
@@ -17,6 +19,11 @@ import { ShoppingListReplacementDialog } from './ShoppingListReplacementDialog';
 import type { PlanningEditBase } from './planning-store';
 import { useShoppingList } from './use-shopping-list';
 import { ShoppingProgress } from './ShoppingProgress';
+import {
+  AcceptedConversionNote,
+  IngredientConversionReview,
+} from './IngredientConversionReview';
+import { useAiModel } from './use-ai-model';
 
 const sourceMessages = {
   changed:
@@ -28,6 +35,7 @@ const sourceMessages = {
 
 export function ShoppingListView() {
   const { list, setList, loaded, error, setError } = useShoppingList();
+  const ai = useAiModel(Boolean(list?.conversionOffers.length));
   const [replacement, setReplacement] = useState<{
     startDate: string;
     endDate: string;
@@ -286,6 +294,36 @@ export function ShoppingListView() {
                     piece-weight conversion is unknown.
                   </p>
                 )}
+                {list.conversionOffers
+                  .filter((offer) => offer.itemId === item.id)
+                  .map((offer) => (
+                    <IngredientConversionReview
+                      key={`${offer.itemId}:${offer.declined}`}
+                      offer={offer}
+                      ai={ai}
+                      disabled={saving}
+                      onAccept={(conversion) =>
+                        update(() =>
+                          acceptIngredientConversion(
+                            list.id,
+                            conversion,
+                            list.editBase,
+                          ),
+                        )
+                      }
+                      onDecline={() =>
+                        update(() =>
+                          declineIngredientConversion(
+                            list.id,
+                            offer.name,
+                            offer.dimension,
+                            list.editBase,
+                          ),
+                        )
+                      }
+                    />
+                  ))}
+                <AcceptedConversionNote list={list} item={item} />
                 <p className="section-note">
                   From:{' '}
                   {list.contributions

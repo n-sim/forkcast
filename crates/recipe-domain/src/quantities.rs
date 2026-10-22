@@ -1,8 +1,8 @@
 use crate::recipe::{CookingStep, Ingredient, Recipe, Unit};
 use serde::{Deserialize, Serialize};
 
-#[derive(PartialEq)]
-enum Dimension {
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum Dimension {
     Mass,
     Volume,
     Count,
@@ -29,6 +29,10 @@ impl Unit {
             Dimension::Volume => Self::Millilitre,
             Dimension::Count => Self::Piece,
         }
+    }
+
+    pub(crate) fn dimension(self) -> Dimension {
+        self.dimension_and_factor().0
     }
 
     fn dimension_and_factor(self) -> (Dimension, f64) {

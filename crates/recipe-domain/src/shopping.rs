@@ -99,7 +99,7 @@ pub struct ShoppingRequirements {
     pub contributions: Vec<RecipeContribution>,
 }
 
-fn ingredient_key(name: &str) -> String {
+pub(crate) fn ingredient_key(name: &str) -> String {
     name.split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")

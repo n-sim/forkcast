@@ -26,6 +26,36 @@ export interface ShoppingItem {
 export interface GeneratedShoppingItem extends ShoppingItem {
   sources: { cookingId: string; ingredientId: string }[];
   needsReview: boolean;
+  /** Amounts measured another way that an accepted conversion added in grams. */
+  convertedFrom?: { quantity: number; unit: Unit; conversionId: string }[];
+}
+
+/** The measure an ingredient-dependent conversion starts from. */
+export type ConversionDimension = 'volume' | 'count';
+
+/** An estimate of an ingredient's mass for a reference amount of 100 ml or 1 piece. */
+export interface IngredientConversion {
+  name: string;
+  dimension: ConversionDimension;
+  grams: number;
+  note?: string | null;
+}
+
+export type RecordedConversion =
+  | ({ id: string; status: 'accepted'; source: 'ai' } & IngredientConversion)
+  | {
+      id: string;
+      status: 'declined';
+      name: string;
+      dimension: ConversionDimension;
+    };
+
+/** A generated item that needs an accepted estimate to combine with a differently measured amount. */
+export interface ConversionOffer {
+  itemId: string;
+  name: string;
+  dimension: ConversionDimension;
+  declined: boolean;
 }
 
 export function validateShoppingItem(
@@ -43,6 +73,7 @@ export interface ShoppingList {
   items: GeneratedShoppingItem[];
   contributions: RecipeContribution[];
   manualItems: ShoppingItem[];
+  conversions?: RecordedConversion[];
 }
 
 export function shoppingComplete(list: ShoppingList): boolean {

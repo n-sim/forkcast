@@ -65,6 +65,9 @@ A household's shared list of ingredients and other food to acquire, reviewed aga
 **Recipe contribution**:
 The ingredient requirements a recipe contributed when a shopping list was generated, identifying the recipe as a source of that list's requirements.
 
+**Ingredient conversion**:
+An ingredient-dependent change between mass, volume, or pieces, such as olive oil tablespoons to grams. Compatible units convert exactly; an uncertain conversion is an AI estimate that only takes effect once a person accepts it.
+
 **Manual shopping item**:
 An item a person adds directly to a shopping list, independently of recipe contributions.
 

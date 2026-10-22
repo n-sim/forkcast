@@ -47,8 +47,8 @@ pub use error::{Error, ErrorKind, Result};
 pub use food_log::{EstimateFood, LogManualFood, LogRecipeFood};
 pub use operation::Operation;
 pub use planning::{
-    EditBase, MealPlanView, PlanningChoice, PlanningMutation, ShoppingItemKind, ShoppingListView,
-    SourceStatus,
+    EditBase, EstimateConversion, MealPlanView, PlanningChoice, PlanningMutation, ShoppingItemKind,
+    ShoppingListView, SourceStatus,
 };
 pub use preferences::{AiPreferences, PreferenceChange};
 pub use principal::{Principal, Standing};
