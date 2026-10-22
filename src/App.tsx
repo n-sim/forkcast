@@ -44,6 +44,7 @@ import { AiModelSetting } from './AiModelSetting';
 import { AiPrompts } from './AiPrompts';
 import { FoodLog } from './FoodLog';
 import { localDateTime } from './food-log';
+import { adoptCurrentFoodNutrition } from './food-log-store';
 import { MealPlan } from './MealPlan';
 import { ShoppingListView } from './ShoppingList';
 import { ShoppingChecklistView } from './ShoppingChecklist';
@@ -72,6 +73,7 @@ function RecipeDetails({
   onMarkCooked,
   onArchive,
   loggedNutritionVersionId,
+  loggedEntryId,
 }: {
   recipe: Recipe;
   photo?: Blob;
@@ -79,6 +81,8 @@ function RecipeDetails({
   rating?: RecipeRating;
   onSaveRating: (value: number | null) => Promise<void>;
   loggedNutritionVersionId: string | null;
+  /** The food-log entry the person came from, which they may update. */
+  loggedEntryId: string | null;
   history?: RecipeHistory;
   onMarkCooked: (id: string) => Promise<void>;
   onArchive: () => Promise<void>;
@@ -98,6 +102,9 @@ function RecipeDetails({
   const archiveDialog = useRef<HTMLDialogElement>(null);
   const [archiving, setArchiving] = useState(false);
   const [archiveError, setArchiveError] = useState('');
+  const [adopting, setAdopting] = useState(false);
+  const [adoptMessage, setAdoptMessage] = useState('');
+  const [adoptError, setAdoptError] = useState('');
   let quantities = null;
   let quantityError = '';
   try {
@@ -117,6 +124,24 @@ function RecipeDetails({
       );
     } finally {
       setStarting(false);
+    }
+  }
+  async function adoptCurrentNutrition(entryId: string) {
+    setAdopting(true);
+    setAdoptError('');
+    try {
+      await adoptCurrentFoodNutrition(entryId);
+      setAdoptMessage(
+        'This food-log entry now uses the current recipe nutrition.',
+      );
+      // The entry no longer uses older nutrition; stay on the recipe.
+      window.location.hash = recipeUrl(recipe.id);
+    } catch {
+      setAdoptError(
+        'This food-log entry could not be updated. It keeps its logged nutrition.',
+      );
+    } finally {
+      setAdopting(false);
     }
   }
   async function archive() {
@@ -227,6 +252,31 @@ function RecipeDetails({
             current recipe. The entry keeps its logged values.
           </p>
         )}
+      {loggedEntryId &&
+        loggedNutritionVersionId &&
+        loggedNutritionVersionId !== recipe.nutritionVersionId && (
+          <div className="form-actions">
+            <button
+              type="button"
+              className="button secondary"
+              disabled={adopting}
+              aria-busy={adopting}
+              onClick={() => void adoptCurrentNutrition(loggedEntryId)}
+            >
+              Use current nutrition
+            </button>
+          </div>
+        )}
+      {adoptError && (
+        <p className="error-banner" role="alert">
+          {adoptError}
+        </p>
+      )}
+      {adoptMessage && (
+        <p role="status" aria-label="Food-log entry update">
+          {adoptMessage}
+        </p>
+      )}
       <RecipeMetadata recipe={recipe} />
       <section className="cooking-history" aria-label="Cooking history">
         <p>
@@ -492,9 +542,9 @@ export function App({
     () => window.location.hash || '#/',
   );
   const [recipeRoute = route, recipeQuery] = route.split('?');
-  const loggedNutritionVersionId = new URLSearchParams(recipeQuery).get(
-    'nutritionVersion',
-  );
+  const recipeParams = new URLSearchParams(recipeQuery);
+  const loggedNutritionVersionId = recipeParams.get('nutritionVersion');
+  const loggedEntryId = recipeParams.get('entry');
   useEffect(() => {
     if (route !== '#/') setNotice('');
   }, [route]);
@@ -861,6 +911,7 @@ export function App({
               key={`${selected.id}:${accountKey}`}
               recipe={selected}
               loggedNutritionVersionId={loggedNutritionVersionId}
+              loggedEntryId={loggedEntryId}
               history={history[selected.id]}
               onMarkCooked={async (id) => {
                 // Marking a recipe with a guided session in progress is the

@@ -239,6 +239,10 @@ fn archiving_withdraws_a_recipe_and_keeps_what_was_logged_reviewed_and_started()
         ErrorKind::NotFound
     );
     assert_eq!(
+        refused(json!({"operation": "useCurrentFoodNutrition", "entryId": "lunch"})),
+        ErrorKind::NotFound
+    );
+    assert_eq!(
         refused(json!({"operation": "startCooking", "recipeId": RISOTTO, "portions": 4.0})),
         ErrorKind::NotFound
     );
