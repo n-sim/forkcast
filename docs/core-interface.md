@@ -85,6 +85,10 @@ methods.
 | `logRecipeFood` | `id?`, `recipeId`, `nutritionVersionId`, `consumedAt`, `portions` | none; an identical retry of the same `id` is accepted |
 | `useCurrentFoodNutrition` | `entryId` | `{changed}`; points one of the person's recipe entries at its recipe's current nutrition version, leaving every other entry's reference unchanged. `changed` is `false` when it already used it; `notFound` once the recipe is archived |
 | `logManualFood` | `id?`, `description`, `consumedAt`, `nutrition` | none |
+| `editFoodLogEntry` | `entryId`, `consumedAt?`, `portions?` (recipe entries), `description?`, `nutrition?` (manual entries) | none; omitted fields keep their value, and a recipe entry keeps its nutrition-version reference. `invalid` for fields the entry's kind does not have |
+| `removeFoodLogEntry` | `entryId` | none; `notFound` when the person has no such entry |
+| `foodLogConflicts` | none | the person's records changed on two devices: `[{id, kind, key, current, alternative}]`, where `kind` is `manualEntry`, `recipeEntry`, or `goals`, `key` the entry id or effective date, and `current`/`alternative` the stored record (`null` when removed) |
+| `resolveFoodLogConflict` | `conflictId`, `keep` (`current`/`alternative`) | none. Keeps the record as shown or the other device's change, including its removal. `conflict` when nothing is left to decide |
 | `estimateFood` | `model`, `description?` (up to 2000 characters), `image?` (`{mime, data}`: base64 JPEG, PNG or WebP up to 8 MB) | `{description, nutrition}` for a manual entry; needs a description, an image, or both. Runs through `aiExecute` and stores nothing: the estimate is logged only by a later `logManualFood`, and the image is never retained by any runtime (database, synchronization, migration data, or logs), unlike a recipe cover photo. An invalid reply fails with `invalid` |
 | `foodLogDate` / `setFoodLogDate` | `date` | the remembered day |
 | `nutritionGoals` | none | the person's goal sets `{effectiveFrom, targets}`, newest first |
@@ -136,12 +140,12 @@ review is the only way it returns to the collection.
 ### Pending synchronization
 
 Once a profile has joined a server, every `saveRecipe`, `setRecipeCoverPhoto`, `rateRecipe`,
-planning edit, cooking-session change, and cooking occurrence appends to a durable outbox in
+planning edit, cooking-session change, cooking occurrence, and food-log or goal change appends to a durable outbox in
 the same transaction as the change. Failed operations leave neither. Each entry keeps the
 person and household that made it, whatever account later signs in. Kinds: `recipeRevision`
 (a revision, as the server's `recipe-revisions` endpoint accepts it), `rating` (a rating
 change), `planning` (`{baseData, data}`; the synchronization work adds the server revision it
-was based on), `cookingSession`, and `cookingOccurrence`.
+was based on), `cookingSession`, `cookingOccurrence`, and `foodLog`.
 
 ### Cooking sessions and occurrences
 
@@ -169,7 +173,28 @@ enforces both: a change to another person's session, or an occurrence naming one
 - Timers synchronize as persisted timing state (`durationMs`, `remainingMs`, `endsAt`); a
   device derives what is left in the foreground. Nothing runs or alarms in the background.
 
-Joining with personal records queues the account's unfinished sessions; joining queues the
+### Food logs and goals
+
+Food-log entries and dated goal sets are personal and synchronize only between one account's
+devices (`GET`/`POST /api/accounts/{id}/food-log`, refused for any other account). The core
+enforces the boundary on every path: a change to another person's record is `forbidden`, and the
+server checks each record with the shared rules, including that a recipe entry names a recipe of
+the household and one of its retained nutrition versions.
+
+- A `foodLog` change is `{id, kind, key, base, value, resolves?}`: the record as the device had
+  it and as it is now, `null` when it did not exist or was removed. A recipe entry travels with
+  its nutrition-version reference, never with the recipe's latest values. The server remembers
+  applied change ids, so redelivery changes nothing.
+- The server merges `value` with its own record against `base`, field by field and nutrient by
+  nutrient: independent changes (such as new portions on one device and **Use current
+  nutrition** on another) combine, and identical ones agree. Competing changes to one field, or
+  removing a record that the other side changed, keep the server's record and retain the
+  incoming one until `resolveFoodLogConflict`; a newer competing change replaces an older one.
+- `GET` returns `{manualEntries, recipeEntries, goals, conflicts}`. Devices adopt it except for
+  records with changes still waiting; entries of recipes a device kept to itself when joining
+  stay on that device. Planned or completed cooking never creates entries.
+
+Joining with personal records queues the account's food log, goals, and unfinished sessions; joining queues the
 recorded cooking of every recipe the device contributes.
 `acknowledgeSync` removes confirmed entries and ignores unknown ids. Rejoining the same
 household resumes; another household returns `conflict` and needs a separate profile.
@@ -219,7 +244,8 @@ synchronization state. Each step runs in one transaction that also records its v
 then checks foreign keys. Existing account ids, session tokens, ratings and rating-change
 identities, revisions, nutrition versions, competing edits, planning history, and covers
 are copied unchanged. Version 7 adds each person's dated nutrition goals, one set per
-effective date.
+effective date. Version 8 adds food-log changes waiting for a decision and the record of
+applied food-log changes.
 
 A database newer than the core, or an upgrade that cannot complete, fails `open` with
 `unsupported`. The database is left at its previous version with its data intact; there is

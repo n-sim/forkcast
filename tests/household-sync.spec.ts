@@ -273,7 +273,7 @@ test('an incompatible server release fails visibly and keeps pending work', asyn
   await createRecipe(device, 'Kept while incompatible');
   const newer = createServer((_request, response) => {
     response.setHeader('content-type', 'application/json');
-    response.end(JSON.stringify({ setupRequired: false, protocol: 3 }));
+    response.end(JSON.stringify({ setupRequired: false, protocol: 4 }));
   });
   await new Promise<void>((resolve) =>
     newer.listen(port, '127.0.0.1', resolve),

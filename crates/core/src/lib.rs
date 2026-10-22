@@ -44,7 +44,10 @@ pub use cooking_plans::{
 };
 pub use db::SCHEMA_VERSION;
 pub use error::{Error, ErrorKind, Result};
-pub use food_log::{EstimateFood, LogManualFood, LogRecipeFood};
+pub use food_log::{
+    EditFoodLogEntry, EstimateFood, FoodLogChange, FoodLogChoice, FoodLogConflict, FoodLogRecord,
+    LogManualFood, LogRecipeFood,
+};
 pub use operation::Operation;
 pub use planning::{
     EditBase, EstimateConversion, MealPlanView, PlanningChoice, PlanningMutation, ShoppingItemKind,

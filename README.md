@@ -151,6 +151,13 @@ competing recipe revisions are kept for explicit resolution (**Review planning c
 **Review recipe conflicts**); a choice made against alternatives that have since changed is
 refused. Saving from an older view of the plan never overwrites newer changes.
 
+Your food log and nutrition goals follow your account to your other devices, and to no one
+else's. Recipe entries keep the nutrition version they were logged with, so old-version notices,
+incomplete totals, and each day's goal comparison read the same everywhere; **Use current
+nutrition** updates only the chosen entry, on every device. An entry or goal set changed on two
+devices at once (or removed on one and changed on the other) appears under **Food log changed on
+two devices** in **Food log**, where you keep one version.
+
 **Accounts.** **Sign out** pauses synchronization and hides that account's private records;
 household records stay usable and the account's pending changes stay with it. Another account of
 the same household gets its own private records on the same device. **Disconnect backend** keeps
@@ -262,7 +269,8 @@ values displays **Unknown**. Entries, unknown values, and the last selected dail
 view persist locally and work offline. Manual entries belong to the persistent
 local person identity and have their own nutrition, independently of recipes,
 plans, and cooking sessions. They do not create reusable foods in a catalog.
-Dated nutrition goals are a subsequent addition.
+**Edit** on an entry corrects when it was eaten and its description or portions;
+**Remove** deletes it.
 
 In the recipe editor, enter **Recipe nutrition** as totals for the recipe's base
 yield. Calories (kcal), protein, fat, and carbohydrates (g) can each be known or
@@ -284,8 +292,8 @@ retain nutrition. Planning and cooking never create consumption entries or
 change per-portion nutrition. Recipe names in the food log link to their current
 recipe page. Entries using an older nutrition version show **Newer recipe nutrition
 available**; following their link explains that the recipe now has newer nutrition
-while the entry keeps its logged values. Explicitly updating an individual entry
-to current nutrition is subsequent work.
+while the entry keeps its logged values. **Use current nutrition** updates that
+one entry; every other entry keeps its reference.
 
 Open **Meal plan** for today's cooking (**Today**) followed by a Monday–Sunday cooking
 schedule (**This week**). Use **Previous week**,

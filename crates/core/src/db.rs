@@ -207,6 +207,22 @@ const MIGRATIONS: &[&str] = &[
          payload TEXT NOT NULL,
          PRIMARY KEY (person_id, effective_from)
      );",
+    // Version 8: food logs and goals synchronize between a person's devices.
+    // A record changed on two devices at once keeps the competing change
+    // (null when it removed the record) until the person decides; applied
+    // changes are remembered so a redelivery changes nothing.
+    "CREATE TABLE food_log_conflicts (
+         id TEXT PRIMARY KEY,
+         person_id TEXT NOT NULL REFERENCES people(id),
+         kind TEXT NOT NULL CHECK (kind IN ('manualEntry', 'recipeEntry', 'goals')),
+         key TEXT NOT NULL,
+         alternative TEXT,
+         UNIQUE (person_id, kind, key)
+     );
+     CREATE TABLE food_log_mutations (
+         id TEXT PRIMARY KEY,
+         person_id TEXT NOT NULL REFERENCES people(id)
+     );",
 ];
 
 pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;

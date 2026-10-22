@@ -46,6 +46,18 @@ export interface NutritionGoals {
   targets: Nutrition;
 }
 
+/** A food-log record changed on two devices, waiting for the person. */
+export interface FoodLogConflict {
+  id: string;
+  kind: 'manualEntry' | 'recipeEntry' | 'goals';
+  /** The entry id, or the goal set's effective date. */
+  key: string;
+  /** The record as kept now; null when it was removed. */
+  current: ManualFoodLogEntry | RecipeFoodLogEntry | NutritionGoals | null;
+  /** The competing change; null when it removed the record. */
+  alternative: ManualFoodLogEntry | RecipeFoodLogEntry | NutritionGoals | null;
+}
+
 /** A day's entries and totals, computed by the application core. */
 export interface DailyFoodLog {
   entries: FoodLogEntry[];

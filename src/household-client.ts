@@ -34,7 +34,7 @@ export interface SyncStatus {
   pendingForOtherAccounts: number;
   lastError: string | null;
   lastSyncedAt: number | null;
-  conflicts: { recipes: number; planning: number };
+  conflicts: { recipes: number; planning: number; foodLog: number };
   pendingJoin: PendingJoin | null;
 }
 

@@ -1,5 +1,7 @@
 import {
   type DailyFoodLog,
+  type FoodLogConflict,
+  type Nutrition,
   type ManualFoodLogEntry,
   type NutritionGoals,
   type RecipeFoodLogEntry,
@@ -43,6 +45,35 @@ export async function adoptCurrentFoodNutrition(
   entryId: string,
 ): Promise<void> {
   await execute('useCurrentFoodNutrition', { entryId });
+}
+
+/** Corrects when an entry was eaten, its portions, or a manual entry's food. */
+export async function editFoodLogEntry(
+  entryId: string,
+  changes: {
+    consumedAt?: string;
+    portions?: number;
+    description?: string;
+    nutrition?: Nutrition;
+  },
+): Promise<void> {
+  await execute('editFoodLogEntry', { entryId, ...changes });
+}
+
+export async function removeFoodLogEntry(entryId: string): Promise<void> {
+  await execute('removeFoodLogEntry', { entryId });
+}
+
+/** Records changed on two of the person's devices, waiting for a decision. */
+export async function loadFoodLogConflicts(): Promise<FoodLogConflict[]> {
+  return execute<FoodLogConflict[]>('foodLogConflicts');
+}
+
+export async function resolveFoodLogConflict(
+  conflictId: string,
+  keep: 'current' | 'alternative',
+): Promise<void> {
+  await execute('resolveFoodLogConflict', { conflictId, keep });
 }
 
 export async function saveFoodLogDate(date: string): Promise<void> {
