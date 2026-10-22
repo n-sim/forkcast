@@ -485,3 +485,146 @@ async fn cooking_sessions_stay_with_their_account_while_occurrences_are_the_hous
     assert_eq!(history[0]["count"], 1);
     assert_eq!(history[0]["lastCookedAt"], 1_900_000_000_000_i64);
 }
+
+#[tokio::test]
+async fn food_logs_and_goals_stay_with_their_account_on_every_path() {
+    let server = Server::new();
+    let (admin, admin_id, _household) = signed_in(&server).await;
+    let (status, _) = server
+        .call(
+            Method::POST,
+            "/api/accounts",
+            Some(&admin),
+            Some(json!({"username": "sam", "password": "another long passphrase"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (_, body) = server
+        .call(
+            Method::POST,
+            "/api/login",
+            None,
+            Some(json!({"username": "sam", "password": "another long passphrase"})),
+        )
+        .await;
+    let sam = body["token"].as_str().unwrap().to_owned();
+    let sam_id = body["account"]["id"].as_str().unwrap().to_owned();
+    let operate = |token: String, operation: Value| {
+        let server = &server;
+        async move {
+            server
+                .call(
+                    Method::POST,
+                    "/api/operations",
+                    Some(&token),
+                    Some(operation),
+                )
+                .await
+        }
+    };
+    let (_, saved) = operate(
+        admin.clone(),
+        json!({"operation": "saveRecipe", "recipe": risotto()}),
+    )
+    .await;
+    let version = saved["current"]["recipe"]["nutritionVersionId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let lunch = json!({
+        "id": "admin-lunch", "recipeId": "veggie-pumpkin-risotto", "recipeName": saved["current"]["recipe"]["name"],
+        "nutritionVersionId": version, "consumedAt": "2030-05-06T12:30", "portions": 1.0
+    });
+    let (status, _) = operate(
+        admin.clone(),
+        json!({"operation": "logRecipeFood", "id": "admin-lunch", "recipeId": "veggie-pumpkin-risotto",
+               "nutritionVersionId": version, "consumedAt": "2030-05-06T12:30", "portions": 1.0}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = operate(
+        admin.clone(),
+        json!({"operation": "setNutritionGoals", "effectiveFrom": "2030-05-01",
+               "targets": {"calories": 2000.0, "protein": null, "fat": null, "carbohydrates": null}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Sam cannot read or change the administrator's records by path ...
+    let path = format!("/api/accounts/{admin_id}/food-log");
+    let (status, _) = server.call(Method::GET, &path, Some(&sam), None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let edit = |base: Value, value: Value| {
+        json!({"changes": [{
+            "id": uuid::Uuid::new_v4().to_string(), "kind": "recipeEntry",
+            "key": "admin-lunch", "base": base, "value": value,
+        }]})
+    };
+    let mut larger = lunch.clone();
+    larger["portions"] = json!(5.0);
+    let (status, _) = server
+        .call(
+            Method::POST,
+            &path,
+            Some(&sam),
+            Some(edit(lunch.clone(), larger.clone())),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    // ... nor through Sam's own path, nor by removing or operating on it.
+    let own = format!("/api/accounts/{sam_id}/food-log");
+    for change in [
+        edit(lunch.clone(), larger.clone()),
+        edit(lunch.clone(), Value::Null),
+    ] {
+        let (status, _) = server
+            .call(Method::POST, &own, Some(&sam), Some(change))
+            .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+    for operation in [
+        json!({"operation": "editFoodLogEntry", "entryId": "admin-lunch", "portions": 5.0}),
+        json!({"operation": "removeFoodLogEntry", "entryId": "admin-lunch"}),
+        json!({"operation": "useCurrentFoodNutrition", "entryId": "admin-lunch"}),
+    ] {
+        let (status, _) = operate(sam.clone(), operation).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+    let (_, snapshot) = server.call(Method::GET, &own, Some(&sam), None).await;
+    assert_eq!(
+        snapshot,
+        json!({"manualEntries": [], "recipeEntries": [], "goals": [], "conflicts": []})
+    );
+    let (_, goals) = operate(sam.clone(), json!({"operation": "nutritionGoals"})).await;
+    assert_eq!(goals, json!([]));
+
+    // An entry naming a nutrition version that is not the recipe's is refused.
+    let mut forged = lunch.clone();
+    forged["id"] = json!("forged");
+    forged["nutritionVersionId"] = json!("not-a-version");
+    let (status, _) = server
+        .call(
+            Method::POST,
+            &own,
+            Some(&sam),
+            Some(json!({"changes": [{
+                "id": uuid::Uuid::new_v4().to_string(), "kind": "recipeEntry",
+                "key": "forged", "base": null, "value": forged,
+            }]})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+
+    // Delivered twice, the administrator's own change applies once.
+    let change = edit(lunch.clone(), larger.clone());
+    for _ in 0..2 {
+        let (status, _) = server
+            .call(Method::POST, &path, Some(&admin), Some(change.clone()))
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
+    let (_, snapshot) = server.call(Method::GET, &path, Some(&admin), None).await;
+    assert_eq!(snapshot["recipeEntries"][0]["portions"], 5.0);
+    assert_eq!(snapshot["goals"][0]["effectiveFrom"], "2030-05-01");
+    assert_eq!(snapshot["conflicts"], json!([]));
+}

@@ -17,9 +17,9 @@ use axum::{
 };
 use forkcast_core::{
     AccountChange, Authenticated, CookingOccurrence, CookingSessionChange, Core,
-    CredentialTransfer, Credentials, CurrentChoice, Error, ErrorKind, Operation, PROTOCOL_VERSION,
-    PlanningChoice, PlanningMutation, PreferenceChange, Principal, RatingChange, Revision,
-    SetupServer,
+    CredentialTransfer, Credentials, CurrentChoice, Error, ErrorKind, FoodLogChange, Operation,
+    PROTOCOL_VERSION, PlanningChoice, PlanningMutation, PreferenceChange, Principal, RatingChange,
+    Revision, SetupServer,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -372,6 +372,40 @@ async fn save_cooking_occurrences(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FoodLogChanges {
+    changes: Vec<FoodLogChange>,
+}
+
+async fn food_log(
+    State(core): State<Core>,
+    auth: Auth,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Value>> {
+    blocking(move || {
+        let principal = auth.principal();
+        principal.require_person(&id)?;
+        Ok(Json(core.food_log_snapshot(&principal)?))
+    })
+    .await
+}
+
+async fn save_food_log(
+    State(core): State<Core>,
+    auth: Auth,
+    Path(id): Path<String>,
+    Json(input): Json<FoodLogChanges>,
+) -> ApiResult<StatusCode> {
+    blocking(move || {
+        let principal = auth.principal();
+        principal.require_person(&id)?;
+        core.apply_food_log_changes(&principal, input.changes)
+    })
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// The server's own provider identity, which a session must be issued to
 /// before the server will accept it.
 async fn ai_host(State(core): State<Core>, auth: Auth) -> ApiResult<Json<Value>> {
@@ -556,6 +590,12 @@ pub fn router(core: Core, origins: Vec<HeaderValue>, frontend: Option<PathBuf>) 
             "/api/households/{id}/cooking-occurrences",
             get(cooking_occurrences)
                 .post(save_cooking_occurrences)
+                .layer(DefaultBodyLimit::max(MEBIBYTE)),
+        )
+        .route(
+            "/api/accounts/{id}/food-log",
+            get(food_log)
+                .post(save_food_log)
                 .layer(DefaultBodyLimit::max(MEBIBYTE)),
         )
         .route("/api/ai/host", get(ai_host))

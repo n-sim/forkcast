@@ -51,7 +51,7 @@ pub struct PendingChange {
     pub person_id: String,
     pub household_id: String,
     /// `recipeRevision`, `rating`, `preference`, `planning`,
-    /// `cookingSession`, or `cookingOccurrence`.
+    /// `cookingSession`, `cookingOccurrence`, or `foodLog`.
     pub kind: String,
     pub payload: Value,
 }
@@ -69,6 +69,8 @@ pub struct AccountSummary {
 pub struct Conflicts {
     pub recipes: usize,
     pub planning: usize,
+    /// The active account's own food-log records changed on two devices.
+    pub food_log: usize,
 }
 
 /// Everything the UI shows about synchronization.
@@ -496,6 +498,14 @@ impl Core {
                     .unwrap_or(0),
                 None => 0,
             };
+            let food_log_conflicts = match (&binding, &active) {
+                (Some(_), Some(account)) => db.query_row(
+                    "SELECT count(*) FROM food_log_conflicts WHERE person_id = ?",
+                    [account],
+                    |row| row.get::<_, i64>(0),
+                )? as usize,
+                _ => 0,
+            };
             let other = entries
                 .iter()
                 .filter(|entry| Some(&entry.person_id) != active.as_ref())
@@ -519,6 +529,7 @@ impl Core {
                     conflicts: Conflicts {
                         recipes: recipe_conflicts,
                         planning: planning_conflicts,
+                        food_log: food_log_conflicts,
                     },
                     pending_join: None,
                 },
@@ -699,6 +710,21 @@ impl Core {
                     let ids: Vec<String> = batch.iter().map(|entry| entry.id.clone()).collect();
                     self.acknowledge(&ids)?;
                 }
+                "foodLog" => {
+                    let batch: Vec<&Entry> = entries
+                        .iter()
+                        .take_while(|entry| entry.kind == "foodLog")
+                        .take(100)
+                        .collect();
+                    let changes: Vec<&Value> = batch.iter().map(|entry| &entry.payload).collect();
+                    remote.call(
+                        "POST",
+                        &format!("/accounts/{account}/food-log"),
+                        Some(&json!({ "changes": changes })),
+                    )?;
+                    let ids: Vec<String> = batch.iter().map(|entry| entry.id.clone()).collect();
+                    self.acknowledge(&ids)?;
+                }
                 "planning" => {
                     let snapshot = remote.call(
                         "POST",
@@ -751,6 +777,7 @@ impl Core {
             None,
         )?;
         let occurrences = remote.call("GET", &format!("{household}/cooking-occurrences"), None)?;
+        let food_log = remote.call("GET", &format!("/accounts/{account}/food-log"), None)?;
         let person = self.acting(account)?;
         self.write(|db, effects| {
             let pending = pending_entries(db)?;
@@ -788,6 +815,31 @@ impl Core {
                 &person,
                 &occurrences,
                 &pending_occurrences,
+                effects,
+            )?;
+            let personal_log: Vec<&Entry> = pending
+                .iter()
+                .filter(|entry| entry.kind == "foodLog" && entry.person_id == account)
+                .collect();
+            let pending_food_log: HashSet<(crate::FoodLogRecord, String)> = personal_log
+                .iter()
+                .filter_map(|entry| {
+                    let change: crate::FoodLogChange =
+                        serde_json::from_value(entry.payload.clone()).ok()?;
+                    Some((change.kind, change.key))
+                })
+                .collect();
+            let resolving: HashSet<String> = personal_log
+                .iter()
+                .filter_map(|entry| entry.payload["resolves"].as_str().map(str::to_owned))
+                .collect();
+            // Recipes first: entries reference their retained nutrition.
+            crate::food_log::mirror(
+                db,
+                &person,
+                &food_log,
+                &pending_food_log,
+                &resolving,
                 effects,
             )?;
             mirror_planning(db, &person, &planning, effects)?;

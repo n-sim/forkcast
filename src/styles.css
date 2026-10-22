@@ -1251,3 +1251,17 @@ dialog .form-actions {
 .recent-recipes [aria-pressed='true'] {
   outline: 2px solid currentColor;
 }
+
+.food-log-entry-editor {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.food-log-conflicts ol {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}

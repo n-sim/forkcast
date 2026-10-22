@@ -4,6 +4,7 @@ import {
   localDateTime,
   nutrients,
   type DailyFoodLog,
+  type FoodLogConflict,
   type ManualFoodLogEntry,
   type NutritionGoals,
   type RecipeFoodLogEntry,
@@ -19,7 +20,16 @@ import {
   saveRecipeFoodLogEntry,
   subscribeToFoodLogChanges,
   adoptCurrentFoodNutrition,
+  editFoodLogEntry,
+  loadFoodLogConflicts,
+  removeFoodLogEntry,
+  resolveFoodLogConflict,
 } from './food-log-store';
+import { FoodLogConflicts } from './FoodLogConflicts';
+import {
+  FoodLogEntryEditor,
+  type FoodLogEntryChanges,
+} from './FoodLogEntryEditor';
 import { ManualFoodLogForm } from './ManualFoodLogForm';
 import { NutritionGoalsForm } from './NutritionGoalsForm';
 import { RecipeFoodLogForm } from './RecipeFoodLogForm';
@@ -52,6 +62,8 @@ export function FoodLog({
 }) {
   const [daily, setDaily] = useState<DailyFoodLog | null>(null);
   const [goalHistory, setGoalHistory] = useState<NutritionGoals[]>([]);
+  const [conflicts, setConflicts] = useState<FoodLogConflict[]>([]);
+  const [editing, setEditing] = useState<string | null>(null);
   const [date, setDate] = useState('');
   const [adding, setAdding] = useState<'manual' | 'recipe' | 'goals' | null>(
     null,
@@ -79,14 +91,16 @@ export function FoodLog({
           (await loadFoodLogDate()) ||
           localDateTime().slice(0, 10);
         shown.current = chosen;
-        const [log, goals] = await Promise.all([
+        const [log, goals, open] = await Promise.all([
           loadFoodLogDay(chosen),
           loadNutritionGoals(),
+          loadFoodLogConflicts(),
         ]);
         if (active && request === requests.current) {
           setDate(chosen);
           setDaily(log);
           setGoalHistory(goals);
+          setConflicts(open);
           setCalculationError('');
           setError('');
         }
@@ -158,6 +172,38 @@ export function FoodLog({
     }
   }
 
+  async function saveEntry(entryId: string, changes: FoodLogEntryChanges) {
+    await editFoodLogEntry(entryId, changes);
+    setEditing(null);
+    refreshDay.current(changes.consumedAt.slice(0, 10));
+    setMessage('Food-log entry changed on this device.');
+    setError('');
+  }
+
+  async function removeEntry(entryId: string, description: string) {
+    try {
+      await removeFoodLogEntry(entryId);
+      refreshDay.current();
+      setMessage(`${description} removed from the food log.`);
+      setError('');
+    } catch {
+      setError('This food-log entry could not be removed. Try again.');
+    }
+  }
+
+  async function resolveConflict(
+    conflict: FoodLogConflict,
+    keep: 'current' | 'alternative',
+  ) {
+    await resolveFoodLogConflict(conflict.id, keep);
+    refreshDay.current();
+    setMessage(
+      keep === 'current'
+        ? 'Kept the current version.'
+        : 'Kept the other device’s change.',
+    );
+  }
+
   async function adoptCurrentNutrition(entryId: string) {
     setUpdating(entryId);
     setMessage('');
@@ -186,7 +232,12 @@ export function FoodLog({
         <div className="food-log-actions">
           <button
             className="button primary"
-            disabled={!daily || Boolean(adding) || recipes.length === 0}
+            disabled={
+              !daily ||
+              Boolean(adding) ||
+              editing !== null ||
+              recipes.length === 0
+            }
             onClick={() => {
               setAdding('recipe');
               setMessage('');
@@ -197,7 +248,7 @@ export function FoodLog({
           <button
             className="button primary"
             aria-label="Add manual entry"
-            disabled={!daily || Boolean(adding)}
+            disabled={!daily || Boolean(adding) || editing !== null}
             onClick={() => {
               setAdding('manual');
               setMessage('');
@@ -207,7 +258,7 @@ export function FoodLog({
           </button>
           <button
             className="button secondary"
-            disabled={!daily || Boolean(adding)}
+            disabled={!daily || Boolean(adding) || editing !== null}
             onClick={() => {
               setAdding('goals');
               setMessage('');
@@ -272,6 +323,7 @@ export function FoodLog({
           onCancel={() => setAdding(null)}
         />
       )}
+      <FoodLogConflicts conflicts={conflicts} onResolve={resolveConflict} />
       {daily && (
         <>
           <section className="panel" aria-labelledby="daily-nutrition-heading">
@@ -375,7 +427,11 @@ export function FoodLog({
                     entry.nutritionVersionId !== recipe.nutritionVersionId;
                   const noticeId = `nutrition-notice-${entry.id}`;
                   return (
-                    <li key={entry.id} className="panel">
+                    <li
+                      key={entry.id}
+                      className="panel"
+                      aria-label={entry.description}
+                    >
                       <p className="eyebrow">
                         {entry.recipeId ? 'Recipe entry' : 'Manual entry'} ·{' '}
                         <time dateTime={entry.consumedAt}>
@@ -436,6 +492,39 @@ export function FoodLog({
                           </div>
                         ))}
                       </dl>
+                      {editing === entry.id ? (
+                        <FoodLogEntryEditor
+                          entry={entry}
+                          onSave={(changes) => saveEntry(entry.id, changes)}
+                          onCancel={() => setEditing(null)}
+                        />
+                      ) : (
+                        <div className="form-actions">
+                          <button
+                            type="button"
+                            className="button secondary"
+                            disabled={Boolean(adding) || editing !== null}
+                            aria-label={`Edit ${entry.description}`}
+                            onClick={() => {
+                              setEditing(entry.id);
+                              setMessage('');
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="button secondary"
+                            disabled={Boolean(adding) || editing !== null}
+                            aria-label={`Remove ${entry.description}`}
+                            onClick={() =>
+                              void removeEntry(entry.id, entry.description)
+                            }
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
                     </li>
                   );
                 })}

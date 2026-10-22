@@ -597,6 +597,7 @@ impl Core {
                     db.execute(sql, params![account.id, local_person])?;
                 }
                 crate::preferences::queue_all(db, effects, &member)?;
+                crate::food_log::queue_for_join(db, effects, &member)?;
                 let ratings: Vec<(String, i64)> = db
                     .prepare("SELECT recipe_id, value FROM recipe_ratings WHERE person_id = ? AND value IS NOT NULL")?
                     .query_map([&account.id], |row| Ok((row.get(0)?, row.get(1)?)))?

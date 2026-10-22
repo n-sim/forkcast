@@ -4,9 +4,10 @@
 
 use crate::{
     AccountChange, AiRequest, ApplyCookingPlan, ArchiveRecipe, CookingChoice, CookingOutcome, Core,
-    Credentials, CurrentChoice, EditBase, EstimateConversion, EstimateFood, GenerateCookingPlan,
-    JoinSelection, LogManualFood, LogRecipeFood, MarkCooked, Photo, PlanningChoice, Principal,
-    ScheduleCookings, ServerSelection, SetCoverPhoto, ShoppingItemKind, StartCooking,
+    Credentials, CurrentChoice, EditBase, EditFoodLogEntry, EstimateConversion, EstimateFood,
+    FoodLogChoice, GenerateCookingPlan, JoinSelection, LogManualFood, LogRecipeFood, MarkCooked,
+    Photo, PlanningChoice, Principal, ScheduleCookings, ServerSelection, SetCoverPhoto,
+    ShoppingItemKind, StartCooking,
     error::{Error, Result},
 };
 use forkcast_recipe_domain::{
@@ -156,6 +157,19 @@ pub enum Operation {
     },
     UseCurrentFoodNutrition {
         entry_id: String,
+    },
+    EditFoodLogEntry {
+        entry_id: String,
+        #[serde(flatten)]
+        edit: EditFoodLogEntry,
+    },
+    RemoveFoodLogEntry {
+        entry_id: String,
+    },
+    FoodLogConflicts,
+    ResolveFoodLogConflict {
+        conflict_id: String,
+        keep: FoodLogChoice,
     },
     EstimateFood {
         #[serde(flatten)]
@@ -412,6 +426,19 @@ impl Core {
             }
             UseCurrentFoodNutrition { entry_id } => {
                 json(json!({"changed": self.use_current_food_nutrition(principal, &entry_id)?}))
+            }
+            EditFoodLogEntry { entry_id, edit } => {
+                self.edit_food_log_entry(principal, &entry_id, edit)?;
+                Ok(Value::Null)
+            }
+            RemoveFoodLogEntry { entry_id } => {
+                self.remove_food_log_entry(principal, &entry_id)?;
+                Ok(Value::Null)
+            }
+            FoodLogConflicts => json(self.food_log_conflicts(principal)?),
+            ResolveFoodLogConflict { conflict_id, keep } => {
+                self.resolve_food_log_conflict(principal, &conflict_id, keep)?;
+                Ok(Value::Null)
             }
             EstimateFood { request } => json(self.estimate_food(principal, request)?),
             FoodLogDate => json(self.food_log_date(principal)?),

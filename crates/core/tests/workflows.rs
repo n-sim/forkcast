@@ -867,3 +867,76 @@ fn cooking_history_belongs_to_the_household_not_the_person() {
         assert_eq!(core.cooking_history(who).unwrap()[0].count, 2);
     }
 }
+
+#[test]
+fn an_entry_can_be_corrected_or_removed_while_keeping_its_retained_nutrition() {
+    let database = TempDatabase::new();
+    let core = database.open();
+    let me = core.standalone().unwrap();
+    let version = save(&core, &me, risotto()).current.recipe["nutritionVersionId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    core.log_recipe_food(
+        &me,
+        LogRecipeFood {
+            id: Some("lunch".into()),
+            recipe_id: "veggie-pumpkin-risotto".into(),
+            nutrition_version_id: version.clone(),
+            consumed_at: "2030-05-06T12:00".into(),
+            portions: Some(1.0),
+        },
+    )
+    .unwrap();
+    core.log_manual_food(&me, manual_food("snack")).unwrap();
+    let operation = |value: Value| -> forkcast_core::Result<Value> {
+        core.execute(&me, serde_json::from_value::<Operation>(value).unwrap())
+    };
+    let day = |date: &str| serde_json::to_value(core.food_log(&me, date).unwrap()).unwrap();
+
+    // Moving lunch to the next day with more portions keeps its version.
+    operation(json!({
+        "operation": "editFoodLogEntry", "entryId": "lunch",
+        "consumedAt": "2030-05-07T13:00", "portions": 2.0
+    }))
+    .unwrap();
+    let moved = &day("2030-05-07")["entries"][0];
+    assert_eq!(moved["id"], "lunch");
+    assert_eq!(moved["portions"], 2.0);
+    assert_eq!(moved["nutritionVersionId"], version.as_str());
+    assert_eq!(moved["nutrition"]["calories"], 1000.0);
+    assert_eq!(day("2030-05-06")["entries"].as_array().unwrap().len(), 1);
+    // A recipe entry's name and nutrition come from its recipe version.
+    let error = operation(json!({
+        "operation": "editFoodLogEntry", "entryId": "lunch", "description": "Something else"
+    }))
+    .unwrap_err();
+    assert_eq!(error.kind, ErrorKind::Invalid);
+    // Invalid changes are refused and the entry is kept as it was.
+    let error = operation(json!({
+        "operation": "editFoodLogEntry", "entryId": "lunch", "portions": 0.0
+    }))
+    .unwrap_err();
+    assert_eq!(error.kind, ErrorKind::Invalid);
+    assert_eq!(day("2030-05-07")["entries"][0]["portions"], 2.0);
+
+    operation(json!({
+        "operation": "editFoodLogEntry", "entryId": "snack", "description": "Tomato soup",
+        "nutrition": {"calories": 180.0, "protein": 4.0, "fat": null, "carbohydrates": null}
+    }))
+    .unwrap();
+    let snack = &day("2030-05-06")["entries"][0];
+    assert_eq!(snack["description"], "Tomato soup");
+    assert_eq!(snack["nutrition"]["protein"], 4.0);
+
+    operation(json!({"operation": "removeFoodLogEntry", "entryId": "snack"})).unwrap();
+    assert_eq!(day("2030-05-06")["entries"], json!([]));
+    let error =
+        operation(json!({"operation": "removeFoodLogEntry", "entryId": "snack"})).unwrap_err();
+    assert_eq!(error.kind, ErrorKind::NotFound);
+    // A standalone profile queues nothing and has nothing to decide.
+    assert_eq!(
+        operation(json!({"operation": "foodLogConflicts"})).unwrap(),
+        json!([])
+    );
+}
