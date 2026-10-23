@@ -71,6 +71,9 @@ test('leave and cancel forms with Escape in the browser', async ({
   ).toBeVisible();
 
   await page.keyboard.press('g');
+  await expect(
+    page.getByRole('heading', { name: 'Generate recipe', level: 1 }),
+  ).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(
     page.getByRole('heading', { name: 'Your recipe collection', level: 1 }),
