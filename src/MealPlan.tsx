@@ -297,6 +297,7 @@ export function MealPlan({
           <button
             className="button primary"
             disabled={!loaded || !recipes.length || adding || removing}
+            aria-keyshortcuts="P"
             onClick={() => startAdding()}
           >
             Plan cooking
@@ -370,6 +371,7 @@ export function MealPlan({
           <button
             className="button secondary"
             disabled={adding || week <= monday(firstDate)}
+            aria-keyshortcuts="ArrowLeft"
             onClick={() => setWeek(shiftDate(week, -7))}
           >
             Previous week
@@ -391,6 +393,7 @@ export function MealPlan({
           <button
             className="button secondary"
             disabled={adding || week >= monday(lastDate)}
+            aria-keyshortcuts="ArrowRight"
             onClick={() => setWeek(shiftDate(week, 7))}
           >
             Next week
