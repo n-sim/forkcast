@@ -3,7 +3,7 @@ use forkcast_backend::{
     router,
     tls::{CertificateFiles, Identity, TlsListener, fingerprint_of},
 };
-use forkcast_core::{Config, Core};
+use forkcast_core::{Config, Core, backup_database, restore_database};
 
 /// How the server speaks HTTPS: `FORKCAST_TLS=self-signed` creates and keeps
 /// its own certificate, `FORKCAST_TLS_CERT` and `FORKCAST_TLS_KEY` name
@@ -102,13 +102,78 @@ fn print_fingerprint() -> ! {
     }
 }
 
+const USAGE: &str = "Usage:
+  forkcast-backend                         run the household server
+  forkcast-backend backup <FILE>           write a backup of the database (the server may keep running)
+  forkcast-backend restore <FILE> [--replace]
+                                           recover a backup into the database (stop the server first)";
+
+/// `backup` and `restore`: the supported administration workflow for the
+/// server's data. Both act on `FORKCAST_DATABASE`.
+fn administer(arguments: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let path = database_path();
+    let database = std::path::Path::new(&path);
+    let replace = arguments.iter().any(|argument| argument == "--replace");
+    let files: Vec<&String> = arguments[1..]
+        .iter()
+        .filter(|argument| *argument != "--replace")
+        .collect();
+    let [file] = files.as_slice() else {
+        return Err(USAGE.into());
+    };
+    let file = std::path::Path::new(file.as_str());
+    match arguments[0].as_str() {
+        "backup" if !replace => {
+            let report = backup_database(database, file)?;
+            println!(
+                "Backed up {} accounts and {} recipes (schema {}) to {}.
+ChatGPT sessions are not included; see docs/server.md.",
+                report.accounts,
+                report.recipes,
+                report.schema_version,
+                file.display()
+            );
+        }
+        "restore" => {
+            let stamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs() as i64;
+            let report = restore_database(file, database, replace, stamp)?;
+            println!(
+                "Recovered {} accounts and {} recipes into {}.",
+                report.backup.accounts,
+                report.backup.recipes,
+                database.display()
+            );
+            if let Some(previous) = report.previous {
+                println!(
+                    "The database it replaced was kept at {}.",
+                    previous.display()
+                );
+            }
+        }
+        _ => return Err(USAGE.into()),
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::args().any(|argument| argument == "--health") {
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    if arguments.iter().any(|argument| argument == "--health") {
         health();
     }
     if std::env::args().any(|argument| argument == "--fingerprint") {
         print_fingerprint();
+    }
+    if matches!(
+        arguments.first().map(String::as_str),
+        Some("backup" | "restore")
+    ) {
+        return administer(&arguments);
+    }
+    if !arguments.is_empty() {
+        return Err(USAGE.into());
     }
     let bind = std::env::var("FORKCAST_BIND").unwrap_or_else(|_| "127.0.0.1:8787".into());
     let path = database_path();

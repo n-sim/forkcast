@@ -9,6 +9,7 @@
 
 mod accounts;
 mod ai;
+mod backup;
 mod changes;
 mod cooking;
 mod cooking_plans;
@@ -35,6 +36,7 @@ pub use ai::{
     AiConfig, AiImage, AiModel, AiRequest, AiState, AiStatus, CredentialTransfer, ServerSelection,
     TransferAck,
 };
+pub use backup::{BackupReport, RestoreReport, backup_database, restore_database};
 pub use changes::{Change, Scope, Subscription, Topic};
 pub use cooking::{
     BeginCooking, CookingChoice, CookingOccurrence, CookingOutcome, CookingSessionChange,

@@ -55,7 +55,7 @@ FORKCAST_BIND=127.0.0.1:8787 target/release/forkcast-backend
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `FORKCAST_BIND` | `127.0.0.1:8787` | Address to listen on. |
-| `FORKCAST_DATABASE` | `forkcast.sqlite3` | SQLite file. Back it up like any database (stop the server or copy with the `.backup` command). |
+| `FORKCAST_DATABASE` | `forkcast.sqlite3` | SQLite file holding all household data, including cover photos. Back it up with `forkcast-backend backup` (see [Backup and recovery](#backup-and-recovery)), not by copying the file while the server runs. |
 | `FORKCAST_SECRETS_FILE` | the database path with a `.secrets` extension | Owner-only file (`0600`) holding members' ChatGPT sessions. Keep it with the data volume but out of database backups you share; it is what lets the server run AI for its accounts. Members set it up from the installed app (**Settings → ChatGPT**); no SSH or token copying is needed. |
 | `FORKCAST_TLS` | unset | `self-signed` serves HTTPS with the server's own certificate, created on first start beside the database (`forkcast.tls.crt` and the owner-only `forkcast.tls.key`). Unset or `off` serves plain HTTP for a reverse proxy. |
 | `FORKCAST_TLS_CERT`, `FORKCAST_TLS_KEY` | unset | PEM certificate chain and private key to serve HTTPS with (for example a certificate from your own CA or ACME client). With `FORKCAST_TLS=self-signed` they name where the self-signed pair is kept instead. |
@@ -125,6 +125,87 @@ certificate authorities they ship with; authorities installed on the device
 are not consulted. A certificate from your own authority can instead be served
 by the server itself with `FORKCAST_TLS_CERT` and `FORKCAST_TLS_KEY`, and apps
 confirm its fingerprint as above.
+
+## Backup and recovery
+
+One command backs up everything the server stores for the household, and one
+recovers it. The backup is a single verified file holding accounts (with their
+password hashes and live sign-ins), shared recipes and every retained revision
+and competing alternative, cover photos, retained nutrition versions, the meal
+plan and shopping list with their conflicts, cooking history, personal ratings,
+food logs and other personal records, and the synchronization history that
+installed apps reconcile against. Records added by later releases are in the
+same file; no per-feature export exists. There is no backup or restore in the
+frontend: only the person administering the server can do this.
+
+**Back up** while the server keeps running, to a new file name (an existing file
+is never overwritten):
+
+```sh
+# with Docker
+docker compose exec forkcast /app/forkcast-backend backup /data/backups/forkcast-$(date +%F).sqlite3
+docker compose cp forkcast:/data/backups ./backups      # copy it off the machine
+
+# without Docker
+FORKCAST_DATABASE=/var/lib/forkcast/forkcast.sqlite3 forkcast-backend backup /backups/forkcast-2030-05-06.sqlite3
+
+# the Proxmox VE / systemd install, as the service's own user
+pct exec <CTID> -- runuser -u forkcast -- env FORKCAST_DATABASE=/var/lib/forkcast/forkcast.sqlite3 \
+  /opt/forkcast/forkcast-backend backup /var/lib/forkcast/backups/manual-2030-05-06.sqlite3
+```
+
+Keep backups somewhere other than the server's disk. They contain password
+hashes and household data, so protect them like the database itself.
+
+**Recover** into a new or existing instance. Stop the server first, then run the
+program once against the same `FORKCAST_DATABASE` and start the server again:
+
+```sh
+docker compose stop forkcast
+docker compose run --rm --no-deps -v "$PWD/backups:/backups:ro" forkcast restore /backups/forkcast-2030-05-06.sqlite3
+docker compose up -d
+```
+
+A fresh data volume needs no extra flag. If a database already exists, recovery
+refuses until you add `--replace`; it then keeps the current database beside the
+new one as `forkcast.sqlite3.before-restore-<time>` so the recovery can be
+undone. A backup that is damaged, not a household server's, or from a newer
+release is refused without changing anything; a backup from an older release is
+upgraded in a staging copy before it is put in place.
+
+What happens afterwards:
+
+- Accounts, passwords, and sign-ins that existed when the backup was made work
+  again; the same household, recipe, revision, photo, and nutrition-version
+  identities return, and each person's ratings and food log stay theirs.
+- Installed apps that are already joined keep their pending changes and deliver
+  them to the recovered server. Where an app and the recovered server edited
+  the same recipe or planning item differently, both versions are retained and
+  shown as conflicts to resolve; nothing is silently overwritten. Because the
+  household is the same, no app starts a new household or re-contributes its
+  data.
+- Work that was delivered to the server *after* the backup was made, and has no
+  copy left on any device, is not in the backup. Back up regularly.
+- An account created after the backup does not exist; its owner must be
+  created again by the administrator.
+
+### ChatGPT sessions, host identity, and the certificate
+
+Members' ChatGPT sessions and the server's AI host identity are runtime
+secrets, kept in `FORKCAST_SECRETS_FILE` and **never** part of a backup, of
+synchronization, or of anything a browser can receive. Choose one:
+
+1. **Reconnect (default).** Recover only the database. Each member opens
+   **Settings → ChatGPT** in the installed app and chooses **Set up ChatGPT on
+   this server** again. The new instance has a new host identity, so earlier
+   sessions are not reused. Nothing else about AI needs repair.
+2. **Keep the secrets file with the data volume.** If the same volume (or an
+   owner-only `0600` copy of the secrets file made by the host's own volume
+   snapshot) is restored to the same operating system user, sessions continue to
+   work and nothing needs reconnecting. Do not copy this file into the
+   backups you store or share; it grants those members' ChatGPT access. On
+   platforms without protected storage (non-Unix), sessions exist only in memory
+   and always need reconnecting.
 
 ## Upgrades
 

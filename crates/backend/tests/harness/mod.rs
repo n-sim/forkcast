@@ -172,6 +172,23 @@ impl Server {
         }
     }
 
+    /// Writes a backup of the running server's data, as an administrator would.
+    pub fn backup(&self, destination: &Path) -> forkcast_core::BackupReport {
+        forkcast_core::backup_database(&self.database, destination).unwrap()
+    }
+
+    /// Stops the server, recovers `backup` over its data, and starts it again
+    /// on the same address.
+    pub fn recover_from(&mut self, backup: &Path) -> forkcast_core::RestoreReport {
+        self.stop();
+        let report = forkcast_core::restore_database(backup, &self.database, true, 1).unwrap();
+        if let Some(previous) = &report.previous {
+            remove(previous);
+        }
+        self.restart();
+        report
+    }
+
     /// Takes the server away, as an outage or a restart would.
     pub fn stop(&mut self) {
         if let Some(stop) = self.stop.take() {

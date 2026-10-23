@@ -17,7 +17,7 @@ See [ADR 0015](docs/adr/0015-embed-a-shared-rust-core-and-synchronize.md) and
 | I want to…                                                              | Read                                             |
 | ----------------------------------------------------------------------- | ------------------------------------------------ |
 | install and build the desktop app, understand where data lives, signing | [docs/desktop.md](docs/desktop.md)               |
-| run a household server (Docker, Proxmox VE, HTTPS, upgrades)            | [docs/server.md](docs/server.md)                 |
+| run a household server (Docker, Proxmox VE, HTTPS, backup, upgrades)    | [docs/server.md](docs/server.md)                 |
 | build for Android and see its release gates                             | [docs/android.md](docs/android.md)               |
 | use the core's operations, errors, and change notifications             | [docs/core-interface.md](docs/core-interface.md) |
 
@@ -186,7 +186,7 @@ never in the synchronized data.
 **Releases.** The app and server declare a synchronization protocol version; a mismatch is shown
 in Settings and every pending change is kept.
 
-Configuration, HTTPS, reverse proxies, and upgrades are in [docs/server.md](docs/server.md). The
+Configuration, HTTPS, reverse proxies, backup and recovery, and upgrades are in [docs/server.md](docs/server.md). The
 authorization model and HTTP/native operations are in [docs/core-interface.md](docs/core-interface.md).
 
 ## Data and offline use
