@@ -240,11 +240,16 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 28px;
   margin-bottom: 34px;
 }
 .page-heading > div {
   min-width: 0;
+}
+/* Keep the actions beside the title until there is no room left for both. */
+.page-heading > div:first-child {
+  flex: 1 1 240px;
 }
 .page-heading p:not(.eyebrow) {
   color: var(--muted);
