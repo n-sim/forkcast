@@ -12,7 +12,11 @@ export function RecipeNutrition({ recipe }: { recipe: Recipe }) {
         },
         { title: 'Nutrition per portion', values: recipeNutrition(recipe) },
       ].map(({ title, values }) => (
-        <section className="panel" aria-label={title} key={title}>
+        <section
+          className="panel nutrition-panel"
+          aria-label={title}
+          key={title}
+        >
           <h2>{title}</h2>
           <p className="section-note">
             {title === 'Whole-recipe nutrition'
