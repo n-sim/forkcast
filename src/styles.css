@@ -822,6 +822,14 @@ small {
   margin: 0 0 32px;
   gap: 20px;
 }
+.nutrition-panel {
+  container-type: inline-size;
+}
+@container (max-width: 540px) {
+  .nutrition-panel .recipe-metadata {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 dt {
   font-size: 11px;
   color: var(--muted);
