@@ -48,8 +48,10 @@ export function StepAllocations({
                   const ingredient = ingredients.find(
                     (item) => item.id === event.target.value,
                   );
+                  // A step uses the whole ingredient unless told otherwise.
                   update(allocationIndex, {
                     ingredientId: event.target.value,
+                    quantity: ingredient?.quantity ?? null,
                     unit: ingredient?.unit ?? 'g',
                   });
                 }}
@@ -128,7 +130,7 @@ export function StepAllocations({
             ...step.allocations,
             {
               ingredientId: ingredient?.id ?? '',
-              quantity: null,
+              quantity: ingredient?.quantity ?? null,
               unit: ingredient?.unit ?? 'g',
             },
           ]);

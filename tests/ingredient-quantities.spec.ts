@@ -79,6 +79,43 @@ test('truncate displayed quantities to two decimal places while retaining small 
   await expect(ingredients).toHaveText('28.34 g Lentils0.003 ml Oil');
 });
 
+test('allocate the full ingredient quantity to a step by default', async ({
+  page,
+}) => {
+  await startRecipe(page);
+  await page.getByLabel('Ingredient 1 unit').selectOption('kg');
+  await page
+    .getByRole('button', { name: '+ Add ingredient', exact: true })
+    .click();
+  await page.getByLabel('Ingredient 2 name').fill('Stock');
+  await page.getByLabel('Ingredient 2 quantity').fill('1.5');
+  await page.getByLabel('Ingredient 2 unit').selectOption('l');
+  await page
+    .getByRole('button', { name: 'Add allocation to step 1', exact: true })
+    .click();
+  const quantity = page.getByLabel('Step 1 allocation 1 quantity', {
+    exact: true,
+  });
+  const unit = page.getByLabel('Step 1 allocation 1 unit', { exact: true });
+  await expect(quantity).toHaveValue('300');
+  await expect(unit).toHaveValue('kg');
+  // Choosing another ingredient takes its full quantity and unit instead.
+  await page
+    .getByLabel('Step 1 allocation 1 ingredient', { exact: true })
+    .selectOption({ label: 'Stock' });
+  await expect(quantity).toHaveValue('1.5');
+  await expect(unit).toHaveValue('l');
+  await page
+    .getByRole('button', { name: 'Add allocation to step 1', exact: true })
+    .click();
+  await expect(
+    page.getByLabel('Step 1 allocation 2 quantity', { exact: true }),
+  ).toHaveValue('300');
+  await expect(
+    page.getByRole('region', { name: 'Allocation checks' }),
+  ).toContainText('All ingredient totals are fully allocated.');
+});
+
 test('allocate ingredient totals across steps and scale both after reopening offline', async ({
   page,
   app,
