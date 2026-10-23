@@ -1,4 +1,4 @@
-import { expect, test, type Page } from './app-fixture';
+import { expect, test, type Locator, type Page } from './app-fixture';
 
 test.use({ timezoneId: 'Europe/Berlin' });
 
@@ -8,6 +8,32 @@ test.beforeEach(async ({ page }) => {
 
 function heading(page: Page, name: string) {
   return page.getByRole('heading', { name, exact: true, level: 1 });
+}
+
+/**
+ * Touches a control on tablets and clicks it elsewhere. The packaged app is
+ * attached over the DevTools protocol, where Playwright's own `tap` is not
+ * available, so the touch is dispatched as real touch input.
+ */
+async function press(page: Page, control: Locator) {
+  if (!test.info().project.use.hasTouch) return control.click();
+  await control.scrollIntoViewIfNeeded();
+  const box = (await control.boundingBox())!;
+  const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const session = await page.context().newCDPSession(page);
+  try {
+    await session.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+    await session.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [point],
+    });
+    await session.send('Input.dispatchTouchEvent', {
+      type: 'touchEnd',
+      touchPoints: [],
+    });
+  } finally {
+    await session.detach();
+  }
 }
 
 async function createRecipe(page: Page) {
@@ -132,8 +158,7 @@ test('navigate, plan, and log from the keyboard without disturbing typing', asyn
     name: 'Keyboard shortcuts',
     exact: true,
   });
-  if (test.info().project.use.hasTouch) await shortcuts.tap();
-  else await shortcuts.click();
+  await press(page, shortcuts);
   await expect(help).toBeVisible();
   await help.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(help).toBeHidden();
@@ -170,8 +195,7 @@ test('move through guided cooking with the arrow keys', async ({ page }) => {
 
   // Pointer and touch still step through the same controls.
   const next = page.getByRole('button', { name: 'Next step', exact: true });
-  if (test.info().project.use.hasTouch) await next.tap();
-  else await next.click();
+  await press(page, next);
   await expect(step).toContainText('Step 2 of 2');
 
   // Progress made from the keyboard is saved like any other.
