@@ -127,7 +127,7 @@ fn an_account_created_after_the_backup_is_not_recovered_and_the_rest_is() {
     server.recover_from(&backup);
 
     let refused = Device::new();
-    refused.core.connect_server(&server.url).unwrap();
+    refused.core.connect_server(&server.url, None).unwrap();
     assert!(
         refused
             .core
