@@ -30,6 +30,10 @@ export const shortcutGroups: {
     ],
   },
   {
+    name: 'Recipe',
+    shortcuts: [{ keys: ['E'], label: 'E', description: 'Edit recipe' }],
+  },
+  {
     name: 'Recipe editing',
     shortcuts: [
       {

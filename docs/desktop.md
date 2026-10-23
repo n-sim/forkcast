@@ -37,10 +37,10 @@ data folder**. Nothing is reset or deleted automatically.
 
 Press **?** (or choose **Keyboard shortcuts** in the sidebar) for the list.
 Number keys **1**–**5** open the recipe collection, meal plan, food log,
-shopping list, and settings; **N**/**G** start a new or generated recipe, **P**
-plans cooking, **M**/**R** add a manual or recipe food-log entry, and **←**/**→**
-move between weeks in the meal plan and between steps while cooking (finishing
-cooking always takes a deliberate click). **Esc** leaves a new, generated, or
+shopping list, and settings; **N**/**G** start a new or generated recipe, **E**
+edits the open recipe, **P** plans cooking, **M**/**R** add a manual or recipe
+food-log entry, and **←**/**→** move between weeks in the meal plan and between
+steps while cooking (finishing cooking always takes a deliberate click). **Esc** leaves a new, generated, or
 edited recipe without saving, asking first when you have entered something, and
 cancels the open form in the meal plan and the food log. Shortcuts are single
 unmodified keys: apart from **Esc** they never fire while you type in a field,
