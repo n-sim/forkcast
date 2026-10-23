@@ -40,8 +40,11 @@ Number keys **1**–**5** open the recipe collection, meal plan, food log,
 shopping list, and settings; **N**/**G** start a new or generated recipe, **P**
 plans cooking, **M**/**R** add a manual or recipe food-log entry, and **←**/**→**
 move between weeks in the meal plan and between steps while cooking (finishing
-cooking always takes a deliberate click). Shortcuts are single unmodified keys:
-they never fire while you type in a field or while a dialog is open, and keys
+cooking always takes a deliberate click). **Esc** leaves a new, generated, or
+edited recipe without saving, asking first when you have entered something, and
+cancels the open form in the meal plan and the food log. Shortcuts are single
+unmodified keys: apart from **Esc** they never fire while you type in a field,
+none fire while a dialog is open, and keys
 with Ctrl, Alt, or the Windows key stay with Windows and the web view. Each
 shortcut presses a visible button or link, so everything stays usable with a
 pointer or touch, and the same shortcuts work in the browser.

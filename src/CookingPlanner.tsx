@@ -416,6 +416,7 @@ export function CookingPlanner({
               <button
                 className="button secondary"
                 type="button"
+                aria-keyshortcuts="Escape"
                 onClick={onCancel}
               >
                 Close

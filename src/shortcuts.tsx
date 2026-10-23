@@ -1,9 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 
 // Shortcuts are single unmodified keys that activate a visible control
 // carrying the same key in `aria-keyshortcuts`. Each operation therefore stays
 // one ordinary button or link for pointer and touch, and a shortcut never
 // reaches a control that is disabled, hidden, or absent from the current page.
+// Before activating it, the control receives a cancelable `keyshortcut` event
+// so a form can treat the keypress differently from a deliberate click.
 
 export const shortcutGroups: {
   name: string;
@@ -28,11 +30,22 @@ export const shortcutGroups: {
     ],
   },
   {
+    name: 'Recipe editing',
+    shortcuts: [
+      {
+        keys: ['Escape'],
+        label: 'Esc',
+        description: 'Back without saving (asks before discarding changes)',
+      },
+    ],
+  },
+  {
     name: 'Meal plan',
     shortcuts: [
       { keys: ['P'], label: 'P', description: 'Plan cooking' },
       { keys: ['ArrowLeft'], label: '←', description: 'Previous week' },
       { keys: ['ArrowRight'], label: '→', description: 'Next week' },
+      { keys: ['Escape'], label: 'Esc', description: 'Cancel the open form' },
     ],
   },
   {
@@ -40,6 +53,7 @@ export const shortcutGroups: {
     shortcuts: [
       { keys: ['M'], label: 'M', description: 'Add manual entry' },
       { keys: ['R'], label: 'R', description: 'Log recipe portions' },
+      { keys: ['Escape'], label: 'Esc', description: 'Cancel the open form' },
     ],
   },
   {
@@ -57,8 +71,12 @@ const known = new Set(
   ),
 );
 
-function isEditable(target: EventTarget | null) {
+function isEditable(target: EventTarget | null, key: string) {
   if (!(target instanceof HTMLElement)) return false;
+  // Escape types nothing, so it leaves a field's form too, unless the field
+  // is using it to close its own popup.
+  if (key === 'Escape')
+    return Boolean(target.closest('[aria-expanded="true"]'));
   return Boolean(
     target.isContentEditable ||
     target.closest(
@@ -97,23 +115,40 @@ export function useKeyboardShortcuts() {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       const key = shortcutKey(event);
-      if (!key || isEditable(event.target)) return;
+      if (!key || isEditable(event.target, key)) return;
       // An open modal dialog owns the keyboard until it closes.
       if (document.querySelector('dialog[open]')) return;
-      const control = [
+      const controls = [
         ...document.querySelectorAll<HTMLElement>('[aria-keyshortcuts]'),
-      ].find(
+      ].filter(
         (element) =>
           element.getAttribute('aria-keyshortcuts')!.split(' ').includes(key) &&
           visible(element),
       );
+      // With several forms open, the one holding focus answers the key.
+      let control = controls[0];
+      for (
+        let scope = document.activeElement;
+        scope && scope !== document.body;
+        scope = scope.parentElement
+      ) {
+        const inside = controls.find((element) => scope!.contains(element));
+        if (inside) {
+          control = inside;
+          break;
+        }
+      }
       if (
         !control ||
         control.matches(':disabled, [aria-disabled="true"], [aria-busy="true"]')
       )
         return;
       event.preventDefault();
-      control.click();
+      const shortcut = new CustomEvent('keyshortcut', {
+        cancelable: true,
+        detail: key,
+      });
+      if (control.dispatchEvent(shortcut)) control.click();
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
@@ -139,8 +174,8 @@ export function KeyboardShortcutsDialog({ onClose }: { onClose: () => void }) {
     >
       <h2 id="keyboard-shortcuts-title">Keyboard shortcuts</h2>
       <p>
-        Press a key while you are not typing in a field. Everything stays
-        available with pointer and touch.
+        Press a key while you are not typing in a field; Esc also works from
+        inside a field. Everything stays available with pointer and touch.
       </p>
       {shortcutGroups.map((group) => (
         <section key={group.name} aria-label={`${group.name} shortcuts`}>
@@ -160,6 +195,76 @@ export function KeyboardShortcutsDialog({ onClose }: { onClose: () => void }) {
       <div className="form-actions">
         <button className="button primary" autoFocus onClick={onClose}>
           Close
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
+/**
+ * Lets a control handle its shortcut itself instead of being clicked, such as
+ * asking before Escape discards changes a deliberate Cancel click would drop.
+ */
+export function useShortcutHandler(
+  control: RefObject<HTMLElement | null>,
+  handler: () => void,
+) {
+  const current = useRef(handler);
+  current.current = handler;
+  useEffect(() => {
+    const element = control.current;
+    if (!element) return;
+    const onShortcut = (event: Event) => {
+      event.preventDefault();
+      current.current();
+    };
+    element.addEventListener('keyshortcut', onShortcut);
+    return () => element.removeEventListener('keyshortcut', onShortcut);
+  }, [control]);
+}
+
+export function DiscardChangesDialog({
+  title,
+  children,
+  discardLabel,
+  onKeep,
+  onDiscard,
+}: {
+  title: string;
+  children: ReactNode;
+  discardLabel: string;
+  onKeep: () => void;
+  onDiscard: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const element = dialog.current!;
+    element.showModal();
+    return () => element.close();
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      aria-labelledby="discard-changes-title"
+      aria-describedby="discard-changes-description"
+      onCancel={(event) => {
+        event.preventDefault();
+        onKeep();
+      }}
+    >
+      <h2 id="discard-changes-title">{title}</h2>
+      <div id="discard-changes-description">{children}</div>
+      <div className="form-actions">
+        <button
+          className="button secondary"
+          type="button"
+          autoFocus
+          onClick={onKeep}
+        >
+          Keep editing
+        </button>
+        <button className="button primary" type="button" onClick={onDiscard}>
+          {discardLabel}
         </button>
       </div>
     </dialog>

@@ -21,6 +21,7 @@ import {
   useRecipeEstimation,
 } from './RecipeEstimation';
 import { useAiModel } from './use-ai-model';
+import { DiscardChangesDialog, useShortcutHandler } from './shortcuts';
 
 function emptyIngredient() {
   return {
@@ -65,6 +66,15 @@ export function RecipeForm({
       },
   );
   const baseline = useRef(ingredientSignature(draft)).current;
+  const initialDraft = useRef(JSON.stringify(draft)).current;
+  const cancelButton = useRef<HTMLButtonElement>(null);
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  // Escape is easy to press by accident, so it asks before dropping changes;
+  // a deliberate Cancel click does not.
+  useShortcutHandler(cancelButton, () => {
+    if (JSON.stringify(draft) === initialDraft) onCancel();
+    else setConfirmingDiscard(true);
+  });
   const ai = useAiModel(aiAvailable);
   const estimation = useRecipeEstimation(draft, setDraft, ai, aiAvailable);
   const [error, setError] = useState('');
@@ -550,11 +560,29 @@ export function RecipeForm({
         />
       </section>
       {estimation.dialog}
+      {confirmingDiscard && (
+        <DiscardChangesDialog
+          title={
+            initialRecipe ? 'Discard your changes?' : 'Discard this recipe?'
+          }
+          discardLabel={initialRecipe ? 'Discard changes' : 'Discard recipe'}
+          onKeep={() => setConfirmingDiscard(false)}
+          onDiscard={onCancel}
+        >
+          <p>
+            {initialRecipe
+              ? `Your unsaved changes to ${initialRecipe.name} are lost. The saved recipe stays as it was.`
+              : 'The recipe you started is not saved and is lost.'}
+          </p>
+        </DiscardChangesDialog>
+      )}
       <div className="form-actions">
         <p>Saved on this device. Ready when you are.</p>
         <button
+          ref={cancelButton}
           className="button secondary"
           type="button"
+          aria-keyshortcuts="Escape"
           onClick={onCancel}
           disabled={saving}
         >
