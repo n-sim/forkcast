@@ -1060,7 +1060,7 @@ dialog .form-actions {
     gap: 0;
   }
 }
-@media (max-width: 900px) {
+@media (max-width: 640px) {
   :root {
     --sidebar-width: 0px;
   }
