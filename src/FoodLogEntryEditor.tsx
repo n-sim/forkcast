@@ -109,6 +109,7 @@ export function FoodLogEntryEditor({
           type="button"
           className="button secondary"
           disabled={saving}
+          aria-keyshortcuts="Escape"
           onClick={onCancel}
         >
           Cancel

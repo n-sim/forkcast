@@ -204,3 +204,117 @@ test('move through guided cooking with the arrow keys', async ({ page }) => {
   await page.reload();
   await expect(step).toContainText('Step 1 of 2');
 });
+
+test('leave recipe forms and cancel planning and logging forms with Escape', async ({
+  page,
+}) => {
+  await createRecipe(page);
+
+  // Editing without changes leaves at once; changes are only dropped after
+  // confirming, and Escape in the question keeps editing.
+  await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
+  const name = page.getByLabel('Recipe name', { exact: true });
+  await name.click();
+  await page.keyboard.press('Escape');
+  await expect(heading(page, 'Lentil supper')).toBeVisible();
+  await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
+  await name.fill('Unsaved supper');
+  await page.keyboard.press('Escape');
+  const discard = page.getByRole('dialog', { name: 'Discard your changes?' });
+  await expect(discard).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(discard).toBeHidden();
+  await expect(name).toHaveValue('Unsaved supper');
+  await page.keyboard.press('Escape');
+  await discard
+    .getByRole('button', { name: 'Discard changes', exact: true })
+    .click();
+  await expect(heading(page, 'Lentil supper')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Unsaved supper' }),
+  ).toHaveCount(0);
+
+  // A new recipe and a generation description are kept the same way.
+  await page.keyboard.press('1');
+  await page.keyboard.press('n');
+  await expect(heading(page, 'New recipe')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(heading(page, 'Your recipe collection')).toBeVisible();
+  await page.keyboard.press('n');
+  await page.getByLabel('Ingredient 1 name').fill('Rice');
+  await page.keyboard.press('Escape');
+  const discardNew = page.getByRole('dialog', {
+    name: 'Discard this recipe?',
+  });
+  await discardNew
+    .getByRole('button', { name: 'Keep editing', exact: true })
+    .click();
+  await expect(page.getByLabel('Ingredient 1 name')).toHaveValue('Rice');
+  await page.keyboard.press('Escape');
+  await discardNew
+    .getByRole('button', { name: 'Discard recipe', exact: true })
+    .click();
+  await expect(heading(page, 'Your recipe collection')).toBeVisible();
+  await expect(page.getByRole('link', { name: /Lentil supper/ })).toBeVisible();
+  await page.keyboard.press('g');
+  await expect(heading(page, 'Generate recipe')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(heading(page, 'Your recipe collection')).toBeVisible();
+  await page.keyboard.press('g');
+  await page.getByLabel('Describe your dish').fill('Tomato soup');
+  await page.keyboard.press('Escape');
+  await page
+    .getByRole('dialog', { name: 'Discard this description?' })
+    .getByRole('button', { name: 'Discard description', exact: true })
+    .click();
+  await expect(heading(page, 'Your recipe collection')).toBeVisible();
+
+  // Planning and logging forms cancel like their Cancel buttons, even from
+  // inside a field.
+  await page.keyboard.press('2');
+  await expect(
+    page.getByRole('button', { name: 'Plan cooking', exact: true }),
+  ).toBeEnabled();
+  await page.keyboard.press('p');
+  const details = page.getByRole('region', {
+    name: 'Planned cooking details',
+    exact: true,
+  });
+  await details.getByLabel('Portions to cook', { exact: true }).fill('3');
+  await page.keyboard.press('Escape');
+  await expect(details).toBeHidden();
+  await expect(heading(page, 'Your meal plan')).toBeVisible();
+  await page
+    .getByRole('button', { name: 'Schedule cooking', exact: true })
+    .click();
+  const planner = page.getByRole('region', { name: 'Schedule cooking' });
+  await expect(planner).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(planner).toBeHidden();
+
+  await page.keyboard.press('3');
+  await expect(
+    page.getByRole('button', { name: 'Add manual entry', exact: true }),
+  ).toBeEnabled();
+  for (const [key, region] of [
+    ['m', 'Manual food-log entry'],
+    ['r', 'Recipe-linked food-log entry'],
+  ] as const) {
+    await page.keyboard.press(key);
+    const form = page.getByRole('region', { name: region, exact: true });
+    await expect(form).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(form).toBeHidden();
+  }
+  await page
+    .getByRole('button', { name: 'Set nutrition goals', exact: true })
+    .click();
+  const goals = page.getByRole('region', {
+    name: 'Set nutrition goals',
+    exact: true,
+  });
+  await expect(goals).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(goals).toBeHidden();
+  await expect(heading(page, 'Food log')).toBeVisible();
+});

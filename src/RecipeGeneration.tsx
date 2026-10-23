@@ -4,6 +4,7 @@ import { estimateNutrition } from './recipe-estimation';
 import { loadRecipePrompt } from './ai-prompts';
 import type { Recipe } from './domain';
 import { AiModelNotice, useAiModel } from './use-ai-model';
+import { DiscardChangesDialog, useShortcutHandler } from './shortcuts';
 
 export function RecipeGeneration({
   onSave,
@@ -17,6 +18,14 @@ export function RecipeGeneration({
   const [failure, setFailure] = useState('');
   const [busy, setBusy] = useState(false);
   const canceled = useRef(false);
+  const backLink = useRef<HTMLAnchorElement>(null);
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  // Escape is easy to press by accident, so it asks before dropping a
+  // description; a deliberate click on the link does not.
+  useShortcutHandler(backLink, () => {
+    if (description.trim()) setConfirmingDiscard(true);
+    else backLink.current?.click();
+  });
   useEffect(
     () => () => {
       canceled.current = true;
@@ -76,7 +85,12 @@ export function RecipeGeneration({
     <article>
       <div className="page-heading">
         <h1>Generate recipe</h1>
-        <a href="#/" className="button secondary">
+        <a
+          ref={backLink}
+          href="#/"
+          className="button secondary"
+          aria-keyshortcuts="Escape"
+        >
           Back to collection
         </a>
       </div>
@@ -134,6 +148,22 @@ export function RecipeGeneration({
           <p role="status">Generating your recipe… Keep this page open.</p>
         )}
       </form>
+      {confirmingDiscard && (
+        <DiscardChangesDialog
+          title="Discard this description?"
+          discardLabel="Discard description"
+          onKeep={() => setConfirmingDiscard(false)}
+          onDiscard={() => {
+            window.location.hash = '#/';
+          }}
+        >
+          <p>
+            {busy
+              ? 'Your description is lost and the recipe being generated is not saved.'
+              : 'Your description is not saved and is lost.'}
+          </p>
+        </DiscardChangesDialog>
+      )}
     </article>
   );
 }
