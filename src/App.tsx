@@ -181,7 +181,11 @@ function RecipeDetails({
           {recipe.label && <p className="recipe-label">{recipe.label}</p>}
         </div>
         <div className="form-actions">
-          <a className="button secondary" href={`${recipeUrl(recipe.id)}/edit`}>
+          <a
+            className="button secondary"
+            href={`${recipeUrl(recipe.id)}/edit`}
+            aria-keyshortcuts="E"
+          >
             Edit recipe
           </a>
           <button

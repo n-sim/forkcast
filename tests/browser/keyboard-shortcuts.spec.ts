@@ -28,6 +28,15 @@ test('use keyboard shortcuts in the browser without disturbing typing', async ({
   await page.keyboard.press('Escape');
   await expect(help).toBeHidden();
 
+  await page.keyboard.press('e');
+  await expect(
+    page.getByRole('heading', { name: 'Edit recipe', level: 1 }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(
+    page.getByRole('heading', { name: '2 ?N tomatoes', level: 1 }),
+  ).toBeVisible();
+
   await page
     .getByRole('button', { name: 'Start cooking', exact: true })
     .click();

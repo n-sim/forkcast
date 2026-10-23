@@ -212,7 +212,8 @@ test('leave recipe forms and cancel planning and logging forms with Escape', asy
 
   // Editing without changes leaves at once; changes are only dropped after
   // confirming, and Escape in the question keeps editing.
-  await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
+  await page.keyboard.press('e');
+  await expect(heading(page, 'Edit recipe')).toBeVisible();
   const name = page.getByLabel('Recipe name', { exact: true });
   await name.click();
   await page.keyboard.press('Escape');
