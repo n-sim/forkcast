@@ -299,6 +299,7 @@ export function CookingView({
         <button
           className="button secondary"
           disabled={saving || session.currentStep === 0}
+          aria-keyshortcuts="ArrowLeft"
           onClick={() =>
             void persist(() =>
               onSave({
@@ -314,6 +315,8 @@ export function CookingView({
           className="button primary"
           disabled={saving}
           aria-busy={saving}
+          // Finishing marks the recipe cooked, so it is never one keypress.
+          aria-keyshortcuts={lastStep ? undefined : 'ArrowRight'}
           onClick={() =>
             lastStep
               ? void persist(onFinish)

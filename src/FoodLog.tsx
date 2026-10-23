@@ -238,6 +238,7 @@ export function FoodLog({
               editing !== null ||
               recipes.length === 0
             }
+            aria-keyshortcuts="R"
             onClick={() => {
               setAdding('recipe');
               setMessage('');
@@ -248,6 +249,7 @@ export function FoodLog({
           <button
             className="button primary"
             aria-label="Add manual entry"
+            aria-keyshortcuts="M"
             disabled={!daily || Boolean(adding) || editing !== null}
             onClick={() => {
               setAdding('manual');

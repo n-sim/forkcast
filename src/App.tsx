@@ -51,6 +51,7 @@ import { MealPlan } from './MealPlan';
 import { ShoppingListView } from './ShoppingList';
 import { ShoppingChecklistView } from './ShoppingChecklist';
 import { RecipeNutrition } from './RecipeNutrition';
+import { KeyboardShortcutsDialog, useKeyboardShortcuts } from './shortcuts';
 import { PlanningConflicts } from './PlanningConflicts';
 import { RecipeConflicts } from './RecipeConflicts';
 import { RecipeMetadata } from './RecipeMetadata';
@@ -476,6 +477,8 @@ export function App({
   const [refreshError, setRefreshError] = useState('');
   const [notice, setNotice] = useState('');
   const [history, setHistory] = useState<Record<string, RecipeHistory>>({});
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  useKeyboardShortcuts();
   useEffect(() => {
     const load = () =>
       void loadCookingHistory()
@@ -703,6 +706,7 @@ export function App({
           <a
             className="nav-link"
             href="#/"
+            aria-keyshortcuts="1"
             aria-current={route === '#/' ? 'page' : undefined}
           >
             <span aria-hidden="true">▤</span> Recipe collection
@@ -710,6 +714,7 @@ export function App({
           <a
             className="nav-link"
             href="#/meal-plan"
+            aria-keyshortcuts="2"
             aria-current={planningView ? 'page' : undefined}
           >
             <span aria-hidden="true">▦</span> Meal plan
@@ -717,6 +722,7 @@ export function App({
           <a
             className="nav-link"
             href="#/food-log"
+            aria-keyshortcuts="3"
             aria-current={foodLogOpen ? 'page' : undefined}
           >
             <span aria-hidden="true">◷</span> Food log
@@ -724,6 +730,7 @@ export function App({
           <a
             className="nav-link"
             href="#/shopping-list"
+            aria-keyshortcuts="4"
             aria-current={shoppingOpen ? 'page' : undefined}
           >
             <span aria-hidden="true">▧</span> Shopping list
@@ -755,44 +762,63 @@ export function App({
             <a
               className="nav-link"
               href="#/settings"
+              aria-keyshortcuts="5"
               aria-current={settingsOpen ? 'page' : undefined}
             >
               <span aria-hidden="true">⚙</span> Settings
             </a>
           </nav>
+          <button
+            className="shortcuts-button"
+            aria-keyshortcuts="?"
+            onClick={() => setShortcutsOpen(true)}
+          >
+            Keyboard shortcuts <kbd aria-hidden="true">?</kbd>
+          </button>
         </div>
       </aside>
       <nav className="bottom-nav" aria-label="Primary navigation">
         {[
-          { href: '#/', icon: '▤', label: 'Recipes', current: route === '#/' },
+          {
+            href: '#/',
+            icon: '▤',
+            label: 'Recipes',
+            current: route === '#/',
+            shortcut: '1',
+          },
           {
             href: '#/meal-plan',
             icon: '▦',
             label: 'Plan',
+            shortcut: '2',
             current: planningView,
           },
           {
             href: '#/food-log',
             icon: '◷',
             label: 'Log',
+            shortcut: '3',
             current: foodLogOpen,
           },
           {
             href: '#/shopping-list',
             icon: '▧',
             label: 'Shopping',
+            shortcut: '4',
             current: shoppingOpen,
           },
           {
             href: '#/settings',
             icon: '⚙',
             label: 'Settings',
+            shortcut: '5',
             current: settingsOpen,
           },
         ].map((item) => (
           <a
             key={item.href}
             href={item.href}
+            aria-keyshortcuts={item.shortcut}
             aria-current={item.current ? 'page' : undefined}
           >
             <span aria-hidden="true">{item.icon}</span>
@@ -813,6 +839,9 @@ export function App({
           </span>
         </header>
         <main id="main-content" tabIndex={-1}>
+          {shortcutsOpen && (
+            <KeyboardShortcutsDialog onClose={() => setShortcutsOpen(false)} />
+          )}
           {cookingConflict && (
             <CookingConflictDialog
               sessions={cookingConflict.existing}
@@ -1020,12 +1049,17 @@ export function App({
                   <p>The dishes you love, all in one place.</p>
                 </div>
                 <div className="form-actions">
-                  <a className="button secondary" href="#/recipes/generate">
+                  <a
+                    className="button secondary"
+                    href="#/recipes/generate"
+                    aria-keyshortcuts="G"
+                  >
                     Generate recipe
                   </a>
                   <button
                     className="button primary"
                     aria-label="New recipe"
+                    aria-keyshortcuts="N"
                     onClick={() => {
                       window.location.hash = '#/recipes/new';
                     }}

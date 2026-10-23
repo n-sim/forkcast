@@ -33,6 +33,19 @@ If the data folder cannot be opened (read-only disk, a database from a newer
 Forkcast, damage) the window shows the reason with **Try again** and **Open
 data folder**. Nothing is reset or deleted automatically.
 
+## Keyboard shortcuts
+
+Press **?** (or choose **Keyboard shortcuts** in the sidebar) for the list.
+Number keys **1**–**5** open the recipe collection, meal plan, food log,
+shopping list, and settings; **N**/**G** start a new or generated recipe, **P**
+plans cooking, **M**/**R** add a manual or recipe food-log entry, and **←**/**→**
+move between weeks in the meal plan and between steps while cooking (finishing
+cooking always takes a deliberate click). Shortcuts are single unmodified keys:
+they never fire while you type in a field or while a dialog is open, and keys
+with Ctrl, Alt, or the Windows key stay with Windows and the web view. Each
+shortcut presses a visible button or link, so everything stays usable with a
+pointer or touch, and the same shortcuts work in the browser.
+
 ## Build and install
 
 Prerequisites: Node.js 20.19+ or 22.12+, a current stable Rust toolchain with
