@@ -1139,6 +1139,10 @@ dialog .form-actions {
     flex-direction: column;
     gap: 16px;
   }
+  /* In a column the 240px basis would become a minimum height. */
+  .page-heading > div:first-child {
+    flex: none;
+  }
   .page-heading > p {
     max-width: none;
   }
