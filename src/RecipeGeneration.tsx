@@ -129,6 +129,7 @@ export function RecipeGeneration({
             required
             maxLength={8000}
             disabled={busy}
+            autoFocus
           />
         </label>
         <button

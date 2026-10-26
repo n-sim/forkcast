@@ -55,6 +55,7 @@ test('generate a recipe, save it automatically, and edit and reopen it through t
   await page
     .getByRole('link', { name: 'Generate recipe', exact: true })
     .click();
+  await expect(page.getByLabel('Describe your dish')).toBeFocused();
   await page.getByLabel('Describe your dish').fill('A simple tomato soup');
   await page
     .getByRole('button', { name: 'Generate recipe', exact: true })
