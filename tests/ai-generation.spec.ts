@@ -114,6 +114,20 @@ test('accept streamed recipe text only after completion when the terminal respon
   await expect(
     page.getByRole('button', { name: 'Generating…', exact: true }),
   ).toBeDisabled();
+  // A decorative cooking scene plays beside the announced status text.
+  const scene = page.locator('svg.cooking-scene');
+  await expect(scene).toBeVisible();
+  await expect(scene).toHaveAttribute('aria-hidden', 'true');
+  await expect(
+    page.getByRole('status').filter({
+      hasText: 'Generating your recipe… Keep this page open.',
+    }),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      scene.evaluate((svg) => svg.getAnimations({ subtree: true }).length),
+    )
+    .toBeGreaterThan(0);
   await expect(
     page.getByRole('heading', { name: 'Pumpkin risotto', exact: true }),
   ).toHaveCount(0);
@@ -121,6 +135,7 @@ test('accept streamed recipe text only after completion when the terminal respon
   await expect(
     page.getByRole('heading', { name: 'Pumpkin risotto', exact: true }),
   ).toBeVisible();
+  await expect(scene).toHaveCount(0);
   await expect(
     page.getByLabel('Cooking portions', { exact: true }),
   ).toHaveValue('4');
@@ -423,6 +438,30 @@ test('new generations cannot overwrite existing recipes using provider identitie
   ).toBeVisible();
 });
 
+test('the cooking scene stands still when reduced motion is preferred', async ({
+  page,
+  provider,
+  connectChatGpt,
+}) => {
+  await connectChatGpt();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  provider.pause();
+  await page.goto('/#/recipes/generate');
+  await page.getByLabel('Describe your dish').fill('Tomato soup');
+  await page
+    .getByRole('button', { name: 'Generate recipe', exact: true })
+    .click();
+  const scene = page.locator('svg.cooking-scene');
+  await expect(scene).toBeVisible();
+  expect(
+    await scene.evaluate((svg) => svg.getAnimations({ subtree: true }).length),
+  ).toBe(0);
+  provider.resume();
+  await expect(
+    page.getByRole('heading', { name: 'Tomato soup', exact: true }),
+  ).toBeVisible();
+});
+
 test('generation is unavailable without a ChatGPT connection while manual recipe creation remains available', async ({
   page,
 }) => {
@@ -449,6 +488,7 @@ test('keep a provider outage visible and retry once it recovers', async ({
     .getByRole('button', { name: 'Generate recipe', exact: true })
     .click();
   await expect(page.getByRole('alert')).toContainText('could not complete');
+  await expect(page.locator('svg.cooking-scene')).toHaveCount(0);
   provider.fail(null);
   await page
     .getByRole('button', { name: 'Generate recipe', exact: true })
