@@ -11,6 +11,7 @@ import {
   type Page,
 } from './app-fixture';
 import { test as backendTest } from './backend-fixture';
+import { chooseRecipe } from './recipe-picker';
 
 const base = mergeTests(aiTest, backendTest);
 
@@ -159,9 +160,7 @@ test('keep previous nutrition after ingredient edits and offer reestimation, kee
   await page
     .getByRole('button', { name: 'Log recipe portions', exact: true })
     .click();
-  await page
-    .getByLabel('Recipe', { exact: true })
-    .selectOption({ label: 'Lentil stew' });
+  await chooseRecipe(page, 'Lentil stew');
   await page
     .getByLabel('Consumed at', { exact: true })
     .fill('2026-10-13T08:00');

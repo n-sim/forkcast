@@ -8,6 +8,7 @@ import {
   type PlannedCooking,
   type PlannedCookingDraft,
 } from './planning';
+import { RecipePicker } from './RecipePicker';
 
 export function PlannedCookingForm({
   recipes,
@@ -117,33 +118,24 @@ export function PlannedCookingForm({
           </div>
         )}
         <fieldset disabled={saving} className="food-entry-fields">
-          <label className="name-field">
-            Recipe
-            <select
+          <div className="name-field recipe-field">
+            <label htmlFor="plan-recipeId">Recipe</label>
+            <RecipePicker
+              recipes={recipes}
               {...fieldStatus('recipeId')}
-              aria-label="Recipe"
               autoFocus
               value={draft.recipeId}
-              onChange={(event) =>
+              onChange={(recipeId) =>
                 setDraft({
                   ...draft,
-                  recipeId: event.target.value,
+                  recipeId,
                   portions:
-                    recipes.find((recipe) => recipe.id === event.target.value)
+                    recipes.find((recipe) => recipe.id === recipeId)
                       ?.basePortions ?? null,
                 })
               }
-            >
-              <option value="">Choose a recipe</option>
-              {[...recipes]
-                .sort((a, b) => a.name.localeCompare(b.name, 'en'))
-                .map((recipe) => (
-                  <option key={recipe.id} value={recipe.id}>
-                    {recipe.name}
-                  </option>
-                ))}
-            </select>
-          </label>
+            />
+          </div>
           <div className="metadata-fields">
             <label>
               Cooking date

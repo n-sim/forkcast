@@ -1,4 +1,5 @@
 import { expect, setUpHousehold, test, type Page } from './browser-fixture';
+import { chooseRecipe } from '../recipe-picker';
 
 async function saveRecipe(page: Page, calories: string) {
   await page.getByLabel('Calories (kcal)', { exact: true }).fill(calories);
@@ -12,9 +13,7 @@ async function logPortion(page: Page, consumedAt: string) {
   await page
     .getByRole('button', { name: 'Log recipe portions', exact: true })
     .click();
-  await page
-    .getByLabel('Recipe', { exact: true })
-    .selectOption({ label: 'Soup' });
+  await chooseRecipe(page, 'Soup');
   await page.getByLabel('Consumed at', { exact: true }).fill(consumedAt);
   await page.getByLabel('Portions eaten', { exact: true }).fill('1');
   await page.getByRole('button', { name: 'Save entry', exact: true }).click();

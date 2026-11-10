@@ -12,6 +12,7 @@ import {
   reviewQuantity,
   startAndSuspendCooking,
 } from '../archival-steps';
+import { chooseRecipe } from '../recipe-picker';
 
 async function planCooking(
   page: import('./browser-fixture').Page,
@@ -20,9 +21,7 @@ async function planCooking(
 ) {
   await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
   await page.getByRole('button', { name: 'Plan cooking', exact: true }).click();
-  await page
-    .getByLabel('Recipe', { exact: true })
-    .selectOption({ label: recipe });
+  await chooseRecipe(page, recipe);
   await page.getByLabel('Cooking date', { exact: true }).fill(date);
   await page.getByLabel('Portions to cook', { exact: true }).fill('2');
   await page
