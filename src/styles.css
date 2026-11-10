@@ -8,6 +8,8 @@
   --muted: #697064;
   --accent: #a44228;
   --line: #e4e4d9;
+  --wood: #c99a62;
+  --leaf: #6f8f4e;
   --sidebar-width: 245px;
   --cooking-bar-height: 0px;
 }
@@ -1416,4 +1418,252 @@ kbd {
 }
 .shortcut-list dd {
   margin: 0;
+}
+.generation-progress {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  text-align: center;
+}
+.generation-progress p {
+  margin: 0;
+}
+/* The kitchen scene shown while a recipe is generated. Every part animates
+   only transform and opacity on one 4.8s loop: chop (0-40%), toss (40-64%),
+   stir (60-100%). */
+.cooking-scene {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  height: auto;
+  color: inherit;
+  --scene-loop: 4.8s;
+}
+.cooking-scene * {
+  transform-box: view-box;
+}
+.scene-cook,
+.scene-arm {
+  fill: var(--muted);
+  stroke: var(--muted);
+}
+.scene-arm {
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+.scene-blade,
+.scene-pot {
+  fill: currentColor;
+}
+.scene-counter {
+  fill: var(--line);
+}
+.scene-board {
+  fill: var(--wood);
+}
+.scene-carrot rect,
+.scene-piece {
+  fill: var(--accent);
+}
+.scene-carrot path {
+  fill: none;
+  stroke: var(--leaf);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+.scene-spoon {
+  stroke: var(--wood);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+.scene-steam {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  opacity: 0.6;
+}
+.scene-knife {
+  transform-origin: 44px 64px;
+  animation: scene-chop var(--scene-loop) ease-in-out infinite;
+}
+.scene-carrot {
+  transform-origin: 108px 87px;
+  animation: scene-carrot var(--scene-loop) ease-in-out infinite;
+}
+.scene-piece {
+  opacity: 0;
+  animation: scene-toss var(--scene-loop) ease-in-out infinite;
+}
+.scene-piece:nth-of-type(2) {
+  animation-name: scene-toss-2;
+}
+.scene-piece:nth-of-type(3) {
+  animation-name: scene-toss-3;
+}
+.scene-spoon {
+  transform-origin: 188px 86px;
+  animation: scene-stir var(--scene-loop) ease-in-out infinite;
+}
+.scene-steam path {
+  animation: scene-steam 2.4s ease-in-out infinite;
+}
+.scene-steam path:nth-child(2) {
+  animation-delay: -0.8s;
+}
+.scene-steam path:nth-child(3) {
+  animation-delay: -1.6s;
+}
+@keyframes scene-chop {
+  0%,
+  10%,
+  20%,
+  30%,
+  40%,
+  100% {
+    transform: rotate(-6deg);
+  }
+  5%,
+  15%,
+  25%,
+  35% {
+    transform: rotate(8deg);
+  }
+}
+@keyframes scene-carrot {
+  0% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  38% {
+    transform: scaleX(0.4);
+    opacity: 1;
+  }
+  46%,
+  88% {
+    transform: scaleX(0.4);
+    opacity: 0;
+  }
+  90% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+/* Each piece appears on its own chop, then all three arc into the pot. */
+@keyframes scene-toss {
+  0%,
+  5% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  7%,
+  42% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  52% {
+    transform: translate(58px, -48px);
+    opacity: 1;
+  }
+  62% {
+    transform: translate(116px, -14px);
+    opacity: 1;
+  }
+  64%,
+  100% {
+    transform: translate(116px, -14px);
+    opacity: 0;
+  }
+}
+@keyframes scene-toss-2 {
+  0%,
+  15% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  17%,
+  44% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  54% {
+    transform: translate(54px, -50px);
+    opacity: 1;
+  }
+  63% {
+    transform: translate(105px, -14px);
+    opacity: 1;
+  }
+  65%,
+  100% {
+    transform: translate(105px, -14px);
+    opacity: 0;
+  }
+}
+@keyframes scene-toss-3 {
+  0%,
+  25% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  27%,
+  46% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  56% {
+    transform: translate(52px, -52px);
+    opacity: 1;
+  }
+  64% {
+    transform: translate(98px, -14px);
+    opacity: 1;
+  }
+  66%,
+  100% {
+    transform: translate(98px, -14px);
+    opacity: 0;
+  }
+}
+@keyframes scene-stir {
+  0%,
+  62%,
+  100% {
+    transform: rotate(0deg);
+  }
+  72%,
+  92% {
+    transform: rotate(-14deg);
+  }
+  82% {
+    transform: rotate(10deg);
+  }
+}
+@keyframes scene-steam {
+  0% {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+}
+/* Reduced motion: a still picture of the cook, the board and the pot. */
+@media (prefers-reduced-motion: reduce) {
+  .cooking-scene *,
+  .cooking-scene .scene-piece,
+  .cooking-scene .scene-steam path {
+    animation: none;
+  }
+  .scene-steam path {
+    opacity: 1;
+  }
 }

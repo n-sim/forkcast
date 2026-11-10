@@ -5,6 +5,7 @@ import { loadRecipePrompt } from './ai-prompts';
 import type { Recipe } from './domain';
 import { AiModelNotice, useAiModel } from './use-ai-model';
 import { DiscardChangesDialog, useShortcutHandler } from './shortcuts';
+import { CookingScene } from './CookingScene';
 
 export function RecipeGeneration({
   onSave,
@@ -146,7 +147,10 @@ export function RecipeGeneration({
         </button>
         <AiModelNotice choice={ai} />
         {busy && (
-          <p role="status">Generating your recipe… Keep this page open.</p>
+          <div className="generation-progress">
+            <CookingScene />
+            <p role="status">Generating your recipe… Keep this page open.</p>
+          </div>
         )}
       </form>
       {confirmingDiscard && (
