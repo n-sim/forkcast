@@ -53,6 +53,10 @@ test('truncate displayed quantities to two decimal places while retaining small 
     exact: true,
   });
   const steps = page.getByRole('list', { name: 'Cooking steps', exact: true });
+  await expect(ingredients).toHaveText('0.30 oz Lentils0.003 ml Oil');
+  await page
+    .getByLabel('Display units', { exact: true })
+    .selectOption('metric');
   await expect(ingredients).toHaveText('8.50 g Lentils0.003 ml Oil');
   await expect(steps).toContainText('4.25 g Lentils');
   await expect(steps).toContainText('0.003 ml Oil');
@@ -76,6 +80,10 @@ test('truncate displayed quantities to two decimal places while retaining small 
     'All ingredient totals are fully allocated.',
   );
   await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await expect(ingredients).toHaveText('1 oz Lentils0.003 ml Oil');
+  await page
+    .getByLabel('Display units', { exact: true })
+    .selectOption('metric');
   await expect(ingredients).toHaveText('28.34 g Lentils0.003 ml Oil');
 });
 
@@ -178,7 +186,7 @@ test('allocate ingredient totals across steps and scale both after reopening off
   ).toContainText('400 g Lentils');
 });
 
-test('convert compatible mass and US volume measures for totals and allocations with metric defaults', async ({
+test('convert compatible mass and US volume measures for totals and allocations, defaulting to units as entered', async ({
   page,
 }) => {
   await startRecipe(page);
@@ -223,13 +231,20 @@ test('convert compatible mass and US volume measures for totals and allocations 
     page.getByRole('heading', { name: 'Split lentils', exact: true }),
   ).toBeVisible();
   await expect(page.getByLabel('Display units', { exact: true })).toHaveValue(
-    'metric',
+    'original',
   );
   const ingredients = page.getByRole('list', {
     name: 'Ingredients',
     exact: true,
   });
   const steps = page.getByRole('list', { name: 'Cooking steps', exact: true });
+  await expect(ingredients).toContainText('1 lb Lentils');
+  await expect(ingredients).toContainText('1 US cup Stock');
+  await expect(steps).toContainText('16 oz Lentils');
+  await expect(steps).toContainText('16 US tbsp Stock');
+  await page
+    .getByLabel('Display units', { exact: true })
+    .selectOption('metric');
   await expect(ingredients).toContainText('453.59 g Lentils');
   await expect(ingredients).toContainText('236.58 ml Stock');
   await expect(steps).toContainText('453.59 g Lentils');
@@ -248,7 +263,10 @@ test('convert compatible mass and US volume measures for totals and allocations 
   await expect(steps).toContainText('32 oz Lentils');
   await expect(steps).toContainText('32 US tbsp Stock');
   await page.reload();
-  await expect(ingredients).toContainText('453.59 g Lentils');
+  await expect(page.getByLabel('Display units', { exact: true })).toHaveValue(
+    'original',
+  );
+  await expect(ingredients).toContainText('1 lb Lentils');
   await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
   await expect(page.getByLabel('Ingredient 1 unit')).toHaveValue('lb');
   await expect(
@@ -460,6 +478,10 @@ test('combine US fluid ounces and teaspoons as volume allocations without confus
     exact: true,
   });
   const steps = page.getByRole('list', { name: 'Cooking steps', exact: true });
+  await expect(ingredients).toHaveText('2 US tbsp Oil');
+  await page
+    .getByLabel('Display units', { exact: true })
+    .selectOption('metric');
   await expect(ingredients).toHaveText('29.57 ml Oil');
   await page.getByLabel('Display units', { exact: true }).selectOption('us');
   await expect(ingredients).toHaveText('2 US tbsp Oil');
@@ -513,10 +535,16 @@ test('open recipes saved without allocations, then allocate and retain their tot
   ).toHaveCount(0);
   await expect(
     page.getByRole('list', { name: 'Ingredients', exact: true }),
-  ).toHaveText('1 l Stock');
+  ).toHaveText('1000 ml Stock');
   await expect(
     page.getByRole('list', { name: 'Cooking steps', exact: true }),
   ).toContainText('1 l Stock');
+  await page
+    .getByLabel('Display units', { exact: true })
+    .selectOption('metric');
+  await expect(
+    page.getByRole('list', { name: 'Ingredients', exact: true }),
+  ).toHaveText('1 l Stock');
   await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
   await expect(
     page.getByRole('region', { name: 'Allocation checks' }),

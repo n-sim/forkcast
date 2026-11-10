@@ -174,6 +174,50 @@ for (const { preference, firstStep, secondStep } of [
   });
 }
 
+test('show and cook quantities as entered when display units are left at their default', async ({
+  page,
+}) => {
+  await createRecipe(page);
+  await page.getByRole('link', { name: 'Edit recipe', exact: true }).click();
+  await page.getByLabel('Ingredient 1 quantity').fill('16');
+  await page.getByLabel('Ingredient 1 unit').selectOption('oz');
+  await page
+    .getByLabel('Step 1 allocation 1 quantity', { exact: true })
+    .fill('8');
+  await page
+    .getByLabel('Step 1 allocation 1 unit', { exact: true })
+    .selectOption('oz');
+  await page
+    .getByLabel('Step 2 allocation 1 quantity', { exact: true })
+    .fill('0.5');
+  await page
+    .getByLabel('Step 2 allocation 1 unit', { exact: true })
+    .selectOption('lb');
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await expect(page.getByLabel('Display units', { exact: true })).toHaveValue(
+    'original',
+  );
+  await expect(
+    page.getByRole('list', { name: 'Ingredients', exact: true }),
+  ).toHaveText('16 oz Lentils');
+  const recipeSteps = page.getByRole('list', {
+    name: 'Cooking steps',
+    exact: true,
+  });
+  await expect(recipeSteps).toContainText('8 oz Lentils');
+  await expect(recipeSteps).toContainText('0.50 lb Lentils');
+  await page
+    .getByRole('button', { name: 'Start cooking', exact: true })
+    .click();
+  const ingredients = page.getByRole('list', {
+    name: 'Step ingredients',
+    exact: true,
+  });
+  await expect(ingredients).toHaveText('8 oz Lentils');
+  await page.getByRole('button', { name: 'Next step', exact: true }).click();
+  await expect(ingredients).toHaveText('0.50 lb Lentils');
+});
+
 test('finish cooking from the last step and allow a fresh session after reopening', async ({
   page,
 }) => {

@@ -95,7 +95,7 @@ function RecipeDetails({
   ) => Promise<void>;
 }) {
   const [portions, setPortions] = useState(String(recipe.basePortions));
-  const [displayUnits, setDisplayUnits] = useState<DisplayUnits>('metric');
+  const [displayUnits, setDisplayUnits] = useState<DisplayUnits>('original');
   const [starting, setStarting] = useState(false);
   const [cookingError, setCookingError] = useState('');
   const [marking, setMarking] = useState(false);
