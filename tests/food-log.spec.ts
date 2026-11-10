@@ -1,4 +1,5 @@
 import { expect, test, type Page } from './app-fixture';
+import { recipePicker } from './recipe-picker';
 
 async function openFoodLog(page: Page, date: string) {
   await page.goto('/');
@@ -575,9 +576,7 @@ test('quick-log a recently cooked recipe with its own date and portions without 
   await expect(
     recent.getByRole('button', { name: /Lentil soup/ }),
   ).toHaveAttribute('aria-pressed', 'true');
-  await expect(
-    page.getByLabel('Recipe', { exact: true }).locator('option:checked'),
-  ).toHaveText('Lentil soup');
+  await expect(recipePicker(page)).toHaveValue('Lentil soup');
   await page
     .getByLabel('Consumed at', { exact: true })
     .fill('2026-10-19T19:30');

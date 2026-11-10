@@ -1,4 +1,5 @@
 import { expect, test, type Page } from './app-fixture';
+import { chooseRecipe } from './recipe-picker';
 
 type Ingredient = { name: string; quantity: string; unit: string };
 
@@ -43,9 +44,7 @@ async function plan(
 ) {
   await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
   await page.getByRole('button', { name: 'Plan cooking', exact: true }).click();
-  await page
-    .getByLabel('Recipe', { exact: true })
-    .selectOption({ label: recipe });
+  await chooseRecipe(page, recipe);
   await page.getByLabel('Cooking date', { exact: true }).fill(date);
   await page.getByLabel('Portions to cook', { exact: true }).fill(portions);
   await page
@@ -618,19 +617,11 @@ test('track only changes within the saved cooking period, including time, recipe
       .selectOption({ label: 'Not specified' }),
   );
   await expect(status).toContainText('unchanged within this cooking period');
-  await edit(tuesday, () =>
-    other
-      .getByLabel('Recipe', { exact: true })
-      .selectOption({ label: 'Bean salad' }),
-  );
+  await edit(tuesday, () => chooseRecipe(other, 'Bean salad'));
   await expect(status).toContainText(
     'The meal plan changed within this cooking period.',
   );
-  await edit(tuesday, () =>
-    other
-      .getByLabel('Recipe', { exact: true })
-      .selectOption({ label: 'Lentil stew' }),
-  );
+  await edit(tuesday, () => chooseRecipe(other, 'Lentil stew'));
   await expect(status).toContainText('unchanged within this cooking period');
   await plan(other, 'Lentil stew', '2026-10-14', '4');
   await expect(status).toContainText(

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from './app-fixture';
+import { chooseRecipe } from './recipe-picker';
 
 async function createRecipe(page: Page, nutrition = true) {
   await page.goto('/');
@@ -26,9 +27,7 @@ async function logRecipe(page: Page, consumedAt: string, portions: string) {
   await page
     .getByRole('button', { name: 'Log recipe portions', exact: true })
     .click();
-  await page
-    .getByLabel('Recipe', { exact: true })
-    .selectOption({ label: 'Household pasta' });
+  await chooseRecipe(page, 'Household pasta');
   await page.getByLabel('Consumed at', { exact: true }).fill(consumedAt);
   await page.getByLabel('Portions eaten', { exact: true }).fill(portions);
   await page.getByRole('button', { name: 'Save entry', exact: true }).click();
@@ -334,9 +333,7 @@ test('cook four portions for a household and log only the portions actually eate
   await createRecipe(page);
   await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
   await page.getByRole('button', { name: 'Plan cooking', exact: true }).click();
-  await page
-    .getByLabel('Recipe', { exact: true })
-    .selectOption({ label: 'Household pasta' });
+  await chooseRecipe(page, 'Household pasta');
   await page.getByLabel('Cooking date', { exact: true }).fill('2026-10-13');
   await page.getByLabel('Portions to cook', { exact: true }).fill('4');
   await page
@@ -612,9 +609,7 @@ test('validate recipe nutrition and consumed portions while preserving a cancele
   await expect(page.getByRole('alert')).toContainText(
     'Choose a recipe from your collection.',
   );
-  await page
-    .getByLabel('Recipe', { exact: true })
-    .selectOption({ label: 'Household pasta' });
+  await chooseRecipe(page, 'Household pasta');
   await page.getByLabel('Consumed at', { exact: true }).fill('');
   await page.getByLabel('Portions eaten', { exact: true }).fill('0');
   await page.getByRole('button', { name: 'Save entry', exact: true }).click();

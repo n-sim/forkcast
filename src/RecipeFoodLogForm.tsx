@@ -8,6 +8,7 @@ import {
 } from './food-log';
 import { recipeNutrition } from './nutrition';
 import { NutritionBrief } from './NutritionBrief';
+import { RecipePicker } from './RecipePicker';
 import {
   loadCookingHistory,
   subscribeToCookingHistoryChanges,
@@ -172,22 +173,15 @@ export function RecipeFoodLogForm({
               ))}
             </div>
           )}
-          <label className="name-field">
-            Recipe
-            <select
+          <div className="name-field recipe-field">
+            <label htmlFor="recipe-food-recipeId">Recipe</label>
+            <RecipePicker
+              recipes={recipes}
               {...fieldStatus('recipeId')}
-              aria-label="Recipe"
               value={recipeId}
-              onChange={(event) => setRecipeId(event.target.value)}
-            >
-              <option value="">Choose a recipe</option>
-              {recipes.map((recipe) => (
-                <option key={recipe.id} value={recipe.id}>
-                  {recipe.name}
-                </option>
-              ))}
-            </select>
-          </label>
+              onChange={setRecipeId}
+            />
+          </div>
           <label className="name-field">
             Consumed at
             <input

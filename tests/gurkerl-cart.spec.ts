@@ -1,6 +1,7 @@
 import { test as base, expect } from './gurkerl-fixture';
 import type { InferenceRequest } from './ai-fixture';
 import { openedExternally, type Page } from './app-fixture';
+import { chooseRecipe } from './recipe-picker';
 
 const test = base.extend<{ connect: () => Promise<void> }>({
   connect: async ({ page, app, systemBrowser }, use) => {
@@ -58,9 +59,7 @@ async function reviewedList(page: Page) {
   ).toBeVisible();
   await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
   await page.getByRole('button', { name: 'Plan cooking', exact: true }).click();
-  await page
-    .getByLabel('Recipe', { exact: true })
-    .selectOption({ label: 'Spaghetti dinner' });
+  await chooseRecipe(page, 'Spaghetti dinner');
   await page.getByLabel('Cooking date', { exact: true }).fill('2026-10-13');
   await page.getByLabel('Portions to cook', { exact: true }).fill('2');
   await page

@@ -6,6 +6,7 @@ import {
   test,
 } from './household-planning-fixture';
 import type { Page } from './app-fixture';
+import { chooseRecipe } from './recipe-picker';
 
 // One account's computer and tablet (each an installed app with its own
 // embedded core and SQLite), another person's app, and a real household
@@ -55,9 +56,7 @@ async function logRecipe(page: Page, portions: string) {
   await page
     .getByRole('button', { name: 'Log recipe portions', exact: true })
     .click();
-  await page
-    .getByLabel('Recipe', { exact: true })
-    .selectOption({ label: 'Household pasta' });
+  await chooseRecipe(page, 'Household pasta');
   await page.getByLabel('Consumed at', { exact: true }).fill(`${DAY}T12:30`);
   await page.getByLabel('Portions eaten', { exact: true }).fill(portions);
   await page.getByRole('button', { name: 'Save entry', exact: true }).click();

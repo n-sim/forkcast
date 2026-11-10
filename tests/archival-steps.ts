@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { chooseRecipe, expectRecipeNotOffered } from './recipe-picker';
 
 // Steps shared by the recipe-archival journeys of installed apps and browsers.
 
@@ -78,9 +79,7 @@ export async function logPortions(page: Page, recipe: string, date: string) {
   await page
     .getByRole('button', { name: 'Log recipe portions', exact: true })
     .click();
-  await page
-    .getByLabel('Recipe', { exact: true })
-    .selectOption({ label: recipe });
+  await chooseRecipe(page, recipe);
   await page.getByLabel('Consumed at', { exact: true }).fill(`${date}T12:30`);
   await page.getByLabel('Portions eaten', { exact: true }).fill('1');
   await page.getByRole('button', { name: 'Save entry', exact: true }).click();
@@ -135,11 +134,7 @@ export async function expectWithdrawn(
     await expect(earlier.getByRole('link')).toHaveCount(0);
   }
   await page.getByRole('button', { name: 'Plan cooking', exact: true }).click();
-  await expect(
-    page.getByLabel('Recipe', { exact: true }).locator('option', {
-      hasText: recipe,
-    }),
-  ).toHaveCount(0);
+  await expectRecipeNotOffered(page, recipe);
 }
 
 /** A reviewed list keeps its quantities and names the archived contributor. */
@@ -178,11 +173,7 @@ export async function expectArchivedEntry(
   await page
     .getByRole('button', { name: 'Log recipe portions', exact: true })
     .click();
-  await expect(
-    page.getByLabel('Recipe', { exact: true }).locator('option', {
-      hasText: recipe,
-    }),
-  ).toHaveCount(0);
+  await expectRecipeNotOffered(page, recipe);
 }
 
 /** Cooking already underway finishes from its captured contents. */

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from './app-fixture';
+import { chooseRecipe } from './recipe-picker';
 
 test.use({ timezoneId: 'Europe/Berlin' });
 
@@ -34,9 +35,7 @@ async function planCooking(
   { date = '2026-10-13', portions = '4', time = '' } = {},
 ) {
   await page.getByRole('button', { name: 'Plan cooking', exact: true }).click();
-  await page
-    .getByLabel('Recipe', { exact: true })
-    .selectOption({ label: 'Tomato pasta' });
+  await chooseRecipe(page, 'Tomato pasta');
   await page.getByLabel('Cooking date', { exact: true }).fill(date);
   await page.getByLabel('Portions to cook', { exact: true }).fill(portions);
   if (time)
@@ -137,9 +136,7 @@ test('add a cooking from a day of the meal plan with its date prefilled', async 
   await expect(page.getByLabel('Cooking date', { exact: true })).toHaveValue(
     '2026-10-13',
   );
-  await page
-    .getByLabel('Recipe', { exact: true })
-    .selectOption({ label: 'Tomato pasta' });
+  await chooseRecipe(page, 'Tomato pasta');
   await page
     .getByLabel('Cooking time (optional)', { exact: true })
     .selectOption({ label: 'Morning' });
@@ -242,9 +239,7 @@ test('require a current recipe, a cooking date, and positive portions before sav
   await expect(
     page.getByRole('article', { name: 'Tomato pasta', exact: true }),
   ).toHaveCount(0);
-  await page
-    .getByLabel('Recipe', { exact: true })
-    .selectOption({ label: 'Tomato pasta' });
+  await chooseRecipe(page, 'Tomato pasta');
   await page.getByLabel('Cooking date', { exact: true }).fill('2026-10-13');
   await page.getByLabel('Portions to cook', { exact: true }).fill('-2');
   await page
@@ -508,13 +503,12 @@ test('default portions to the selected recipe base yield and retain saved overri
   await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
   await page.getByRole('button', { name: 'Plan cooking', exact: true }).click();
   const portions = page.getByLabel('Portions to cook', { exact: true });
-  const recipe = page.getByLabel('Recipe', { exact: true });
-  await recipe.selectOption({ label: 'Tomato pasta' });
+  await chooseRecipe(page, 'Tomato pasta');
   await expect(portions).toHaveValue('6');
   await portions.fill('4');
-  await recipe.selectOption({ label: 'Lentil soup' });
+  await chooseRecipe(page, 'Lentil soup');
   await expect(portions).toHaveValue('1.5');
-  await recipe.selectOption({ label: 'Tomato pasta' });
+  await chooseRecipe(page, 'Tomato pasta');
   await expect(portions).toHaveValue('6');
   await portions.fill('4');
   await page
@@ -525,7 +519,7 @@ test('default portions to the selected recipe base yield and retain saved overri
     .getByRole('button', { name: 'Edit planned cooking', exact: true })
     .click();
   await expect(portions).toHaveValue('4');
-  await recipe.selectOption({ label: 'Lentil soup' });
+  await chooseRecipe(page, 'Lentil soup');
   await expect(portions).toHaveValue('1.5');
   await portions.fill('3');
   await page
