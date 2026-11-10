@@ -42,3 +42,36 @@ export async function shoppingPdfFallbackFonts(): Promise<
   ]);
   return { 'Unifont.otf': unifont, 'UnifontUpper.otf': upper };
 }
+
+/** Text outside Roboto's Latin repertoire needs the Unifont fallback fonts. */
+function needsFallbackFonts(texts: Iterable<string>): boolean {
+  for (const text of texts) if (/[^\u0000-ɏ]/u.test(text)) return true;
+  return false;
+}
+
+/**
+ * Loads pdfmake with Roboto, adding the Unifont fallback fonts only when some
+ * of the given texts need them (they are large, so they load on demand).
+ */
+export async function loadPdfMake(texts: Iterable<string>) {
+  const [{ default: pdfMake }, { default: fonts }] = await Promise.all([
+    import('pdfmake/build/pdfmake'),
+    import('pdfmake/build/vfs_fonts'),
+  ]);
+  pdfMake.addVirtualFileSystem(fonts);
+  if (needsFallbackFonts(texts)) {
+    pdfMake.addVirtualFileSystem(await shoppingPdfFallbackFonts());
+    // Unifont has one face; bold or italic text (such as a title) uses it too.
+    const face = (file: string) => ({
+      normal: file,
+      bold: file,
+      italics: file,
+      bolditalics: file,
+    });
+    pdfMake.addFonts({
+      Unifont: face('Unifont.otf'),
+      UnifontUpper: face('UnifontUpper.otf'),
+    });
+  }
+  return pdfMake;
+}
