@@ -186,6 +186,10 @@ test('progress made offline on both devices survives a cold reopen and competing
   await tablet.goto('/#/');
   const bar = tablet.getByRole('region', { name: 'Suspended cooking' });
   await expect(bar).toContainText('Changed on two devices');
+  // A conflicted session is decided before it can be canceled.
+  await expect(
+    bar.getByRole('button', { name: 'Cancel cooking', exact: true }),
+  ).toHaveCount(0);
   await bar.getByRole('link', { name: 'Review cooking', exact: true }).click();
   const decision = tablet.getByRole('region', {
     name: 'Cooking changed on two devices',
@@ -212,4 +216,52 @@ test('progress made offline on both devices survives a cold reopen and competing
   await expect(
     reopened.getByRole('region', { name: 'Suspended cooking' }),
   ).toContainText(other);
+});
+
+test('cooking canceled from the suspended bar on the tablet ends on the computer too', async ({
+  launch,
+  backend,
+}) => {
+  const computer = (await launch()).page;
+  await createRecipe(computer);
+  await connect(computer, backend.url, true, 'noah');
+  const tablet = (await launch()).page;
+  await connect(tablet, backend.url, false, 'noah', false);
+
+  await openRecipe(computer);
+  await computer
+    .getByRole('button', { name: 'Start cooking', exact: true })
+    .click();
+  await computer
+    .getByRole('button', { name: 'Next step', exact: true })
+    .click();
+  await computer
+    .getByRole('button', { name: 'Suspend cooking', exact: true })
+    .click();
+  await expect(step(computer)).toHaveCount(0);
+  await syncNow(computer);
+
+  await syncNow(tablet);
+  await tablet.goto('/#/');
+  const bar = tablet.getByRole('region', { name: 'Suspended cooking' });
+  await expect(bar).toContainText('Step 2 of 3');
+  await bar
+    .getByRole('button', { name: 'Cancel cooking', exact: true })
+    .click();
+  await tablet
+    .getByRole('dialog', { name: 'Cancel cooking?', exact: true })
+    .getByRole('button', { name: 'Cancel cooking', exact: true })
+    .click();
+  await expect(bar).toHaveCount(0);
+  await syncNow(tablet);
+
+  await syncNow(computer);
+  await computer.goto('/#/');
+  await expect(
+    computer.getByRole('region', { name: 'Suspended cooking' }),
+  ).toHaveCount(0);
+  await openRecipe(computer);
+  await expect(
+    computer.getByRole('region', { name: 'Cooking history' }),
+  ).toContainText('Not cooked yet');
 });

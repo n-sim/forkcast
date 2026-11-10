@@ -961,6 +961,11 @@ dialog .form-actions {
 .suspended-cooking-bar .section-note {
   margin-bottom: 0;
 }
+.suspended-cooking-actions {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
 .suspended-cooking-bar .button {
   flex-shrink: 0;
 }
@@ -1099,7 +1104,18 @@ dialog .form-actions {
 @media (max-width: 560px) {
   .suspended-cooking-bar {
     padding-inline: 18px;
-    gap: 16px;
+    gap: 12px 16px;
+    flex-wrap: wrap;
+  }
+  /* Two actions leave no room for the summary; put them on their own row. */
+  .suspended-cooking-summary {
+    flex-basis: 100%;
+  }
+  .suspended-cooking-actions {
+    flex-grow: 1;
+  }
+  .suspended-cooking-actions .button {
+    flex: 1 1 0;
   }
   .allocation-row {
     grid-template-columns: minmax(0, 1fr) 65px 65px 32px;

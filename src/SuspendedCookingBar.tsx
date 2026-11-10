@@ -1,7 +1,14 @@
 import { useLayoutEffect, useRef } from 'react';
+import { CancelCookingButton } from './CancelCookingButton';
 import { cookingUrl, progressSummary, type CookingSession } from './cooking';
 
-export function SuspendedCookingBar({ session }: { session: CookingSession }) {
+export function SuspendedCookingBar({
+  session,
+  onCancel,
+}: {
+  session: CookingSession;
+  onCancel: () => Promise<void>;
+}) {
   const bar = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
     const element = bar.current!;
@@ -36,9 +43,18 @@ export function SuspendedCookingBar({ session }: { session: CookingSession }) {
             : progressSummary(session, session.recipe.steps.length)}
         </p>
       </div>
-      <a className="button primary" href={cookingUrl(session.id)}>
-        {session.conflict ? 'Review cooking' : 'Resume cooking'}
-      </a>
+      <div className="suspended-cooking-actions">
+        {/* A conflicted session is decided first; only then can it be canceled. */}
+        {!session.conflict && (
+          <CancelCookingButton
+            recipeName={session.recipe.name}
+            onCancel={onCancel}
+          />
+        )}
+        <a className="button primary" href={cookingUrl(session.id)}>
+          {session.conflict ? 'Review cooking' : 'Resume cooking'}
+        </a>
+      </div>
     </section>
   );
 }

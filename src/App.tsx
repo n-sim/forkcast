@@ -629,6 +629,12 @@ export function App({
     leaveCooking(session, startedAt);
   }
 
+  // Canceling from the suspended cooking bar keeps the person where they are.
+  async function cancelSuspendedSession(session: CookingSession) {
+    await endCookingSession(session.id, 'canceled');
+    setSessions((current) => current.filter((item) => item.id !== session.id));
+  }
+
   async function resolveSession(
     session: CookingSession,
     keep: 'current' | 'alternative',
@@ -1157,7 +1163,13 @@ export function App({
           A collection worth coming back to.
           <span>Forkcast · Cook your way.</span>
         </footer>
-        {suspendedSession && <SuspendedCookingBar session={suspendedSession} />}
+        {suspendedSession && (
+          <SuspendedCookingBar
+            key={suspendedSession.id}
+            session={suspendedSession}
+            onCancel={() => cancelSuspendedSession(suspendedSession)}
+          />
+        )}
       </div>
     </div>
   );
