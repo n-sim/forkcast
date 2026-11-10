@@ -229,6 +229,79 @@ test('resume suspended cooking from a bottom overlay across the collection, reci
   await expect(bar).toHaveCount(0);
 });
 
+test('cancel suspended cooking from the bottom overlay after confirming, or keep it', async ({
+  page,
+}) => {
+  await createRecipe(page);
+  await page
+    .getByRole('button', { name: 'Start cooking', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Next step', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Suspend cooking', exact: true })
+    .click();
+  await page
+    .getByRole('link', { name: 'Recipe collection', exact: true })
+    .click();
+  const bar = page.getByRole('region', {
+    name: 'Suspended cooking',
+    exact: true,
+  });
+  await expect(bar).toContainText('Step 2 of 2');
+  const resume = bar.getByRole('link', { name: 'Resume cooking', exact: true });
+  const cancel = bar.getByRole('button', {
+    name: 'Cancel cooking',
+    exact: true,
+  });
+  await expect(resume).toBeVisible();
+  await expect(cancel).toBeVisible();
+  const resumeBounds = (await resume.boundingBox())!;
+  const cancelBounds = (await cancel.boundingBox())!;
+  expect(cancelBounds.y).toBeCloseTo(resumeBounds.y, 0);
+  expect(cancelBounds.x + cancelBounds.width).toBeLessThanOrEqual(
+    resumeBounds.x,
+  );
+
+  // Keeping the session changes nothing.
+  await cancel.click();
+  const dialog = page.getByRole('dialog', {
+    name: 'Cancel cooking?',
+    exact: true,
+  });
+  await expect(dialog).toContainText('Lentil supper');
+  await expect(dialog).toContainText('no longer be available to resume');
+  await expect(
+    dialog.getByRole('button', { name: 'Keep cooking', exact: true }),
+  ).toBeFocused();
+  await dialog
+    .getByRole('button', { name: 'Keep cooking', exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(cancel).toBeFocused();
+  await expect(bar).toContainText('Step 2 of 2');
+  await cancel.click();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await page.reload();
+  await expect(bar).toContainText('Step 2 of 2');
+
+  // Confirming ends the session where the person is.
+  await cancel.click();
+  await confirmCancellation(page);
+  await expect(bar).toHaveCount(0);
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByRole('heading', { name: 'Your recipe collection', exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(bar).toHaveCount(0);
+  await page.getByRole('link', { name: /Lentil supper/ }).click();
+  await expect(bar).toHaveCount(0);
+  await expect(
+    page.getByRole('region', { name: 'Cooking history' }),
+  ).toContainText('Not cooked yet');
+});
+
 test('keep the existing personal session or explicitly cancel it before starting another recipe', async ({
   page,
 }) => {
