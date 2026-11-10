@@ -11,9 +11,6 @@ food log. It works offline without an account, a server, or AI.
 - **ChatGPT** (optional): connect your own subscription in **Settings → ChatGPT** to generate
   recipes and plans and estimate nutrition and conversions.
 
-See [the product specification](https://github.com/n-sim/forkcast/issues/1) and
-[ADR 0015](docs/adr/0015-embed-a-shared-rust-core-and-synchronize.md) for the architecture.
-
 ## Install
 
 Every merge to `main` is published as a
