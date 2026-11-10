@@ -481,7 +481,8 @@ h2 {
   font-size: 12px;
   font-weight: 600;
 }
-.cooking-plan-choice {
+.cooking-plan-choice,
+.checkbox-option {
   flex-direction: row;
   align-items: center;
   gap: 10px;
@@ -489,7 +490,8 @@ h2 {
   font-size: 13px;
   font-weight: 400;
 }
-.cooking-plan-choice input {
+.cooking-plan-choice input,
+.checkbox-option input {
   width: 20px;
   height: 20px;
   min-height: 0;
