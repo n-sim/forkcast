@@ -14,7 +14,8 @@ import {
   type CookingSession,
   type SessionProgress,
 } from './cooking';
-import { StepTimer } from './StepTimer';
+import { StepTimer, type ClockAppTimer } from './StepTimer';
+import { startSystemTimer } from './system-timer';
 import { CancelCookingButton } from './CancelCookingButton';
 import { useWakeLock } from './use-wake-lock';
 
@@ -39,6 +40,11 @@ export function CookingView({
   const [error, setError] = useState('');
   const busy = useRef(false);
   const [now, setNow] = useState(Date.now);
+  // Timers handed to the device's clock app, by step. They belong to this
+  // device and are not part of the synchronized session.
+  const [clockAppTimers, setClockAppTimers] = useState<
+    Record<string, ClockAppTimer>
+  >({});
   // Keep the screen on while cooking along. Suspending, cancelling or
   // finishing leaves this view, which releases the lock.
   useWakeLock(true);
@@ -93,6 +99,43 @@ export function CookingView({
         },
       }),
     );
+  }
+
+  function forgetClockAppTimer(stepId: string) {
+    setClockAppTimers(({ [stepId]: _, ...rest }) => rest);
+  }
+
+  /** Starts in the clock app where there is one, otherwise the in-app timer. */
+  function startTimer(minutes: number) {
+    const stepId = step.id;
+    const seconds = Math.round(minutes * 60);
+    void persist(async () => {
+      if (
+        Number.isFinite(seconds) &&
+        seconds >= 1 &&
+        (await startSystemTimer({
+          seconds,
+          label: `Forkcast – ${session.recipe.name} – Step ${session.currentStep + 1}`,
+        }))
+      ) {
+        setClockAppTimers((timers) => ({
+          ...timers,
+          [stepId]: { minutes, endsAt: Date.now() + seconds * 1000 },
+        }));
+        return;
+      }
+      await onSave({
+        ...session,
+        timers: {
+          ...session.timers,
+          [stepId]: updateStepTimer(
+            null,
+            { type: 'start', minutes },
+            Date.now(),
+          ),
+        },
+      });
+    });
   }
 
   if (session.conflict) {
@@ -239,14 +282,23 @@ export function CookingView({
       <StepTimer
         key={step.id}
         timer={session.timers[step.id]}
+        clockAppTimer={clockAppTimers[step.id]}
         stepNumber={session.currentStep + 1}
         now={now}
         saving={saving}
+        onStart={startTimer}
         onChange={changeTimer}
+        onUseInApp={(minutes) => {
+          forgetClockAppTimer(step.id);
+          changeTimer({ type: 'start', minutes });
+        }}
+        onDismissClockApp={() => forgetClockAppTimer(step.id)}
       />
-      <p className="section-note">
-        No alarms while the application is closed or suspended.
-      </p>
+      {!clockAppTimers[step.id] || session.timers[step.id] ? (
+        <p className="section-note">
+          No alarms while the application is closed or suspended.
+        </p>
+      ) : null}
       <div role="status" aria-label="Timer notifications">
         {session.recipe.steps.map((step, index) => {
           const timer = session.timers[step.id];

@@ -1403,6 +1403,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-forkcast-secure-store",
+ "tauri-plugin-forkcast-system-timer",
  "tauri-plugin-fs",
  "tauri-plugin-opener",
  "windows-sys 0.61.2",
@@ -4537,6 +4538,15 @@ version = "0.1.0"
 dependencies = [
  "forkcast-core",
  "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+]
+
+[[package]]
+name = "tauri-plugin-forkcast-system-timer"
+version = "0.1.0"
+dependencies = [
  "serde_json",
  "tauri",
  "tauri-plugin",

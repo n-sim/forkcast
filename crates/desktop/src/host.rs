@@ -302,3 +302,21 @@ fn write_chosen_file(
         })
         .map_err(|error| format!("The file could not be saved to {location}: {error}"))
 }
+
+/// Starts a step timer in the device's clock app, which keeps counting and
+/// rings while Forkcast is closed. Only Android has one; elsewhere this fails
+/// and the frontend runs its own timer. Async so the mobile plugin call does not
+/// block the main thread it is dispatched to.
+#[tauri::command]
+pub async fn start_system_timer(app: AppHandle, seconds: u32, label: String) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        app.state::<tauri_plugin_forkcast_system_timer::SystemTimer<tauri::Wry>>()
+            .start(seconds, &label)
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, seconds, label);
+        Err("This device has no clock app timer.".to_owned())
+    }
+}

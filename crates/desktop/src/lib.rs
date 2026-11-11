@@ -34,6 +34,9 @@ pub fn run() {
     // platforms use their own adapter (see `protected`).
     #[cfg(target_os = "android")]
     let builder = builder.plugin(tauri_plugin_forkcast_secure_store::init());
+    // Step timers go to the clock app on Android (see `host::start_system_timer`).
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(tauri_plugin_forkcast_system_timer::init());
     builder
         .setup(|app| {
             let host = Host::new(host::data_directory(app));
@@ -65,6 +68,7 @@ pub fn run() {
             host::save_file,
             host::open_external,
             host::open_window,
+            host::start_system_timer,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Forkcast")
