@@ -55,6 +55,7 @@ import { KeyboardShortcutsDialog, useKeyboardShortcuts } from './shortcuts';
 import { PlanningConflicts } from './PlanningConflicts';
 import { RecipeConflicts } from './RecipeConflicts';
 import { RecipeMetadata } from './RecipeMetadata';
+import { PlanIcon, SettingsIcon, ShoppingIcon } from './NavIcons';
 
 function subscribeToRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -721,7 +722,10 @@ export function App({
             aria-keyshortcuts="2"
             aria-current={planningView ? 'page' : undefined}
           >
-            <span aria-hidden="true">▦</span> Meal plan
+            <span className="nav-icon-slot" aria-hidden="true">
+              <PlanIcon />
+            </span>{' '}
+            Meal plan
           </a>
           <a
             className="nav-link"
@@ -737,7 +741,10 @@ export function App({
             aria-keyshortcuts="4"
             aria-current={shoppingOpen ? 'page' : undefined}
           >
-            <span aria-hidden="true">▧</span> Shopping list
+            <span className="nav-icon-slot" aria-hidden="true">
+              <ShoppingIcon />
+            </span>{' '}
+            Shopping list
           </a>
         </nav>
         <div className="sidebar-footer">
@@ -769,7 +776,10 @@ export function App({
               aria-keyshortcuts="5"
               aria-current={settingsOpen ? 'page' : undefined}
             >
-              <span aria-hidden="true">⚙</span> Settings
+              <span className="nav-icon-slot" aria-hidden="true">
+                <SettingsIcon />
+              </span>{' '}
+              Settings
             </a>
           </nav>
           <button
@@ -792,7 +802,7 @@ export function App({
           },
           {
             href: '#/meal-plan',
-            icon: '▦',
+            icon: <PlanIcon />,
             label: 'Plan',
             shortcut: '2',
             current: planningView,
@@ -806,14 +816,14 @@ export function App({
           },
           {
             href: '#/shopping-list',
-            icon: '▧',
+            icon: <ShoppingIcon />,
             label: 'Shopping',
             shortcut: '4',
             current: shoppingOpen,
           },
           {
             href: '#/settings',
-            icon: '⚙',
+            icon: <SettingsIcon />,
             label: 'Settings',
             shortcut: '5',
             current: settingsOpen,

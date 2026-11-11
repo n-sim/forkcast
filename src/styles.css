@@ -117,6 +117,14 @@ textarea:focus-visible {
 .nav-link:hover {
   background: #d9e0cb;
 }
+.nav-icon-slot {
+  display: inline-flex;
+  line-height: 1;
+}
+.nav-icon {
+  display: block;
+  flex: none;
+}
 .account-form {
   display: grid;
   gap: 16px;
