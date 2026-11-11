@@ -118,6 +118,20 @@ textarea:focus-visible {
   font-size: 13px;
   font-weight: 600;
 }
+.nav-icon {
+  /* A fixed box keeps glyph icons from different fonts the same size. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.2em;
+  height: 1.2em;
+  line-height: 1;
+}
+.nav-icon svg {
+  width: 1em;
+  height: 1em;
+}
 .nav-link:hover {
   background: #d9e0cb;
 }
