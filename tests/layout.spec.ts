@@ -80,3 +80,40 @@ test('show a bottom navigation bar only on phone-sized screens', async ({
     page.getByRole('navigation', { name: 'Main navigation' }),
   ).toBeVisible();
 });
+
+test('rest the suspended cooking bar on the phone bottom navigation bar', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'New recipe', exact: true }).click();
+  await page.getByLabel('Recipe name').fill('Lentil supper');
+  await page.getByLabel('Ingredient 1 name').fill('Lentils');
+  await page.getByLabel('Ingredient 1 quantity').fill('300');
+  await page.getByLabel('Step 1 instruction').fill('Simmer the lentils.');
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Start cooking', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Suspend cooking', exact: true })
+    .click();
+  const cookingBar = page.getByRole('region', {
+    name: 'Suspended cooking',
+    exact: true,
+  });
+  const bottomNav = page.getByRole('navigation', {
+    name: 'Primary navigation',
+  });
+  await expect(cookingBar).toBeVisible();
+  await expect(bottomNav).toBeVisible();
+
+  for (const width of [360, 390]) {
+    await page.setViewportSize({ width, height: 800 });
+    const barBounds = await cookingBar.boundingBox();
+    const navBounds = await bottomNav.boundingBox();
+    expect(
+      Math.abs(barBounds!.y + barBounds!.height - navBounds!.y),
+    ).toBeLessThanOrEqual(1);
+  }
+});
