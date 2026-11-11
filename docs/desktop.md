@@ -104,8 +104,8 @@ public release you need:
 3. A restart is a real process restart on the same data folder; an upgrade
    with data is exercised by importing a populated transfer and reopening.
 4. Synchronization journeys start two app processes and a real server.
-   `FORKCAST_SAVE_DIRECTORY` makes the app deliver saved files (the shopping
-   PDF) to a folder instead of opening a save dialog.
+   `FORKCAST_SAVE_DIRECTORY` makes the app deliver saved files (recipe and shopping
+   PDFs) to a folder instead of opening a save dialog.
 
 Keyboard focus is covered by the layout and form journeys (tab order, skip
 link, dialog focus).
