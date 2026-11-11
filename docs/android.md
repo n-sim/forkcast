@@ -19,7 +19,7 @@ companion is **not** ported as a child process.
 | App-private storage                 | The core's SQLite lives in the app's data directory (`app_data_dir`).                                                                                                                                                 |
 | Resume                              | `RunEvent::Resumed` calls `Core::nudge_sync`; there is no daemon.                                                                                                                                                     |
 | Browser sign-in (companion-free AI) | Not part of this release; the loopback ChatGPT sign-in is implemented in the shared core (#28) but Android release still needs its own physical-device proof of authorization, Keystore storage, and lifecycle (#52). |
-| Files                               | The webview file input picks cover photos; shopping PDFs go through `save_file`.                                                                                                                                      |
+| Files                               | The webview file input picks cover photos; recipe and shopping PDFs go through `save_file`, which writes the `content://` URI the save dialog returns.                                                                |
 | Screen kept on while cooking        | The Screen Wake Lock API, which the Android WebView supports from version 84; no native fallback. An older WebView lets the screen time out.                                                                          |
 
 ## Backup and device transfer
@@ -113,7 +113,7 @@ installed; it does not replace the physical-device gates below.
 - [ ] Android Back leaves screens predictably and never discards a saved record.
 - [ ] Keyboard insets keep focused fields visible on small phones.
 - [ ] TalkBack announces statuses and alerts; touch targets meet 48 dp.
-- [ ] Image selection from camera and gallery; shopping PDF saved and shared.
+- [ ] Image selection from camera and gallery; recipe and shopping PDFs saved and shared.
 - [ ] Populated in-place upgrade from the previous APK keeps all data.
 - [ ] HTTPS server access over mobile data and Wi-Fi; unreachable-server error.
 - [ ] Integrated ChatGPT loopback authorization (blocked on #28).

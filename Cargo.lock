@@ -1403,6 +1403,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-forkcast-secure-store",
+ "tauri-plugin-fs",
  "tauri-plugin-opener",
  "windows-sys 0.61.2",
 ]
