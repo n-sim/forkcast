@@ -1,0 +1,14 @@
+[package]
+name = "tauri-plugin-forkcast-system-timer"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Starts a countdown in the device's own clock app, reachable only from native code."
+links = "tauri-plugin-forkcast-system-timer"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
+
+[dependencies]
+serde_json = "1"
+tauri = "2"

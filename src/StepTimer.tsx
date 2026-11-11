@@ -5,18 +5,32 @@ import {
   type TimerAction,
 } from './domain';
 
+/** A timer handed to the device's clock app, which this view cannot control. */
+export interface ClockAppTimer {
+  minutes: number;
+  endsAt: number;
+}
+
 export function StepTimer({
   timer,
+  clockAppTimer,
   stepNumber,
   now,
   saving,
+  onStart,
   onChange,
+  onUseInApp,
+  onDismissClockApp,
 }: {
   timer?: Timer;
+  clockAppTimer?: ClockAppTimer;
   stepNumber: number;
   now: number;
   saving: boolean;
+  onStart: (minutes: number) => void;
   onChange: (action: TimerAction) => void;
+  onUseInApp: (minutes: number) => void;
+  onDismissClockApp: () => void;
 }) {
   const [minutes, setMinutes] = useState('5');
   const remaining = timer ? stepTimerRemaining(timer, now) : 0;
@@ -60,12 +74,44 @@ export function StepTimer({
             </button>
           </div>
         </>
+      ) : clockAppTimer ? (
+        <>
+          <p
+            role="status"
+            aria-label={`Step ${stepNumber} clock app timer`}
+            className="timer-clock-app"
+          >
+            {clockAppTimer.endsAt > now
+              ? `Timer started in your Clock app: ${formatMinutes(clockAppTimer.minutes)}, rings at about ${new Date(clockAppTimer.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
+              : `Your Clock app timer of ${formatMinutes(clockAppTimer.minutes)} has finished.`}
+          </p>
+          <p className="section-note">
+            It keeps counting and rings even when Forkcast is closed. Pause or
+            stop it in the Clock app.
+          </p>
+          <div className="form-actions">
+            <button
+              className="button secondary"
+              disabled={saving}
+              onClick={() => onUseInApp(clockAppTimer.minutes)}
+            >
+              Use in-app timer instead
+            </button>
+            <button
+              className="button secondary"
+              disabled={saving}
+              onClick={onDismissClockApp}
+            >
+              Start another timer
+            </button>
+          </div>
+        </>
       ) : (
         <form
           className="timer-start"
           onSubmit={(event) => {
             event.preventDefault();
-            onChange({ type: 'start', minutes: Number(minutes) });
+            onStart(Number(minutes));
           }}
           noValidate
         >
@@ -86,4 +132,10 @@ export function StepTimer({
       )}
     </section>
   );
+}
+
+function formatMinutes(minutes: number) {
+  const seconds = Math.round(minutes * 60);
+  if (seconds % 60) return `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
+  return `${seconds / 60} min`;
 }

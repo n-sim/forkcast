@@ -32,11 +32,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init());
     // Session tokens are protected by the Android Keystore on Android; other
     // platforms use their own adapter (see `protected`). Android also has a
-    // share sheet for generated PDFs (see `host::share_file`).
+    // share sheet for generated PDFs (see `host::share_file`), and step timers
+    // go to the clock app (see `host::start_system_timer`).
     #[cfg(target_os = "android")]
     let builder = builder
         .plugin(tauri_plugin_forkcast_secure_store::init())
-        .plugin(tauri_plugin_forkcast_share::init());
+        .plugin(tauri_plugin_forkcast_share::init())
+        .plugin(tauri_plugin_forkcast_system_timer::init());
     builder
         .setup(|app| {
             let host = Host::new(host::data_directory(app));
@@ -69,6 +71,7 @@ pub fn run() {
             host::share_file,
             host::open_external,
             host::open_window,
+            host::start_system_timer,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Forkcast")

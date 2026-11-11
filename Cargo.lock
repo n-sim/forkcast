@@ -1404,6 +1404,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-forkcast-secure-store",
  "tauri-plugin-forkcast-share",
+ "tauri-plugin-forkcast-system-timer",
  "tauri-plugin-fs",
  "tauri-plugin-opener",
  "windows-sys 0.61.2",
@@ -4548,6 +4549,15 @@ name = "tauri-plugin-forkcast-share"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+]
+
+[[package]]
+name = "tauri-plugin-forkcast-system-timer"
+version = "0.1.0"
+dependencies = [
  "serde_json",
  "tauri",
  "tauri-plugin",
