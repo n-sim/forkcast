@@ -1,5 +1,6 @@
 import type { Page } from './app-fixture';
 import { expect } from './backend-fixture';
+import { chooseRecipe } from './recipe-picker';
 export { test, expect } from './backend-fixture';
 
 export const PASSWORD = 'a long local password';
@@ -94,9 +95,7 @@ export async function plan(
 ) {
   await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
   await page.getByRole('button', { name: 'Plan cooking', exact: true }).click();
-  await page
-    .getByLabel('Recipe', { exact: true })
-    .selectOption({ label: recipe });
+  await chooseRecipe(page, recipe);
   await page.getByLabel('Cooking date', { exact: true }).fill(date);
   await page.getByLabel('Portions to cook', { exact: true }).fill(portions);
   await page

@@ -28,6 +28,7 @@ pub(crate) fn for_automation<'a, R: tauri::Runtime, M: Manager<R>>(
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init());
     // Session tokens are protected by the Android Keystore on Android; other
     // platforms use their own adapter (see `protected`).

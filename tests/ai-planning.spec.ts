@@ -1,5 +1,6 @@
 import { test as base, expect, type InferenceRequest } from './ai-fixture';
 import { openedExternally, type Page } from './app-fixture';
+import { chooseRecipe } from './recipe-picker';
 
 const test = base.extend<{ connectChatGpt: () => Promise<void> }>({
   connectChatGpt: async ({ page, app, systemBrowser }, use) => {
@@ -87,9 +88,7 @@ test('generate a cooking plan from a request and the collection, confirm the rep
   await createRecipe(page, 'Pasta bake');
   await page.getByRole('link', { name: 'Meal plan', exact: true }).click();
   await page.getByRole('button', { name: 'Plan cooking', exact: true }).click();
-  await page
-    .getByLabel('Recipe', { exact: true })
-    .selectOption({ label: 'Pasta bake' });
+  await chooseRecipe(page, 'Pasta bake');
   await page.getByLabel('Cooking date', { exact: true }).fill('2031-03-03');
   await page.getByLabel('Portions to cook', { exact: true }).fill('2');
   await page

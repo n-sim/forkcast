@@ -19,7 +19,8 @@ companion is **not** ported as a child process.
 | App-private storage                 | The core's SQLite lives in the app's data directory (`app_data_dir`).                                                                                                                                                 |
 | Resume                              | `RunEvent::Resumed` calls `Core::nudge_sync`; there is no daemon.                                                                                                                                                     |
 | Browser sign-in (companion-free AI) | Not part of this release; the loopback ChatGPT sign-in is implemented in the shared core (#28) but Android release still needs its own physical-device proof of authorization, Keystore storage, and lifecycle (#52). |
-| Files                               | The webview file input picks cover photos; shopping PDFs go through `save_file`.                                                                                                                                      |
+| Files                               | The webview file input picks cover photos; recipe and shopping PDFs go through `save_file`, which writes the `content://` URI the save dialog returns.                                                                |
+| Screen kept on while cooking        | The Screen Wake Lock API, which the Android WebView supports from version 84; no native fallback. An older WebView lets the screen time out.                                                                          |
 
 ## Backup and device transfer
 
@@ -59,6 +60,13 @@ npx tauri android init     # once; generated project is committed
 npm run android:build      # a debug APK
 npx tauri android build --apk --target aarch64 --target x86_64   # release APK
 ```
+
+Launcher icon: the Android icons in `crates/desktop/gen/android/app/src/main/res/`
+(legacy `mipmap-*/ic_launcher*.png` and the adaptive icon in
+`mipmap-anydpi-v26/`) are derived from `crates/desktop/icons/icon.png` by
+`python3 crates/desktop/icons/generate_android_icons.py`. Rerun that script
+after changing the icon instead of `tauri icon`, which would put back a padded
+copy of the whole tile as the adaptive-icon foreground.
 
 Reproducibility: the toolchain versions above, `Cargo.lock`, and
 `package-lock.json` pin everything; the debug APK is signed with the debug key
@@ -112,7 +120,7 @@ installed; it does not replace the physical-device gates below.
 - [ ] Android Back leaves screens predictably and never discards a saved record.
 - [ ] Keyboard insets keep focused fields visible on small phones.
 - [ ] TalkBack announces statuses and alerts; touch targets meet 48 dp.
-- [ ] Image selection from camera and gallery; shopping PDF saved and shared.
+- [ ] Image selection from camera and gallery; recipe and shopping PDFs saved and shared.
 - [ ] Populated in-place upgrade from the previous APK keeps all data.
 - [ ] HTTPS server access over mobile data and Wi-Fi; unreachable-server error.
 - [ ] Integrated ChatGPT loopback authorization (blocked on #28).

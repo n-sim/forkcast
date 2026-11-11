@@ -222,9 +222,10 @@ pub fn open_external(app: AppHandle, url: String) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
-/// Saves a generated file (the shopping-list PDF) where the person chooses,
-/// then opens it. Automation can set `FORKCAST_SAVE_DIRECTORY` to deliver
-/// files without a dialog.
+/// Saves a generated file (a recipe or shopping-list PDF) where the person
+/// chooses, then opens it. Returns `None` only when the person dismisses the
+/// dialog; a location that cannot be written is an error. Automation can set
+/// `FORKCAST_SAVE_DIRECTORY` to deliver files without a dialog.
 #[tauri::command]
 pub async fn save_file(
     app: AppHandle,
@@ -232,13 +233,17 @@ pub async fn save_file(
     data: Vec<u8>,
     open: bool,
 ) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::FilePath;
+
     let name = std::path::Path::new(&suggested_name)
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .filter(|name| !name.is_empty())
         .ok_or("Choose a file name.")?;
-    let chosen = if let Some(directory) = std::env::var_os("FORKCAST_SAVE_DIRECTORY") {
-        Some(PathBuf::from(directory).join(&name))
+    let automated = std::env::var_os("FORKCAST_SAVE_DIRECTORY");
+    let open = open && automated.is_none();
+    let chosen = if let Some(directory) = automated {
+        Some(FilePath::Path(PathBuf::from(directory).join(&name)))
     } else {
         let app = app.clone();
         tauri::async_runtime::spawn_blocking(move || {
@@ -247,21 +252,53 @@ pub async fn save_file(
                 .file()
                 .set_file_name(&name)
                 .blocking_save_file()
-                .and_then(|path| path.into_path().ok())
         })
         .await
         .map_err(|error| error.to_string())?
     };
-    let Some(path) = chosen else {
+    let Some(target) = chosen else {
         return Ok(None);
     };
-    std::fs::write(&path, data)
-        .map_err(|error| format!("The file could not be saved to {}: {error}", path.display()))?;
-    if open && std::env::var_os("FORKCAST_SAVE_DIRECTORY").is_none() {
+    let app_for_write = app.clone();
+    let written = target.clone();
+    tauri::async_runtime::spawn_blocking(move || write_chosen_file(&app_for_write, written, &data))
+        .await
+        .map_err(|error| error.to_string())??;
+    let location = target.to_string();
+    // A plain path opens in the default viewer. Mobile save dialogs hand back
+    // a document URI (Android `content://`) that other apps cannot read
+    // without a grant, so those are not opened. Opening is a convenience: the
+    // file is already saved, so a failure here does not fail the export.
+    if open && let FilePath::Path(path) = &target {
         use tauri_plugin_opener::OpenerExt;
-        app.opener()
+        if let Err(error) = app
+            .opener()
             .open_path(path.display().to_string(), None::<&str>)
-            .map_err(|error| error.to_string())?;
+        {
+            eprintln!("Forkcast saved {location} but could not open it: {error}");
+        }
     }
-    Ok(Some(path.display().to_string()))
+    Ok(Some(location))
+}
+
+/// Writes through the fs plugin, which understands both plain paths and the
+/// document URIs mobile save dialogs return.
+fn write_chosen_file(
+    app: &AppHandle,
+    target: tauri_plugin_dialog::FilePath,
+    data: &[u8],
+) -> Result<(), String> {
+    use std::io::Write;
+    use tauri_plugin_fs::{FsExt, OpenOptions};
+
+    let location = target.to_string();
+    let mut options = OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    app.fs()
+        .open(target, options)
+        .and_then(|mut file| {
+            file.write_all(data)?;
+            file.flush()
+        })
+        .map_err(|error| format!("The file could not be saved to {location}: {error}"))
 }

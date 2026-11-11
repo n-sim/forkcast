@@ -8,8 +8,12 @@
   --muted: #697064;
   --accent: #a44228;
   --line: #e4e4d9;
+  --wood: #c99a62;
+  --leaf: #6f8f4e;
   --sidebar-width: 245px;
   --cooking-bar-height: 0px;
+  /* Phone bottom nav, excluding the safe-area inset it also pads. */
+  --bottom-nav-height: 58px;
 }
 html {
   scroll-padding-bottom: var(--cooking-bar-height);
@@ -489,7 +493,8 @@ h2 {
   font-size: 12px;
   font-weight: 600;
 }
-.cooking-plan-choice {
+.cooking-plan-choice,
+.checkbox-option {
   flex-direction: row;
   align-items: center;
   gap: 10px;
@@ -497,7 +502,8 @@ h2 {
   font-size: 13px;
   font-weight: 400;
 }
-.cooking-plan-choice input {
+.cooking-plan-choice input,
+.checkbox-option input {
   width: 20px;
   height: 20px;
   min-height: 0;
@@ -707,6 +713,75 @@ small {
 .name-field input {
   font-size: 17px;
   padding: 12px;
+}
+.recipe-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 0;
+}
+.recipe-picker {
+  position: relative;
+  min-width: 0;
+}
+.recipe-picker-popup {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  background: #fffefa;
+  border: 1px solid #d5dacd;
+  border-radius: 5px;
+  box-shadow: 0 8px 24px rgb(48 56 46 / 16%);
+  font-size: 15px;
+  font-weight: 400;
+}
+.recipe-picker-popup[hidden] {
+  display: none;
+}
+.recipe-picker-popup[data-placement='above'] {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+.recipe-picker-popup [role='listbox'] {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.recipe-picker-popup [role='listbox']:empty {
+  display: none;
+}
+.recipe-picker-popup [role='option'] {
+  padding: 10px 12px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.recipe-picker-popup [role='option'][aria-selected='true'] {
+  background: #f1f2e9;
+  outline: 2px solid #b26334;
+  outline-offset: -2px;
+}
+.recipe-picker-popup [role='option'][data-chosen] {
+  font-weight: 600;
+}
+.recipe-picker-popup [role='option'][data-chosen]::after {
+  content: '✓';
+  margin-left: auto;
+  padding-left: 12px;
+  color: var(--accent);
+}
+.recipe-picker-empty {
+  margin: 0;
+  padding: 12px;
+  color: var(--muted);
 }
 .metadata-fields {
   display: grid;
@@ -969,6 +1044,11 @@ dialog .form-actions {
 .suspended-cooking-bar .section-note {
   margin-bottom: 0;
 }
+.suspended-cooking-actions {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
 .suspended-cooking-bar .button {
   flex-shrink: 0;
 }
@@ -1107,7 +1187,18 @@ dialog .form-actions {
 @media (max-width: 560px) {
   .suspended-cooking-bar {
     padding-inline: 18px;
-    gap: 16px;
+    gap: 12px 16px;
+    flex-wrap: wrap;
+  }
+  /* Two actions leave no room for the summary; put them on their own row. */
+  .suspended-cooking-summary {
+    flex-basis: 100%;
+  }
+  .suspended-cooking-actions {
+    flex-grow: 1;
+  }
+  .suspended-cooking-actions .button {
+    flex: 1 1 0;
   }
   .allocation-row {
     grid-template-columns: minmax(0, 1fr) 65px 65px 32px;
@@ -1198,6 +1289,8 @@ dialog .form-actions {
     left: 0;
     right: 0;
     z-index: 30;
+    /* A fixed height lets the suspended cooking bar sit flush on top. */
+    height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px);
     background: #f1f2e9;
     border-top: 1px solid var(--line);
@@ -1206,6 +1299,7 @@ dialog .form-actions {
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     gap: 3px;
     padding: 9px 2px 8px;
     min-width: 0;
@@ -1224,10 +1318,12 @@ dialog .form-actions {
     box-shadow: inset 0 2px 0 var(--accent);
   }
   .app-shell {
-    padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(
+      var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px)
+    );
   }
   .suspended-cooking-bar {
-    bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
     padding-bottom: 16px;
   }
 }
@@ -1337,4 +1433,252 @@ kbd {
 }
 .shortcut-list dd {
   margin: 0;
+}
+.generation-progress {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  text-align: center;
+}
+.generation-progress p {
+  margin: 0;
+}
+/* The kitchen scene shown while a recipe is generated. Every part animates
+   only transform and opacity on one 4.8s loop: chop (0-40%), toss (40-64%),
+   stir (60-100%). */
+.cooking-scene {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  height: auto;
+  color: inherit;
+  --scene-loop: 4.8s;
+}
+.cooking-scene * {
+  transform-box: view-box;
+}
+.scene-cook,
+.scene-arm {
+  fill: var(--muted);
+  stroke: var(--muted);
+}
+.scene-arm {
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+.scene-blade,
+.scene-pot {
+  fill: currentColor;
+}
+.scene-counter {
+  fill: var(--line);
+}
+.scene-board {
+  fill: var(--wood);
+}
+.scene-carrot rect,
+.scene-piece {
+  fill: var(--accent);
+}
+.scene-carrot path {
+  fill: none;
+  stroke: var(--leaf);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+.scene-spoon {
+  stroke: var(--wood);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+.scene-steam {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  opacity: 0.6;
+}
+.scene-knife {
+  transform-origin: 44px 64px;
+  animation: scene-chop var(--scene-loop) ease-in-out infinite;
+}
+.scene-carrot {
+  transform-origin: 108px 87px;
+  animation: scene-carrot var(--scene-loop) ease-in-out infinite;
+}
+.scene-piece {
+  opacity: 0;
+  animation: scene-toss var(--scene-loop) ease-in-out infinite;
+}
+.scene-piece:nth-of-type(2) {
+  animation-name: scene-toss-2;
+}
+.scene-piece:nth-of-type(3) {
+  animation-name: scene-toss-3;
+}
+.scene-spoon {
+  transform-origin: 188px 86px;
+  animation: scene-stir var(--scene-loop) ease-in-out infinite;
+}
+.scene-steam path {
+  animation: scene-steam 2.4s ease-in-out infinite;
+}
+.scene-steam path:nth-child(2) {
+  animation-delay: -0.8s;
+}
+.scene-steam path:nth-child(3) {
+  animation-delay: -1.6s;
+}
+@keyframes scene-chop {
+  0%,
+  10%,
+  20%,
+  30%,
+  40%,
+  100% {
+    transform: rotate(-6deg);
+  }
+  5%,
+  15%,
+  25%,
+  35% {
+    transform: rotate(8deg);
+  }
+}
+@keyframes scene-carrot {
+  0% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  38% {
+    transform: scaleX(0.4);
+    opacity: 1;
+  }
+  46%,
+  88% {
+    transform: scaleX(0.4);
+    opacity: 0;
+  }
+  90% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+/* Each piece appears on its own chop, then all three arc into the pot. */
+@keyframes scene-toss {
+  0%,
+  5% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  7%,
+  42% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  52% {
+    transform: translate(58px, -48px);
+    opacity: 1;
+  }
+  62% {
+    transform: translate(116px, -14px);
+    opacity: 1;
+  }
+  64%,
+  100% {
+    transform: translate(116px, -14px);
+    opacity: 0;
+  }
+}
+@keyframes scene-toss-2 {
+  0%,
+  15% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  17%,
+  44% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  54% {
+    transform: translate(54px, -50px);
+    opacity: 1;
+  }
+  63% {
+    transform: translate(105px, -14px);
+    opacity: 1;
+  }
+  65%,
+  100% {
+    transform: translate(105px, -14px);
+    opacity: 0;
+  }
+}
+@keyframes scene-toss-3 {
+  0%,
+  25% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  27%,
+  46% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  56% {
+    transform: translate(52px, -52px);
+    opacity: 1;
+  }
+  64% {
+    transform: translate(98px, -14px);
+    opacity: 1;
+  }
+  66%,
+  100% {
+    transform: translate(98px, -14px);
+    opacity: 0;
+  }
+}
+@keyframes scene-stir {
+  0%,
+  62%,
+  100% {
+    transform: rotate(0deg);
+  }
+  72%,
+  92% {
+    transform: rotate(-14deg);
+  }
+  82% {
+    transform: rotate(10deg);
+  }
+}
+@keyframes scene-steam {
+  0% {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+}
+/* Reduced motion: a still picture of the cook, the board and the pot. */
+@media (prefers-reduced-motion: reduce) {
+  .cooking-scene *,
+  .cooking-scene .scene-piece,
+  .cooking-scene .scene-steam path {
+    animation: none;
+  }
+  .scene-steam path {
+    opacity: 1;
+  }
 }
