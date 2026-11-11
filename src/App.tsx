@@ -55,6 +55,7 @@ import { KeyboardShortcutsDialog, useKeyboardShortcuts } from './shortcuts';
 import { PlanningConflicts } from './PlanningConflicts';
 import { RecipeConflicts } from './RecipeConflicts';
 import { RecipeMetadata } from './RecipeMetadata';
+import { RecipePdfExport } from './RecipePdfExport';
 
 function subscribeToRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -95,7 +96,7 @@ function RecipeDetails({
   ) => Promise<void>;
 }) {
   const [portions, setPortions] = useState(String(recipe.basePortions));
-  const [displayUnits, setDisplayUnits] = useState<DisplayUnits>('metric');
+  const [displayUnits, setDisplayUnits] = useState<DisplayUnits>('original');
   const [starting, setStarting] = useState(false);
   const [cookingError, setCookingError] = useState('');
   const [marking, setMarking] = useState(false);
@@ -188,6 +189,14 @@ function RecipeDetails({
           >
             Edit recipe
           </a>
+          <RecipePdfExport
+            recipe={recipe}
+            portions={Number(portions)}
+            displayUnits={displayUnits}
+            photo={photo}
+            rating={rating?.value}
+            disabled={!quantities}
+          />
           <button
             type="button"
             className="button secondary"
@@ -627,6 +636,12 @@ export function App({
     await endCookingSession(session.id, outcome);
     setSessions((current) => current.filter((item) => item.id !== session.id));
     leaveCooking(session, startedAt);
+  }
+
+  // Canceling from the suspended cooking bar keeps the person where they are.
+  async function cancelSuspendedSession(session: CookingSession) {
+    await endCookingSession(session.id, 'canceled');
+    setSessions((current) => current.filter((item) => item.id !== session.id));
   }
 
   async function resolveSession(
@@ -1157,7 +1172,13 @@ export function App({
           A collection worth coming back to.
           <span>Forkcast · Cook your way.</span>
         </footer>
-        {suspendedSession && <SuspendedCookingBar session={suspendedSession} />}
+        {suspendedSession && (
+          <SuspendedCookingBar
+            key={suspendedSession.id}
+            session={suspendedSession}
+            onCancel={() => cancelSuspendedSession(suspendedSession)}
+          />
+        )}
       </div>
     </div>
   );

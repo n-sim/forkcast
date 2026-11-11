@@ -481,7 +481,8 @@ h2 {
   font-size: 12px;
   font-weight: 600;
 }
-.cooking-plan-choice {
+.cooking-plan-choice,
+.checkbox-option {
   flex-direction: row;
   align-items: center;
   gap: 10px;
@@ -489,7 +490,8 @@ h2 {
   font-size: 13px;
   font-weight: 400;
 }
-.cooking-plan-choice input {
+.cooking-plan-choice input,
+.checkbox-option input {
   width: 20px;
   height: 20px;
   min-height: 0;
@@ -699,6 +701,75 @@ small {
 .name-field input {
   font-size: 17px;
   padding: 12px;
+}
+.recipe-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 0;
+}
+.recipe-picker {
+  position: relative;
+  min-width: 0;
+}
+.recipe-picker-popup {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  background: #fffefa;
+  border: 1px solid #d5dacd;
+  border-radius: 5px;
+  box-shadow: 0 8px 24px rgb(48 56 46 / 16%);
+  font-size: 15px;
+  font-weight: 400;
+}
+.recipe-picker-popup[hidden] {
+  display: none;
+}
+.recipe-picker-popup[data-placement='above'] {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+.recipe-picker-popup [role='listbox'] {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.recipe-picker-popup [role='listbox']:empty {
+  display: none;
+}
+.recipe-picker-popup [role='option'] {
+  padding: 10px 12px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.recipe-picker-popup [role='option'][aria-selected='true'] {
+  background: #f1f2e9;
+  outline: 2px solid #b26334;
+  outline-offset: -2px;
+}
+.recipe-picker-popup [role='option'][data-chosen] {
+  font-weight: 600;
+}
+.recipe-picker-popup [role='option'][data-chosen]::after {
+  content: '✓';
+  margin-left: auto;
+  padding-left: 12px;
+  color: var(--accent);
+}
+.recipe-picker-empty {
+  margin: 0;
+  padding: 12px;
+  color: var(--muted);
 }
 .metadata-fields {
   display: grid;
@@ -961,6 +1032,11 @@ dialog .form-actions {
 .suspended-cooking-bar .section-note {
   margin-bottom: 0;
 }
+.suspended-cooking-actions {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
 .suspended-cooking-bar .button {
   flex-shrink: 0;
 }
@@ -1099,7 +1175,18 @@ dialog .form-actions {
 @media (max-width: 560px) {
   .suspended-cooking-bar {
     padding-inline: 18px;
-    gap: 16px;
+    gap: 12px 16px;
+    flex-wrap: wrap;
+  }
+  /* Two actions leave no room for the summary; put them on their own row. */
+  .suspended-cooking-summary {
+    flex-basis: 100%;
+  }
+  .suspended-cooking-actions {
+    flex-grow: 1;
+  }
+  .suspended-cooking-actions .button {
+    flex: 1 1 0;
   }
   .allocation-row {
     grid-template-columns: minmax(0, 1fr) 65px 65px 32px;

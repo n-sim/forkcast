@@ -73,6 +73,14 @@ test('a finish from another device that competes with browser cooking waits for 
   await expect(
     page.getByRole('region', { name: 'Current cooking step' }),
   ).toHaveCount(0);
+  // Elsewhere, the bar only offers the decision: no cancel until it is made.
+  await page.goto(`${backend.url}/#/`);
+  const bar = page.getByRole('region', { name: 'Suspended cooking' });
+  await expect(bar).toContainText('Cooking needs a decision');
+  await expect(
+    bar.getByRole('button', { name: 'Cancel cooking', exact: true }),
+  ).toHaveCount(0);
+  await bar.getByRole('link', { name: 'Review cooking', exact: true }).click();
   await decision
     .getByRole('button', { name: 'Use other device’s progress', exact: true })
     .click();
@@ -83,4 +91,39 @@ test('a finish from another device that competes with browser cooking waits for 
   await expect(
     page.getByRole('region', { name: 'Suspended cooking' }),
   ).toHaveCount(0);
+});
+
+test('a browser cancels suspended cooking from the bar and stays where it is', async ({
+  page,
+  backend,
+}) => {
+  await setUpHousehold(page, backend.url);
+  await createRecipe(page, 'Soup');
+  await page
+    .getByRole('button', { name: 'Start cooking', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Suspend cooking', exact: true })
+    .click();
+  await page.goto(`${backend.url}/#/`);
+  const bar = page.getByRole('region', { name: 'Suspended cooking' });
+  await expect(
+    bar.getByRole('link', { name: 'Resume cooking', exact: true }),
+  ).toBeVisible();
+  await bar
+    .getByRole('button', { name: 'Cancel cooking', exact: true })
+    .click();
+  await page
+    .getByRole('dialog', { name: 'Cancel cooking?', exact: true })
+    .getByRole('button', { name: 'Cancel cooking', exact: true })
+    .click();
+  await expect(bar).toHaveCount(0);
+  await expect(
+    page.getByRole('heading', { name: 'Your recipe collection' }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'Your recipe collection' }),
+  ).toBeVisible();
+  await expect(bar).toHaveCount(0);
 });

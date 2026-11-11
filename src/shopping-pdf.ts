@@ -2,10 +2,7 @@ import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { saveFile } from './core';
 import { formatQuantity, unitLabels } from './domain';
 import type { ShoppingItem, ShoppingList } from './shopping';
-import {
-  shoppingPdfFallbackFonts,
-  shoppingPdfText,
-} from './shopping-pdf-fonts';
+import { loadPdfMake, shoppingPdfText } from './shopping-pdf-fonts';
 
 function groceries(title: string, items: ShoppingItem[]): Content[] {
   return [
@@ -46,25 +43,10 @@ function groceries(title: string, items: ShoppingItem[]): Content[] {
 }
 
 export async function exportShoppingPdf(list: ShoppingList): Promise<boolean> {
-  const [{ default: pdfMake }, { default: fonts }] = await Promise.all([
-    import('pdfmake/build/pdfmake'),
-    import('pdfmake/build/vfs_fonts'),
+  const pdfMake = await loadPdfMake([
+    ...[...list.items, ...list.manualItems].map((item) => item.name),
+    ...list.contributions.map((source) => source.recipeName),
   ]);
-  pdfMake.addVirtualFileSystem(fonts);
-  if (
-    [...list.items, ...list.manualItems].some((item) =>
-      /[^\u0000-\u024f]/u.test(item.name),
-    ) ||
-    list.contributions.some((source) =>
-      /[^\u0000-\u024f]/u.test(source.recipeName),
-    )
-  ) {
-    pdfMake.addVirtualFileSystem(await shoppingPdfFallbackFonts());
-    pdfMake.addFonts({
-      Unifont: { normal: 'Unifont.otf' },
-      UnifontUpper: { normal: 'UnifontUpper.otf' },
-    });
-  }
   const document: TDocumentDefinitions = {
     info: { title: 'Forkcast shopping list', author: 'Forkcast' },
     pageSize: 'A4',

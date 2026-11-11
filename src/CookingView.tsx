@@ -15,6 +15,7 @@ import {
   type SessionProgress,
 } from './cooking';
 import { StepTimer } from './StepTimer';
+import { CancelCookingButton } from './CancelCookingButton';
 import { useWakeLock } from './use-wake-lock';
 
 export function CookingView({
@@ -37,7 +38,6 @@ export function CookingView({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const busy = useRef(false);
-  const cancelDialog = useRef<HTMLDialogElement>(null);
   const [now, setNow] = useState(Date.now);
   // Keep the screen on while cooking along. Suspending, cancelling or
   // finishing leaves this view, which releases the lock.
@@ -177,57 +177,13 @@ export function CookingView({
           >
             Suspend cooking
           </button>
-          <button
-            className="button secondary"
+          <CancelCookingButton
+            recipeName={session.recipe.name}
             disabled={saving}
-            onClick={() => {
-              setError('');
-              cancelDialog.current?.showModal();
-            }}
-          >
-            Cancel cooking
-          </button>
+            onCancel={onCancel}
+          />
         </div>
       </div>
-      <dialog
-        ref={cancelDialog}
-        aria-labelledby="cancel-cooking-title"
-        aria-describedby="cancel-cooking-description"
-        className="cancel-cooking-dialog"
-        onCancel={(event) => {
-          if (saving) event.preventDefault();
-        }}
-      >
-        <h2 id="cancel-cooking-title">Cancel cooking?</h2>
-        <p id="cancel-cooking-description">
-          End the cooking session for <strong>{session.recipe.name}</strong>? It
-          will no longer be available to resume, and the recipe will not be
-          marked cooked.
-        </p>
-        {error && (
-          <p className="error-banner" role="alert">
-            {error}
-          </p>
-        )}
-        <div className="form-actions">
-          <button
-            className="button secondary"
-            autoFocus
-            disabled={saving}
-            onClick={() => cancelDialog.current?.close()}
-          >
-            Keep cooking
-          </button>
-          <button
-            className="button primary"
-            disabled={saving}
-            aria-busy={saving}
-            onClick={() => void persist(onCancel)}
-          >
-            Cancel cooking
-          </button>
-        </div>
-      </dialog>
       {session.recipeArchived && (
         <p
           className="allocation-checks"

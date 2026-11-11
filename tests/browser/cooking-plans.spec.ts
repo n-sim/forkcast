@@ -5,6 +5,7 @@ import {
   test,
   type Page,
 } from './browser-fixture';
+import { chooseRecipe } from '../recipe-picker';
 
 async function rate(page: Page, value: string) {
   await page.getByLabel('Your rating', { exact: true }).selectOption(value);
@@ -16,9 +17,7 @@ async function rate(page: Page, value: string) {
 
 async function planCooking(page: Page, recipe: string, date: string) {
   await page.getByRole('button', { name: 'Plan cooking', exact: true }).click();
-  await page
-    .getByLabel('Recipe', { exact: true })
-    .selectOption({ label: recipe });
+  await chooseRecipe(page, recipe);
   await page.getByLabel('Cooking date', { exact: true }).fill(date);
   await page.getByLabel('Portions to cook', { exact: true }).fill('2');
   await page
