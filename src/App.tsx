@@ -62,6 +62,24 @@ function subscribeToRoute(listener: () => void) {
   return () => window.removeEventListener('hashchange', listener);
 }
 
+// The Log icon is drawn as SVG: the ◷ character is missing from some phone
+// fonts, and the fallback font renders it smaller than the other nav icons.
+function LogIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
 function recipeUrl(id: string) {
   return `#/recipes/${id}`;
 }
@@ -728,7 +746,10 @@ export function App({
             aria-keyshortcuts="1"
             aria-current={route === '#/' ? 'page' : undefined}
           >
-            <span aria-hidden="true">▤</span> Recipe collection
+            <span className="nav-icon" aria-hidden="true">
+              ▤
+            </span>{' '}
+            Recipe collection
           </a>
           <a
             className="nav-link"
@@ -736,7 +757,10 @@ export function App({
             aria-keyshortcuts="2"
             aria-current={planningView ? 'page' : undefined}
           >
-            <span aria-hidden="true">▦</span> Meal plan
+            <span className="nav-icon" aria-hidden="true">
+              ▦
+            </span>{' '}
+            Meal plan
           </a>
           <a
             className="nav-link"
@@ -744,7 +768,10 @@ export function App({
             aria-keyshortcuts="3"
             aria-current={foodLogOpen ? 'page' : undefined}
           >
-            <span aria-hidden="true">◷</span> Food log
+            <span className="nav-icon" aria-hidden="true">
+              <LogIcon />
+            </span>{' '}
+            Food log
           </a>
           <a
             className="nav-link"
@@ -752,7 +779,10 @@ export function App({
             aria-keyshortcuts="4"
             aria-current={shoppingOpen ? 'page' : undefined}
           >
-            <span aria-hidden="true">▧</span> Shopping list
+            <span className="nav-icon" aria-hidden="true">
+              ▧
+            </span>{' '}
+            Shopping list
           </a>
         </nav>
         <div className="sidebar-footer">
@@ -784,7 +814,10 @@ export function App({
               aria-keyshortcuts="5"
               aria-current={settingsOpen ? 'page' : undefined}
             >
-              <span aria-hidden="true">⚙</span> Settings
+              <span className="nav-icon" aria-hidden="true">
+                ⚙
+              </span>{' '}
+              Settings
             </a>
           </nav>
           <button
@@ -814,7 +847,7 @@ export function App({
           },
           {
             href: '#/food-log',
-            icon: '◷',
+            icon: <LogIcon />,
             label: 'Log',
             shortcut: '3',
             current: foodLogOpen,
@@ -840,7 +873,9 @@ export function App({
             aria-keyshortcuts={item.shortcut}
             aria-current={item.current ? 'page' : undefined}
           >
-            <span aria-hidden="true">{item.icon}</span>
+            <span className="nav-icon" aria-hidden="true">
+              {item.icon}
+            </span>
             {item.label}
           </a>
         ))}
