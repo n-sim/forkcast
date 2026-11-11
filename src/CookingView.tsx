@@ -16,6 +16,7 @@ import {
 } from './cooking';
 import { StepTimer } from './StepTimer';
 import { CancelCookingButton } from './CancelCookingButton';
+import { useWakeLock } from './use-wake-lock';
 
 export function CookingView({
   session,
@@ -38,6 +39,9 @@ export function CookingView({
   const [error, setError] = useState('');
   const busy = useRef(false);
   const [now, setNow] = useState(Date.now);
+  // Keep the screen on while cooking along. Suspending, cancelling or
+  // finishing leaves this view, which releases the lock.
+  useWakeLock(true);
   useEffect(() => {
     const tick = () => setNow(Date.now());
     const interval = window.setInterval(tick, 250);
