@@ -55,29 +55,12 @@ import { KeyboardShortcutsDialog, useKeyboardShortcuts } from './shortcuts';
 import { PlanningConflicts } from './PlanningConflicts';
 import { RecipeConflicts } from './RecipeConflicts';
 import { RecipeMetadata } from './RecipeMetadata';
+import { LogIcon, PlanIcon, SettingsIcon, ShoppingIcon } from './NavIcons';
 import { RecipeShare } from './RecipeShare';
 
 function subscribeToRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
   return () => window.removeEventListener('hashchange', listener);
-}
-
-// The Log icon is drawn as SVG: the ◷ character is missing from some phone
-// fonts, and the fallback font renders it smaller than the other nav icons.
-function LogIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7v5l3 2" />
-    </svg>
-  );
 }
 
 function recipeUrl(id: string) {
@@ -758,7 +741,7 @@ export function App({
             aria-current={planningView ? 'page' : undefined}
           >
             <span className="nav-icon" aria-hidden="true">
-              ▦
+              <PlanIcon />
             </span>{' '}
             Meal plan
           </a>
@@ -780,7 +763,7 @@ export function App({
             aria-current={shoppingOpen ? 'page' : undefined}
           >
             <span className="nav-icon" aria-hidden="true">
-              ▧
+              <ShoppingIcon />
             </span>{' '}
             Shopping list
           </a>
@@ -815,7 +798,7 @@ export function App({
               aria-current={settingsOpen ? 'page' : undefined}
             >
               <span className="nav-icon" aria-hidden="true">
-                ⚙
+                <SettingsIcon />
               </span>{' '}
               Settings
             </a>
@@ -840,7 +823,7 @@ export function App({
           },
           {
             href: '#/meal-plan',
-            icon: '▦',
+            icon: <PlanIcon />,
             label: 'Plan',
             shortcut: '2',
             current: planningView,
@@ -854,14 +837,14 @@ export function App({
           },
           {
             href: '#/shopping-list',
-            icon: '▧',
+            icon: <ShoppingIcon />,
             label: 'Shopping',
             shortcut: '4',
             current: shoppingOpen,
           },
           {
             href: '#/settings',
-            icon: '⚙',
+            icon: <SettingsIcon />,
             label: 'Settings',
             shortcut: '5',
             current: settingsOpen,
