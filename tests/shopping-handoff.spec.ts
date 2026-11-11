@@ -28,7 +28,7 @@ test('open the checklist from shopping review and retain household shopping prog
   await addManualItem(page, 'Coffee');
   await expect(page.getByRole('checkbox')).toHaveCount(0);
   await expect(
-    page.getByRole('button', { name: 'Export PDF', exact: true }),
+    page.getByRole('button', { name: 'Share shopping list', exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Complete shopping', exact: true }),
@@ -122,11 +122,19 @@ test('download the reviewed quantities and manual groceries as a PDF without com
   await page
     .getByRole('link', { name: 'Review shopping list', exact: true })
     .click();
-  await page.getByRole('button', { name: 'Export PDF', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Share shopping list', exact: true })
+    .click();
   // The app delivers the file through its platform adapter (a save dialog for
   // people; a folder under automation).
   const delivered = await app.delivered();
   expect(delivered.name).toBe('forkcast-shopping-2026-10-12-to-2026-10-18.pdf');
+  // The desktop app has no share sheet, so Share saves straight away.
+  await expect(
+    page.getByRole('status', { name: 'Shopping list PDF status', exact: true }),
+  ).toHaveText(
+    'Shopping list PDF saved. Your shopping list is still available.',
+  );
   const bytes = await readFile(delivered.path);
   expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
   const pdf = await getDocument({
@@ -191,7 +199,9 @@ test('a long shopping PDF wraps names and retains every grocery across pages', a
       `Grocery ${index + 1}: dark chocolate, toasted almonds and dried cranberries for the household’s weekend baking`,
   );
   for (const name of names) await addManualItem(page, name);
-  await page.getByRole('button', { name: 'Export PDF', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Share shopping list', exact: true })
+    .click();
   const bytes = await readFile((await app.delivered()).path);
   const pdf = await getDocument({
     data: new Uint8Array(bytes),

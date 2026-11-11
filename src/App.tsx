@@ -55,7 +55,7 @@ import { KeyboardShortcutsDialog, useKeyboardShortcuts } from './shortcuts';
 import { PlanningConflicts } from './PlanningConflicts';
 import { RecipeConflicts } from './RecipeConflicts';
 import { RecipeMetadata } from './RecipeMetadata';
-import { RecipePdfExport } from './RecipePdfExport';
+import { RecipeShare } from './RecipeShare';
 
 function subscribeToRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -189,7 +189,7 @@ function RecipeDetails({
           >
             Edit recipe
           </a>
-          <RecipePdfExport
+          <RecipeShare
             recipe={recipe}
             portions={Number(portions)}
             displayUnits={displayUnits}

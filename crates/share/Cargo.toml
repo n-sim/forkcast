@@ -1,0 +1,15 @@
+[package]
+name = "tauri-plugin-forkcast-share"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Hands generated files to Android's share sheet, reachable only from native code."
+links = "tauri-plugin-forkcast-share"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
+
+[dependencies]
+base64 = "0.22"
+serde_json = "1"
+tauri = "2"
