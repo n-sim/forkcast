@@ -15,6 +15,7 @@ crates/desktop/icons/ios/
 target-android/
 crates/secure-store/android/.tauri/
 crates/system-timer/android/.tauri/
+crates/share/android/.tauri/
 crates/desktop/gen/android/app/src/main/jniLibs/
 crates/desktop/gen/android/app/tauri.build.gradle.kts
 crates/desktop/gen/android/app/tauri.properties

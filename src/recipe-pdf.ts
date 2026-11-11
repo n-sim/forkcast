@@ -1,5 +1,4 @@
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
-import { saveFile } from './core';
 import {
   calculateRecipe,
   difficultyLabels,
@@ -11,6 +10,7 @@ import {
 import { nutrients } from './food-log';
 import { nutritionValue, recipeNutrition } from './nutrition';
 import { loadPdfMake, shoppingPdfText } from './shopping-pdf-fonts';
+import type { GeneratedFile } from './share';
 
 export interface RecipePdfOptions {
   recipe: Recipe;
@@ -230,10 +230,10 @@ export function recipePdfFileName(recipe: Recipe, portions: number) {
   return `forkcast-recipe-${slug || 'untitled'}-${count}-portions.pdf`;
 }
 
-/** Saves the recipe as an A4 PDF; false when the person cancels saving. */
-export async function exportRecipePdf(
+/** Generates the recipe as an A4 PDF, ready to save or share. */
+export async function createRecipePdf(
   options: RecipePdfOptions,
-): Promise<boolean> {
+): Promise<GeneratedFile> {
   const { recipe } = options;
   const pdfMake = await loadPdfMake([
     recipe.name,
@@ -242,13 +242,10 @@ export async function exportRecipePdf(
     ...recipe.steps.map((step) => step.instruction),
   ]);
   const document = await recipePdfDocument(options);
-  const bytes = await pdfMake.createPdf(document).getBuffer();
-  // The platform decides where the file goes: a save dialog in the app, a download in a browser.
-  return (
-    (await saveFile(
-      recipePdfFileName(recipe, options.portions),
-      bytes,
-      'application/pdf',
-    )) !== null
-  );
+  return {
+    name: recipePdfFileName(recipe, options.portions),
+    bytes: await pdfMake.createPdf(document).getBuffer(),
+    type: 'application/pdf',
+    title: recipe.name,
+  };
 }

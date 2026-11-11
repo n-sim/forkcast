@@ -31,12 +31,14 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init());
     // Session tokens are protected by the Android Keystore on Android; other
-    // platforms use their own adapter (see `protected`).
+    // platforms use their own adapter (see `protected`). Android also has a
+    // share sheet for generated PDFs (see `host::share_file`), and step timers
+    // go to the clock app (see `host::start_system_timer`).
     #[cfg(target_os = "android")]
-    let builder = builder.plugin(tauri_plugin_forkcast_secure_store::init());
-    // Step timers go to the clock app on Android (see `host::start_system_timer`).
-    #[cfg(target_os = "android")]
-    let builder = builder.plugin(tauri_plugin_forkcast_system_timer::init());
+    let builder = builder
+        .plugin(tauri_plugin_forkcast_secure_store::init())
+        .plugin(tauri_plugin_forkcast_share::init())
+        .plugin(tauri_plugin_forkcast_system_timer::init());
     builder
         .setup(|app| {
             let host = Host::new(host::data_directory(app));
@@ -66,6 +68,7 @@ pub fn run() {
             host::retry_startup,
             host::open_data_folder,
             host::save_file,
+            host::share_file,
             host::open_external,
             host::open_window,
             host::start_system_timer,

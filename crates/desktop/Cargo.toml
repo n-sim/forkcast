@@ -24,6 +24,7 @@ tauri-plugin-opener = "2"
 
 [target.'cfg(target_os = "android")'.dependencies]
 tauri-plugin-forkcast-secure-store = { path = "../secure-store" }
+tauri-plugin-forkcast-share = { path = "../share" }
 tauri-plugin-forkcast-system-timer = { path = "../system-timer" }
 
 [target.'cfg(windows)'.dependencies]

@@ -1,8 +1,8 @@
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
-import { saveFile } from './core';
 import { formatQuantity, unitLabels } from './domain';
 import type { ShoppingItem, ShoppingList } from './shopping';
 import { loadPdfMake, shoppingPdfText } from './shopping-pdf-fonts';
+import type { GeneratedFile } from './share';
 
 function groceries(title: string, items: ShoppingItem[]): Content[] {
   return [
@@ -42,7 +42,10 @@ function groceries(title: string, items: ShoppingItem[]): Content[] {
   ];
 }
 
-export async function exportShoppingPdf(list: ShoppingList): Promise<boolean> {
+/** Generates the shopping list as a PDF, ready to save or share. */
+export async function createShoppingPdf(
+  list: ShoppingList,
+): Promise<GeneratedFile> {
   const pdfMake = await loadPdfMake([
     ...[...list.items, ...list.manualItems].map((item) => item.name),
     ...list.contributions.map((source) => source.recipeName),
@@ -80,13 +83,10 @@ export async function exportShoppingPdf(list: ShoppingList): Promise<boolean> {
         : [{ text: 'No recipe contributions.' }]),
     ],
   };
-  const bytes = await pdfMake.createPdf(document).getBuffer();
-  // The platform decides where the file goes: a save dialog in the app, a download in a browser.
-  return (
-    (await saveFile(
-      `forkcast-shopping-${list.startDate}-to-${list.endDate}.pdf`,
-      bytes,
-      'application/pdf',
-    )) !== null
-  );
+  return {
+    name: `forkcast-shopping-${list.startDate}-to-${list.endDate}.pdf`,
+    bytes: await pdfMake.createPdf(document).getBuffer(),
+    type: 'application/pdf',
+    title: `Shopping list ${list.startDate} to ${list.endDate}`,
+  };
 }
