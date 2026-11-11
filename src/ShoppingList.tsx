@@ -25,6 +25,7 @@ import {
 } from './IngredientConversionReview';
 import { useAiModel } from './use-ai-model';
 import { GurkerlCart } from './GurkerlCart';
+import { PdfShare } from './PdfShare';
 
 const sourceMessages = {
   changed:
@@ -48,8 +49,6 @@ export function ShoppingListView() {
   );
   const [endDate, setEndDate] = useState(startDate);
   const [saving, setSaving] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [exportMessage, setExportMessage] = useState('');
   const [message, setMessage] = useState('');
   const [adding, setAdding] = useState(false);
   const errorSummary = useRef<HTMLParagraphElement>(null);
@@ -140,29 +139,6 @@ export function ShoppingListView() {
     };
   }
 
-  async function exportPdf() {
-    if (!list) return;
-    setExporting(true);
-    setError('');
-    setExportMessage('Preparing PDF…');
-    try {
-      const { exportShoppingPdf } = await import('./shopping-pdf');
-      const saved = await exportShoppingPdf(list);
-      setExportMessage(
-        saved
-          ? 'PDF exported. Your shopping list is still available.'
-          : 'PDF export cancelled. Your shopping list is still available.',
-      );
-    } catch {
-      setError(
-        'The PDF could not be exported. Try again. Your shopping list has been kept.',
-      );
-      setExportMessage('');
-    } finally {
-      setExporting(false);
-    }
-  }
-
   return (
     <article>
       <div className="page-heading">
@@ -184,9 +160,6 @@ export function ShoppingListView() {
       )}
       <p role="status" aria-label="Shopping list status">
         {message}
-      </p>
-      <p role="status" aria-label="PDF export status">
-        {exportMessage}
       </p>
       {!loaded && !error && <p role="status">Loading shopping list…</p>}
       {replacement && (
@@ -397,16 +370,26 @@ export function ShoppingListView() {
               <ShoppingProgress list={list} />
               <div className="shopping-options panel">
                 <p>
-                  Export a PDF to take with you, or open the checklist.
-                  Exporting leaves shopping progress unchanged.
+                  Share the list as a PDF or save it to take with you, or open
+                  the checklist. Sharing leaves shopping progress unchanged.
                 </p>
-                <button
-                  className="button secondary"
-                  disabled={saving || exporting}
-                  onClick={() => void exportPdf()}
-                >
-                  Export PDF
-                </button>
+                <PdfShare
+                  label="Share shopping list"
+                  heading="Share shopping list as PDF"
+                  description={`From ${list.startDate} to ${list.endDate}, with your reviewed quantities.`}
+                  statusLabel="Shopping list PDF status"
+                  messages={{
+                    subject: 'Shopping list PDF',
+                    note: 'Your shopping list is still available.',
+                    errorNote: 'Your shopping list has been kept.',
+                  }}
+                  disabled={saving}
+                  create={async () => {
+                    const { createShoppingPdf } =
+                      await import('./shopping-pdf');
+                    return createShoppingPdf(list);
+                  }}
+                />
                 <a className="button primary" href="#/shopping-list/checklist">
                   Open checklist
                 </a>

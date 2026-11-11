@@ -9,6 +9,8 @@ import {
   expect,
   setUpHousehold,
   createRecipe,
+  stubWebShare,
+  withoutWebShare,
   type Page,
 } from './browser-fixture';
 
@@ -52,19 +54,24 @@ async function exportPdf(
   page: Page,
   includeAllocations: boolean,
 ): Promise<ExportedPdf> {
-  await page.getByRole('button', { name: 'Export PDF', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Export recipe as PDF' });
+  await expect(
+    page.getByRole('button', { name: 'Export PDF', exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole('button', { name: 'Share recipe', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Share recipe as PDF' });
   await expect(dialog).toBeVisible();
+  // Without Web Share, only saving is offered.
+  await expect(dialog.getByRole('button', { name: /^Share/ })).toHaveCount(0);
   await dialog
     .getByLabel('Include step allocations', { exact: true })
     .setChecked(includeAllocations);
   const download = page.waitForEvent('download');
-  await dialog.getByRole('button', { name: 'Export', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Save PDF', exact: true }).click();
   const file = await download;
   await expect(dialog).toBeHidden();
   await expect(
-    page.getByRole('status', { name: 'Recipe PDF export status' }),
-  ).toHaveText('Recipe PDF exported.');
+    page.getByRole('status', { name: 'Recipe PDF status' }),
+  ).toHaveText('Recipe PDF saved.');
   return {
     name: file.suggestedFilename(),
     ...(await readPdf(await readFile((await file.path())!))),
@@ -75,6 +82,7 @@ test('export a scaled recipe with its photo, details, allocations and nutrition 
   page,
   backend,
 }) => {
+  await withoutWebShare(page);
   await setUpHousehold(page, backend.url);
   await page.getByRole('button', { name: 'New recipe', exact: true }).click();
   await page.getByLabel('Recipe name').fill('豆腐 Käsespätzle 🥑');
@@ -177,6 +185,7 @@ test('a recipe without a photo, details or nutrition exports only what it has', 
   page,
   backend,
 }) => {
+  await withoutWebShare(page);
   await setUpHousehold(page, backend.url);
   await createRecipe(page, 'Plain pasta');
   const plain = await exportPdf(page, true);
@@ -196,4 +205,68 @@ test('a recipe without a photo, details or nutrition exports only what it has', 
     'Unknown',
   ])
     expect(plain.text).not.toContain(absent);
+});
+
+test('share a recipe PDF to another app where the browser can share files', async ({
+  page,
+  backend,
+}) => {
+  const share = await stubWebShare(page, ['cancelled']);
+  await setUpHousehold(page, backend.url);
+  await createRecipe(page, 'Shared pasta');
+  const status = page.getByRole('status', { name: 'Recipe PDF status' });
+  const dialog = page.getByRole('dialog', { name: 'Share recipe as PDF' });
+
+  // Dismissing the share sheet is a cancel, not an error.
+  await page.getByRole('button', { name: 'Share recipe', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Share…', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(status).toHaveText('Sharing cancelled.');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(await share.shared()).toHaveLength(0);
+
+  await page.getByRole('button', { name: 'Share recipe', exact: true }).click();
+  await dialog
+    .getByLabel('Include step allocations', { exact: true })
+    .setChecked(false);
+  await dialog.getByRole('button', { name: 'Share…', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(status).toHaveText('Recipe PDF shared.');
+  const [shared] = await share.shared();
+  expect(shared!.name).toMatch(
+    /^forkcast-recipe-shared-pasta-\d+-portions\.pdf$/,
+  );
+  expect(shared!.type).toBe('application/pdf');
+  expect(shared!.title).toBe('Shared pasta');
+  const pdf = await readPdf(shared!.bytes);
+  expect(pdf.text).toContain('Shared pasta');
+  expect(pdf.text).toContain('Boil the pasta.');
+
+  // Saving is still offered next to sharing.
+  await page.getByRole('button', { name: 'Share recipe', exact: true }).click();
+  const download = page.waitForEvent('download');
+  await dialog.getByRole('button', { name: 'Save PDF', exact: true }).click();
+  expect((await download).suggestedFilename()).toBe(shared!.name);
+  await expect(status).toHaveText('Recipe PDF saved.');
+});
+
+test('a share the browser refuses after preparing the PDF goes through on the next tap', async ({
+  page,
+  backend,
+}) => {
+  const share = await stubWebShare(page, ['not-allowed']);
+  await setUpHousehold(page, backend.url);
+  await createRecipe(page, 'Slow pasta');
+  await page.getByRole('button', { name: 'Share recipe', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Share recipe as PDF' });
+  await dialog.getByRole('button', { name: 'Share…', exact: true }).click();
+  await expect(dialog).toContainText(
+    'The PDF is ready. Select Share again to choose an app.',
+  );
+  await dialog.getByRole('button', { name: 'Share now…', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(
+    page.getByRole('status', { name: 'Recipe PDF status' }),
+  ).toHaveText('Recipe PDF shared.');
+  expect(await share.shared()).toHaveLength(1);
 });

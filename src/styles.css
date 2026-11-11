@@ -277,6 +277,10 @@ h2 {
   line-height: 1.4;
   white-space: nowrap;
 }
+.button-icon {
+  flex: none;
+  margin-right: 8px;
+}
 .primary {
   color: #fff;
   background: var(--accent);
@@ -581,6 +585,10 @@ h2 {
 .shopping-options p {
   flex-basis: 100%;
   margin: 0;
+}
+/* The Share outcome reads below the buttons, not between them. */
+.shopping-options .share-status {
+  order: 1;
 }
 .shopping-completion {
   margin-top: 24px;
