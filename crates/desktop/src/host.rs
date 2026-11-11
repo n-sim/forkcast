@@ -281,6 +281,42 @@ pub async fn save_file(
     Ok(Some(location))
 }
 
+/// Offers a generated file (a recipe or shopping-list PDF) to other apps through
+/// the system share sheet. Only Android has one here; elsewhere the frontend
+/// offers saving instead, so this is an `unsupported` error. Returns once the
+/// sheet is shown.
+#[tauri::command]
+pub async fn share_file(
+    app: AppHandle,
+    suggested_name: String,
+    data: Vec<u8>,
+    title: String,
+) -> Result<(), String> {
+    let name = std::path::Path::new(&suggested_name)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .filter(|name| !name.is_empty())
+        .ok_or("Choose a file name.")?;
+    #[cfg(target_os = "android")]
+    {
+        let mime_type = if name.to_ascii_lowercase().ends_with(".pdf") {
+            "application/pdf"
+        } else {
+            "application/octet-stream"
+        };
+        tauri::async_runtime::spawn_blocking(move || {
+            tauri_plugin_forkcast_share::share_file(&app, &name, &data, mime_type, &title)
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, name, data, title);
+        Err("Sharing is not available on this device.".to_owned())
+    }
+}
+
 /// Writes through the fs plugin, which understands both plain paths and the
 /// document URIs mobile save dialogs return.
 fn write_chosen_file(

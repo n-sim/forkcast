@@ -5,7 +5,6 @@ import type { ReactNode } from 'react';
 function NavIcon({ children }: { children: ReactNode }) {
   return (
     <svg
-      className="nav-icon"
       viewBox="0 0 24 24"
       width="1em"
       height="1em"
@@ -19,6 +18,17 @@ function NavIcon({ children }: { children: ReactNode }) {
     >
       {children}
     </svg>
+  );
+}
+
+// The Log icon replaces ◷, which is missing from some phone fonts and was drawn
+// smaller by the fallback font.
+export function LogIcon() {
+  return (
+    <NavIcon>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </NavIcon>
   );
 }
 

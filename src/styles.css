@@ -118,16 +118,22 @@ textarea:focus-visible {
   font-size: 13px;
   font-weight: 600;
 }
-.nav-link:hover {
-  background: #d9e0cb;
-}
-.nav-icon-slot {
+.nav-icon {
+  /* A fixed box keeps glyph icons from different fonts the same size. */
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.2em;
+  height: 1.2em;
   line-height: 1;
 }
-.nav-icon {
-  display: block;
-  flex: none;
+.nav-icon svg {
+  width: 1em;
+  height: 1em;
+}
+.nav-link:hover {
+  background: #d9e0cb;
 }
 .account-form {
   display: grid;
@@ -284,6 +290,10 @@ h2 {
   font-weight: 600;
   line-height: 1.4;
   white-space: nowrap;
+}
+.button-icon {
+  flex: none;
+  margin-right: 8px;
 }
 .primary {
   color: #fff;
@@ -589,6 +599,10 @@ h2 {
 .shopping-options p {
   flex-basis: 100%;
   margin: 0;
+}
+/* The Share outcome reads below the buttons, not between them. */
+.shopping-options .share-status {
+  order: 1;
 }
 .shopping-completion {
   margin-top: 24px;

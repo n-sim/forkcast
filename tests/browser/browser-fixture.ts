@@ -70,3 +70,72 @@ export async function createMember(page: Page, username: string) {
     page.getByRole('status', { name: 'Account administration' }),
   ).toContainText(`Account created for ${username}`);
 }
+
+export interface SharedFile {
+  name: string;
+  type: string;
+  title: string;
+  bytes: Buffer;
+}
+
+/**
+ * Gives the page Web Share with files, as on a phone. Shares are recorded
+ * instead of opening a share sheet. `outcomes` decide, in order, how each call
+ * ends: `shared`, `cancelled` (the person dismissed the sheet) or
+ * `not-allowed` (the browser wants a fresh tap); later calls are shared.
+ * Call before the page loads.
+ */
+export async function stubWebShare(
+  page: Page,
+  outcomes: ('shared' | 'cancelled' | 'not-allowed')[] = [],
+) {
+  await page.addInitScript((outcomes) => {
+    const shared: unknown[] = [];
+    Object.assign(window, { __forkcastShared: shared });
+    Object.defineProperty(navigator, 'canShare', {
+      configurable: true,
+      value: (data?: ShareData) => Boolean(data?.files?.length),
+    });
+    Object.defineProperty(navigator, 'share', {
+      configurable: true,
+      value: async (data: ShareData) => {
+        const outcome = outcomes.shift() ?? 'shared';
+        if (outcome === 'cancelled')
+          throw new DOMException('Share canceled', 'AbortError');
+        if (outcome === 'not-allowed')
+          throw new DOMException('Needs a user gesture', 'NotAllowedError');
+        const file = data.files![0]!;
+        shared.push({
+          name: file.name,
+          type: file.type,
+          title: data.title,
+          bytes: Array.from(new Uint8Array(await file.arrayBuffer())),
+        });
+      },
+    });
+  }, outcomes);
+  return {
+    async shared(): Promise<SharedFile[]> {
+      const files = await page.evaluate(
+        () =>
+          (window as unknown as { __forkcastShared: SharedFile[] })
+            .__forkcastShared,
+      );
+      return files.map((file) => ({
+        ...file,
+        bytes: Buffer.from(file.bytes as unknown as number[]),
+      }));
+    },
+  };
+}
+
+/** Takes Web Share away, as in desktop browsers without it. Call before the page loads. */
+export async function withoutWebShare(page: Page) {
+  await page.addInitScript(() => {
+    for (const name of ['share', 'canShare'])
+      Object.defineProperty(navigator, name, {
+        configurable: true,
+        value: undefined,
+      });
+  });
+}

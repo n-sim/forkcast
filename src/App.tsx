@@ -55,8 +55,8 @@ import { KeyboardShortcutsDialog, useKeyboardShortcuts } from './shortcuts';
 import { PlanningConflicts } from './PlanningConflicts';
 import { RecipeConflicts } from './RecipeConflicts';
 import { RecipeMetadata } from './RecipeMetadata';
-import { PlanIcon, SettingsIcon, ShoppingIcon } from './NavIcons';
-import { RecipePdfExport } from './RecipePdfExport';
+import { LogIcon, PlanIcon, SettingsIcon, ShoppingIcon } from './NavIcons';
+import { RecipeShare } from './RecipeShare';
 
 function subscribeToRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -190,7 +190,7 @@ function RecipeDetails({
           >
             Edit recipe
           </a>
-          <RecipePdfExport
+          <RecipeShare
             recipe={recipe}
             portions={Number(portions)}
             displayUnits={displayUnits}
@@ -729,7 +729,10 @@ export function App({
             aria-keyshortcuts="1"
             aria-current={route === '#/' ? 'page' : undefined}
           >
-            <span aria-hidden="true">▤</span> Recipe collection
+            <span className="nav-icon" aria-hidden="true">
+              ▤
+            </span>{' '}
+            Recipe collection
           </a>
           <a
             className="nav-link"
@@ -737,7 +740,7 @@ export function App({
             aria-keyshortcuts="2"
             aria-current={planningView ? 'page' : undefined}
           >
-            <span className="nav-icon-slot" aria-hidden="true">
+            <span className="nav-icon" aria-hidden="true">
               <PlanIcon />
             </span>{' '}
             Meal plan
@@ -748,7 +751,10 @@ export function App({
             aria-keyshortcuts="3"
             aria-current={foodLogOpen ? 'page' : undefined}
           >
-            <span aria-hidden="true">◷</span> Food log
+            <span className="nav-icon" aria-hidden="true">
+              <LogIcon />
+            </span>{' '}
+            Food log
           </a>
           <a
             className="nav-link"
@@ -756,7 +762,7 @@ export function App({
             aria-keyshortcuts="4"
             aria-current={shoppingOpen ? 'page' : undefined}
           >
-            <span className="nav-icon-slot" aria-hidden="true">
+            <span className="nav-icon" aria-hidden="true">
               <ShoppingIcon />
             </span>{' '}
             Shopping list
@@ -791,7 +797,7 @@ export function App({
               aria-keyshortcuts="5"
               aria-current={settingsOpen ? 'page' : undefined}
             >
-              <span className="nav-icon-slot" aria-hidden="true">
+              <span className="nav-icon" aria-hidden="true">
                 <SettingsIcon />
               </span>{' '}
               Settings
@@ -824,7 +830,7 @@ export function App({
           },
           {
             href: '#/food-log',
-            icon: '◷',
+            icon: <LogIcon />,
             label: 'Log',
             shortcut: '3',
             current: foodLogOpen,
@@ -850,7 +856,9 @@ export function App({
             aria-keyshortcuts={item.shortcut}
             aria-current={item.current ? 'page' : undefined}
           >
-            <span aria-hidden="true">{item.icon}</span>
+            <span className="nav-icon" aria-hidden="true">
+              {item.icon}
+            </span>
             {item.label}
           </a>
         ))}
