@@ -454,7 +454,16 @@ impl Provider {
                 "store": false,
                 "stream": true,
             }))
-            .map_err(|_| Failure::Unavailable)?;
+            .map_err(|error| {
+                diagnose("request", &error.to_string());
+                Failure::Unavailable
+            })?;
+        let mut response = response;
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let body = response.body_mut().read_to_string().unwrap_or_default();
+            diagnose(&format!("status {status}"), &body);
+        }
         let mut response = Self::checked(response)?;
         let mut reader = BufReader::new(response.body_mut().as_reader().take(2_000_000));
         let mut data = String::new();
@@ -467,13 +476,17 @@ impl Provider {
                 .map_err(|_| Failure::Unavailable)?
                 == 0
             {
+                diagnose("stream ended before completion", &streamed);
                 return Err(Failure::Unavailable);
             }
             let text = std::str::from_utf8(&line)
                 .map_err(|_| Failure::Unavailable)?
                 .trim_end_matches(['\r', '\n']);
             if text.is_empty() && !data.is_empty() {
-                let event: Value = serde_json::from_str(&data).map_err(|_| Failure::Unavailable)?;
+                let event: Value = serde_json::from_str(&data).map_err(|_| {
+                    diagnose("unreadable event", &data);
+                    Failure::Unavailable
+                })?;
                 data.clear();
                 match event["type"].as_str() {
                     Some("response.output_text.delta") => {
@@ -484,7 +497,8 @@ impl Provider {
                     }
                     Some("response.completed") => return completed(&event, streamed),
                     Some("response.failed" | "response.incomplete" | "error") => {
-                        return Err(Failure::Unavailable);
+                        diagnose("failed event", &event.to_string());
+                        return Err(stream_failure(&event));
                     }
                     _ => (),
                 }
@@ -496,8 +510,27 @@ impl Provider {
     }
 }
 
+fn stream_failure(event: &Value) -> Failure {
+    let code = event["error"]["code"]
+        .as_str()
+        .or_else(|| event["response"]["error"]["code"].as_str())
+        .unwrap_or_default();
+    if code.contains("usage_limit") || code.contains("rate_limit") {
+        Failure::Limited
+    } else {
+        Failure::Unavailable
+    }
+}
+
+/// Local diagnostics only; provider bodies never reach the person.
+fn diagnose(context: &str, detail: &str) {
+    let detail: String = detail.chars().take(4000).collect();
+    eprintln!("ChatGPT execution failed ({context}): {detail}");
+}
+
 fn completed(event: &Value, mut streamed: String) -> Result<String, Failure> {
     if event["response"]["status"] != "completed" {
+        diagnose("completed event", &event.to_string());
         return Err(Failure::Unavailable);
     }
     let mut text = String::new();

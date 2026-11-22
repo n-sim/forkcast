@@ -426,6 +426,12 @@ impl Provider {
             Some("interrupted") => {}
             Some("failed") => events += "data: {\"type\":\"response.failed\"}\n\n",
             Some("malformed") => events += "data: invalid-json\n\n",
+            Some("usage-limit") => {
+                events += &format!(
+                    "data: {}\n\n",
+                    json!({"type": "error", "error": {"code": "subscription_sharing_usage_limit_exceeded", "message": "DO_NOT_EXPOSE_PROVIDER_ERRORS"}})
+                );
+            }
             Some("refusal") => {
                 events += &format!(
                     "data: {}\n\n",

@@ -278,6 +278,7 @@ fn provider_failures_are_reported_without_provider_text() {
     connect(&device, &provider);
     for (failure, kind, text) in [
         ("limited", ErrorKind::RateLimited, "temporarily limited"),
+        ("usage-limit", ErrorKind::RateLimited, "temporarily limited"),
         ("http", ErrorKind::Unavailable, "could not complete"),
         ("failed", ErrorKind::Unavailable, "could not complete"),
         ("interrupted", ErrorKind::Unavailable, "could not complete"),
